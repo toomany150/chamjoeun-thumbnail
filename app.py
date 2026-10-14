@@ -175,13 +175,15 @@ if "trade_type" not in st.session_state:
 if "price_text" not in st.session_state:
     st.session_state.price_text = "6억2천"
 if "spec_line1" not in st.session_state:
-    st.session_state.spec_line1 = "12월이사예정(협의)"
+    st.session_state.spec_line1 = "105동 / 15층(로얄층)"
 if "spec_line2" not in st.session_state:
     st.session_state.spec_line2 = "공급 111㎡ / 전용 79.85㎡"
 if "spec_line3" not in st.session_state:
     st.session_state.spec_line3 = "방 3 / 욕실 2"
 if "spec_line4" not in st.session_state:
-    st.session_state.spec_line4 = "남동향 (채광 우수)"
+    st.session_state.spec_line4 = "12월이사예정(협의)"
+if "spec_line5" not in st.session_state:
+    st.session_state.spec_line5 = "남동향 (채광 우수)"
 
 # 프리셋 적용 함수
 def apply_preset(p_type):
@@ -192,10 +194,11 @@ def apply_preset(p_type):
         st.session_state.feature_text = "1572세대 대단지 아파트"
         st.session_state.trade_type = "매매"
         st.session_state.price_text = "6억2천"
-        st.session_state.spec_line1 = "12월이사예정(협의)"
+        st.session_state.spec_line1 = "105동 / 15층(로얄층)"
         st.session_state.spec_line2 = "공급 111㎡ / 전용 79.85㎡"
         st.session_state.spec_line3 = "방 3 / 욕실 2"
-        st.session_state.spec_line4 = "남동향 (채광 우수)"
+        st.session_state.spec_line4 = "12월이사예정(협의)"
+        st.session_state.spec_line5 = "남동향 (채광 우수)"
     elif p_type == "op":
         st.session_state.item_no = "No. OP-302"
         st.session_state.main_title = "해운대 센텀스퀘어"
@@ -203,10 +206,11 @@ def apply_preset(p_type):
         st.session_state.feature_text = "초역세권 + 풀옵션 프리미엄"
         st.session_state.trade_type = "전세"
         st.session_state.price_text = "2억 4천"
-        st.session_state.spec_line1 = "협의 입주 가능"
+        st.session_state.spec_line1 = "A동 / 18층(고층)"
         st.session_state.spec_line2 = "계약 68㎡ / 전용 42㎡"
         st.session_state.spec_line3 = "방 1.5룸 / 욕실 1"
-        st.session_state.spec_line4 = "동향 (시티뷰 조망)"
+        st.session_state.spec_line4 = "협의 입주 가능"
+        st.session_state.spec_line5 = "동향 (시티뷰 조망)"
     elif p_type == "urgent":
         st.session_state.item_no = "No. SALE-77"
         st.session_state.main_title = "광안리 바다뷰 신축"
@@ -214,10 +218,11 @@ def apply_preset(p_type):
         st.session_state.feature_text = "시세 대비 5천 저렴 급매"
         st.session_state.trade_type = "급매"
         st.session_state.price_text = "4억 9천"
-        st.session_state.spec_line1 = "즉시 입주 가능"
+        st.session_state.spec_line1 = "102동 / 21층"
         st.session_state.spec_line2 = "공급 112㎡ / 전용 84㎡"
         st.session_state.spec_line3 = "방 4 / 욕실 2"
-        st.session_state.spec_line4 = "남동향 (파노라마 오션뷰)"
+        st.session_state.spec_line4 = "즉시 입주 가능"
+        st.session_state.spec_line5 = "남동향 (파노라마 오션뷰)"
 
 # -------------------------
 # 사이드바: 입력 제어판
@@ -320,12 +325,13 @@ with st.sidebar:
     with col_t2:
         price_text = st.text_input("금액 텍스트", value=st.session_state.price_text)
 
-    # 5. 매물 스펙 4줄
-    st.markdown("#### 📋 6. 매물 상세 스펙 (4개 항목)")
-    spec_line1 = st.text_input("🕒 1행 (입주시기)", value=st.session_state.spec_line1)
-    spec_line2 = st.text_input("🏢 2행 (공급/전용면적)", value=st.session_state.spec_line2)
-    spec_line3 = st.text_input("🛏️ 3행 (방/욕실 수)", value=st.session_state.spec_line3)
-    spec_line4 = st.text_input("🔆 4행 (방향 및 특징)", value=st.session_state.spec_line4)
+    # 5. 매물 상세 스펙 (최대 5개 항목 지원)
+    st.markdown("#### 📋 6. 매물 상세 스펙 (최대 5개 항목)")
+    spec_line1 = st.text_input("🏢 1행 (해당동 / 층수)", value=st.session_state.spec_line1, help="예: 105동 / 15층(로얄층)")
+    spec_line2 = st.text_input("📐 2행 (공급/전용면적)", value=st.session_state.spec_line2, help="예: 공급 111㎡ / 전용 79.85㎡")
+    spec_line3 = st.text_input("🛏️ 3행 (방/욕실 수)", value=st.session_state.spec_line3, help="예: 방 3 / 욕실 2")
+    spec_line4 = st.text_input("🕒 4행 (입주시기)", value=st.session_state.spec_line4, help="예: 12월이사예정(협의)")
+    spec_line5 = st.text_input("🔆 5행 (방향 및 특징)", value=st.session_state.spec_line5, help="예: 남동향 (채광 우수)")
 
     st.markdown("---")
     st.markdown("""
@@ -351,7 +357,7 @@ with col_main_left:
     <span class="spec-badge badge-gray">네이버 블로그 / 스마트플레이스 최적화</span>
     """, unsafe_allow_html=True)
 
-    spec_lines = [spec_line1, spec_line2, spec_line3, spec_line4]
+    spec_lines = [spec_line1, spec_line2, spec_line3, spec_line4, spec_line5]
     
     with st.spinner("고화질 썸네일 렌더링 중..."):
         thumbnail_img = render_thumbnail(

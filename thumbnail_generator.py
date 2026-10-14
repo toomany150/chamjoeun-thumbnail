@@ -106,9 +106,10 @@ def render_thumbnail(
     """1080x1080 썸네일을 생성하여 PIL Image로 반환합니다."""
     if spec_lines is None:
         spec_lines = [
-            "12월이사예정(협의)",
+            "105동 / 15층(로얄층)",
             "공급 111㎡ / 전용 79.85㎡",
             "방 3 / 욕실 2",
+            "12월이사예정(협의)",
             "남동향 (채광 우수)"
         ]
 
@@ -269,19 +270,35 @@ def _render_side_split(
         font_price = get_font("NanumGothicExtraBold.ttf", 42 if is_compact else 46)
         draw.text((price_x, badge_y + 3), clean_price, fill=(18, 20, 22, 255), font=font_price)
 
-    # 7. 스펙 4줄 리스트
-    spec_start_y = 440
-    spec_gap = 66
-    font_spec = get_font("NanumGothicBold.ttf", 30 if is_compact else 34)
-    icon_files = ["icon_calendar.png", "icon_building.png", "icon_bed.png", "icon_sun.png"]
+    # 7. 스펙 리스트 (동/층수 포함 최대 5개 유연 렌더링)
+    default_icons = ["icon_building.png", "icon_area.png", "icon_bed.png", "icon_calendar.png", "icon_sun.png"]
+    valid_specs = []
+    for i, item in enumerate(spec_lines or []):
+        if isinstance(item, tuple) and len(item) == 2:
+            icon_file, txt = item
+        else:
+            icon_file = default_icons[i] if i < len(default_icons) else "icon_building.png"
+            txt = str(item) if item is not None else ""
+        if txt and txt.strip():
+            valid_specs.append((icon_file, txt.strip()))
 
-    for i in range(4):
-        txt = spec_lines[i] if i < len(spec_lines) else ""
-        if not txt or not txt.strip():
-            continue
-        cur_y = spec_start_y + i * spec_gap
-        icon_path = os.path.join(ASSETS_DIR, icon_files[i])
+    count = len(valid_specs)
+    if count >= 5:
+        spec_start_y = 425
+        spec_gap = 55
+        font_spec = get_font("NanumGothicBold.ttf", 29 if is_compact else 32)
+        icon_box = 34 if is_compact else 38
+    else:
+        spec_start_y = 440
+        spec_gap = 66
+        font_spec = get_font("NanumGothicBold.ttf", 30 if is_compact else 34)
         icon_box = 36 if is_compact else 40
+
+    for i, (icon_file, txt) in enumerate(valid_specs):
+        cur_y = spec_start_y + i * spec_gap
+        icon_path = os.path.join(ASSETS_DIR, icon_file)
+        if not os.path.exists(icon_path):
+            icon_path = os.path.join(ASSETS_DIR, "icon_building.png")
         if os.path.exists(icon_path):
             ic = Image.open(icon_path).convert("RGBA")
             scale = min(icon_box / ic.width, icon_box / ic.height)
@@ -289,7 +306,7 @@ def _render_side_split(
             ic_resized = ic.resize((nw, nh), Image.Resampling.LANCZOS)
             canvas.paste(ic_resized, (left_x + (icon_box - nw) // 2, cur_y + (icon_box - nh) // 2), ic_resized)
 
-        draw.text((left_x + icon_box + 14, cur_y + 2), txt.strip(), fill=(22, 24, 27, 255), font=font_spec)
+        draw.text((left_x + icon_box + 14, cur_y + 2), txt, fill=(22, 24, 27, 255), font=font_spec)
 
     # 8. 하단 고정 바 렌더링
     _draw_footer(canvas, draw, W, H, bottom_h, content_h)
@@ -396,19 +413,36 @@ def _render_top_panoramic(
         font_price = get_font("NanumGothicExtraBold.ttf", 44)
         draw.text((left_x + total_badge_w + 14, badge_y + 3), clean_price, fill=(18, 20, 22, 255), font=font_price)
 
-    # 우측 4대 스펙
+    # 우측 스펙 리스트 (동/층수 포함 최대 5개 스마트 렌더링)
     right_x = 555
-    font_spec = get_font("NanumGothicBold.ttf", 28)
-    icon_files = ["icon_calendar.png", "icon_building.png", "icon_bed.png", "icon_sun.png"]
-    spec_start_y = 612 + shift_down  # 732
+    default_icons = ["icon_building.png", "icon_area.png", "icon_bed.png", "icon_calendar.png", "icon_sun.png"]
+    valid_specs = []
+    for i, item in enumerate(spec_lines or []):
+        if isinstance(item, tuple) and len(item) == 2:
+            icon_file, txt = item
+        else:
+            icon_file = default_icons[i] if i < len(default_icons) else "icon_building.png"
+            txt = str(item) if item is not None else ""
+        if txt and txt.strip():
+            valid_specs.append((icon_file, txt.strip()))
 
-    for i in range(4):
-        txt = spec_lines[i] if i < len(spec_lines) else ""
-        if not txt or not txt.strip():
-            continue
-        cur_y = spec_start_y + i * 56
-        icon_path = os.path.join(ASSETS_DIR, icon_files[i])
+    count = len(valid_specs)
+    if count >= 5:
+        spec_start_y = 722
+        spec_gap = 46
+        icon_box = 30
+        font_spec = get_font("NanumGothicBold.ttf", 26)
+    else:
+        spec_start_y = 732
+        spec_gap = 56
         icon_box = 34
+        font_spec = get_font("NanumGothicBold.ttf", 28)
+
+    for i, (icon_file, txt) in enumerate(valid_specs):
+        cur_y = spec_start_y + i * spec_gap
+        icon_path = os.path.join(ASSETS_DIR, icon_file)
+        if not os.path.exists(icon_path):
+            icon_path = os.path.join(ASSETS_DIR, "icon_building.png")
         if os.path.exists(icon_path):
             ic = Image.open(icon_path).convert("RGBA")
             scale = min(icon_box / ic.width, icon_box / ic.height)
@@ -416,7 +450,7 @@ def _render_top_panoramic(
             ic_resized = ic.resize((nw, nh), Image.Resampling.LANCZOS)
             canvas.paste(ic_resized, (right_x + (icon_box - nw) // 2, cur_y + (icon_box - nh) // 2), ic_resized)
 
-        draw.text((right_x + icon_box + 14, cur_y + 2), txt.strip(), fill=(22, 24, 27, 255), font=font_spec)
+        draw.text((right_x + icon_box + 12, cur_y + 1), txt, fill=(22, 24, 27, 255), font=font_spec)
 
     # 하단 바
     _draw_footer(canvas, draw, W, H, bottom_h, content_h)
