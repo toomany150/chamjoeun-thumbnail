@@ -300,34 +300,39 @@ def _render_top_panoramic(
     bg_image, item_no, main_title, sub_title, feature_text, trade_type, price_text, spec_lines,
     bg_offset_x, bg_offset_y, bg_zoom, W, H, bottom_h, content_h
 ) -> Image.Image:
-    """상하 파노라마 모드: 상단 60% 전체를 와이드 사진으로 노출"""
+    """상하 파노라마 모드: 상단 약 68% 전체를 와이드 사진으로 노출 (사진 하단 잘림 방지 및 노출 극대화)"""
     canvas = Image.new("RGBA", (W, H), (255, 255, 255, 255))
 
-    split_y = 570
-    bg_cropped = _load_bg_image(bg_image, W, split_y + 50, bg_zoom, bg_offset_x, bg_offset_y)
+    shift_down = 120
+    split_peak = 565 + shift_down  # 685px
+    bg_cropped = _load_bg_image(bg_image, W, split_peak + 50, bg_zoom, bg_offset_x, bg_offset_y)
     canvas.paste(bg_cropped, (0, 0))
 
     # 하단 사선 분할 레이어
     poly_layer = Image.new("RGBA", (W, H), (0, 0, 0, 0))
     poly_draw = ImageDraw.Draw(poly_layer)
 
-    # 역동적인 사선 주황 밴드 (두께 20px)
-    band_y = 20
+    # 역동적인 사선 주황 밴드 (두께 18px)
+    band_y = 18
+    p_left = 530 + shift_down   # 650
+    p_mid = 565 + shift_down    # 685
+    p_right = 515 + shift_down  # 635
+
     orange_poly = [
-        (0, 530),
-        (540, 565),
-        (W, 515),
-        (W, 515 + band_y),
-        (540, 565 + band_y),
-        (0, 530 + band_y)
+        (0, p_left),
+        (540, p_mid),
+        (W, p_right),
+        (W, p_right + band_y),
+        (540, p_mid + band_y),
+        (0, p_left + band_y)
     ]
     poly_draw.polygon(orange_poly, fill=(244, 138, 38, 255))
 
     # 하단 화이트 정보 카드
     white_poly = [
-        (0, 530 + band_y),
-        (540, 565 + band_y),
-        (W, 515 + band_y),
+        (0, p_left + band_y),
+        (540, p_mid + band_y),
+        (W, p_right + band_y),
         (W, content_h),
         (0, content_h)
     ]
@@ -352,15 +357,16 @@ def _render_top_panoramic(
     font_feat = get_font("NanumGothicBold.ttf", 30)
 
     # 좌측 정보
+    title_start_y = 605 + shift_down  # 725
     if main_title and main_title.strip():
-        draw.text((left_x, 605), main_title.strip(), fill=(18, 20, 22, 255), font=font_main)
+        draw.text((left_x, title_start_y), main_title.strip(), fill=(18, 20, 22, 255), font=font_main)
     if sub_title and sub_title.strip():
-        draw.text((left_x, 660), sub_title.strip(), fill=(18, 20, 22, 255), font=font_sub)
+        draw.text((left_x, title_start_y + 55), sub_title.strip(), fill=(18, 20, 22, 255), font=font_sub)
     if feature_text and feature_text.strip():
-        draw.text((left_x, 715), feature_text.strip(), fill=(38, 42, 46, 255), font=font_feat)
+        draw.text((left_x, title_start_y + 110), feature_text.strip(), fill=(38, 42, 46, 255), font=font_feat)
 
     # 거래 뱃지 & 금액
-    badge_y = 770
+    badge_y = 770 + shift_down  # 890
     badge_h = 52
     clean_trade = (trade_type or "매매").strip()
     clean_price = (price_text or "").strip()
@@ -394,12 +400,13 @@ def _render_top_panoramic(
     right_x = 555
     font_spec = get_font("NanumGothicBold.ttf", 28)
     icon_files = ["icon_calendar.png", "icon_building.png", "icon_bed.png", "icon_sun.png"]
+    spec_start_y = 612 + shift_down  # 732
 
     for i in range(4):
         txt = spec_lines[i] if i < len(spec_lines) else ""
         if not txt or not txt.strip():
             continue
-        cur_y = 612 + i * 58
+        cur_y = spec_start_y + i * 56
         icon_path = os.path.join(ASSETS_DIR, icon_files[i])
         icon_box = 34
         if os.path.exists(icon_path):
