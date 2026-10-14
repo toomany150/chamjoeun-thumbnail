@@ -1,0 +1,8 @@
+__pycache__/
+*.pyc
+*.pyo
+cloudflared.exe
+test_*.png
+mobile_qr.html
+.vscode/
+.idea/
