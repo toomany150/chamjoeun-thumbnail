@@ -1,11 +1,15 @@
 import streamlit as st
 import io
 import os
+import re
+import base64
 import importlib
 import thumbnail_generator
 import property_ad_spec
+import document_parser
 importlib.reload(thumbnail_generator)
 importlib.reload(property_ad_spec)
+importlib.reload(document_parser)
 from thumbnail_generator import render_thumbnail
 from property_ad_spec import (
     DEFAULT_SPEC,
@@ -17,6 +21,22 @@ from property_ad_spec import (
     generate_naver_ad_guide_text,
     render_spec_table_image
 )
+from document_parser import parse_official_document
+
+def render_direct_download_button(image_bytes: bytes, file_name: str, button_label: str, bg_color: str = "#F48A26") -> str:
+    """브라우저 네이티브에서 100% 즉시 다운로드되는 HTML base64 링크를 생성합니다."""
+    clean_name = re.sub(r'[\\/*?:"<>|]', "", file_name).strip()
+    b64_data = base64.b64encode(image_bytes).decode()
+    return f"""
+    <div style="margin: 8px 0 14px 0;">
+        <a href="data:image/png;base64,{b64_data}" download="{clean_name}" 
+           style="display: block; text-align: center; background-color: {bg_color}; color: #FFFFFF !important; 
+                  padding: 14px 20px; border-radius: 9px; font-weight: 700; text-decoration: none; 
+                  font-size: 15px; box-shadow: 0 4px 12px rgba(244,138,38,0.3); transition: all 0.2s ease-in-out;">
+           {button_label}
+        </a>
+    </div>
+    """
 
 # 페이지 설정
 st.set_page_config(
@@ -476,17 +496,22 @@ with tab_thumb:
         thumbnail_img.save(img_byte_arr, format="PNG", quality=98)
         img_bytes = img_byte_arr.getvalue()
 
-        clean_title = (st.session_state.main_title or "매물").replace(" ", "_")
-        clean_price = (st.session_state.thumb_price_text or "").replace(" ", "")
+        clean_title = re.sub(r'[^\w\s-]', '', (st.session_state.main_title or "매물")).strip().replace(" ", "_")
+        clean_price = re.sub(r'[^\w\s-]', '', (st.session_state.thumb_price_text or "")).strip().replace(" ", "")
         download_filename = f"부동산썸네일_{clean_title}_{st.session_state.thumb_trade_type}_{clean_price}.png"
 
         st.download_button(
-            label="📥 1080x1080 썸네일 저장 (모바일 다운로드)",
+            label="📥 1080x1080 썸네일 저장 (기본 다운로드)",
             data=img_bytes,
             file_name=download_filename,
             mime="image/png",
+            key="btn_thumb_download_main",
             use_container_width=True
         )
+
+        # 브라우저 네이티브 다이렉트 다운로드 (오류 없는 100% 즉시 저장)
+        st.markdown(render_direct_download_button(img_bytes, download_filename, "💾 [즉시 다운로드] 브라우저 원클릭 파일 저장"), unsafe_allow_html=True)
+        st.caption("📱 스마트폰에서는 위 이미지를 1초간 길게 누르시면 '사진 앱에 저장'도 가능합니다.")
 
         st.info("💡 썸네일을 만드셨다면, 상단의 **'2단계: 네이버 광고 점검표'** 탭을 클릭하여 네이버 부동산 광고 및 블로그 본문 서식을 바로 확인하세요!")
 
@@ -506,6 +531,116 @@ with tab_ad:
         </span>
     </div>
     """, unsafe_allow_html=True)
+
+    # ----------------------------------------------------
+    # 📄 [공적서류 1초 자동완성] 건축물대장 / 토지대장 / 토지이용계획원
+    # ----------------------------------------------------
+    with st.expander("📄 [원클릭 1초 자동완성] 건축물대장 / 토지대장 / 토지이용계획원 서류 분석", expanded=True):
+        st.markdown("""
+        <div style="font-size:14px; color:#2D3748; margin-bottom:10px;">
+            정부24, 세움터, 일사편리에서 발급받은 <b>건축물대장(표제부/전유부)</b>, <b>토지대장</b>, <b>토지이용계획원</b> PDF 파일을 올리시면 <b>소재지, 면적, 층수, 용도, 준공일, 주차, 세대수</b>가 16개 항목에 1초 만에 자동 완성됩니다!
+        </div>
+        """, unsafe_allow_html=True)
+
+        tab_up_pdf, tab_up_txt = st.tabs(["📁 PDF 서류 파일 끌어다 놓기", "📋 서류 텍스트 직접 붙여넣기"])
+
+        doc_parsed_result = None
+        doc_parsed_type = ""
+
+        with tab_up_pdf:
+            uploaded_doc = st.file_uploader(
+                "건축물대장 / 토지대장 / 토지이용계획원 PDF 서류를 드래그하여 놓으세요",
+                type=["pdf"],
+                help="PDF 형식의 공적 서류를 업로드하시면 실시간 정밀 분석합니다.",
+                key="doc_pdf_uploader_key"
+            )
+            if uploaded_doc is not None:
+                try:
+                    with st.spinner("공적서류 정밀 분석 중..."):
+                        doc_parsed_type, doc_parsed_result, _ = parse_official_document(uploaded_doc, uploaded_doc.name)
+                except Exception as e:
+                    st.error(f"서류 분석 중 오류가 발생했습니다: {e}")
+
+        with tab_up_txt:
+            raw_input_text = st.text_area(
+                "인터넷 열람 서류 텍스트를 복사(Ctrl+C)하여 여기에 붙여넣으세요(Ctrl+V)",
+                height=130,
+                placeholder="예: [표제부] 대지위치: 부산광역시 사상구 덕포동 220, 건축물명칭: 사상 중흥S-클래스, 전유면적: 79.85㎡, 사용승인일: 2023-07-28..."
+            )
+            if st.button("🔍 붙여넣은 텍스트 분석하기", key="btn_parse_raw_text"):
+                if raw_input_text.strip():
+                    from document_parser import identify_document_type, parse_building_register, parse_land_register, parse_land_use_plan
+                    doc_parsed_type = identify_document_type(raw_input_text)
+                    if "건축물대장" in doc_parsed_type:
+                        doc_parsed_result = parse_building_register(raw_input_text)
+                    elif "토지대장" in doc_parsed_type:
+                        doc_parsed_result = parse_land_register(raw_input_text)
+                    elif "토지이용계획" in doc_parsed_type:
+                        doc_parsed_result = parse_land_use_plan(raw_input_text)
+                    else:
+                        doc_parsed_result = parse_building_register(raw_input_text)
+                        if not doc_parsed_result.get("location"):
+                            doc_parsed_result.update(parse_land_register(raw_input_text))
+
+        # 분석 결과 프리뷰 및 자동완성 적용 버튼
+        if doc_parsed_result:
+            st.success(f"🎉 **{doc_parsed_type}** 서류 분석이 완료되었습니다!")
+            
+            c_pv1, c_pv2, c_pv3 = st.columns(3)
+            with c_pv1:
+                st.markdown(f"📍 **소재지**: `{doc_parsed_result.get('location', '미감지')}`")
+                st.markdown(f"🏢 **주용도**: `{doc_parsed_result.get('building_use', '미감지')}`")
+                st.markdown(f"📅 **사용승인일**: `{doc_parsed_result.get('approval_date', '미감지')}`")
+            with c_pv2:
+                st.markdown(f"📐 **전용면적**: `{doc_parsed_result.get('area_exclusive', '-')} ㎡`")
+                st.markdown(f"📐 **공급/연면적**: `{doc_parsed_result.get('area_supply', '-')} ㎡`")
+                st.markdown(f"🏢 **층수정보**: `{doc_parsed_result.get('floor_info', '미감지')}`")
+            with c_pv3:
+                st.markdown(f"🚗 **주차대수**: `{doc_parsed_result.get('parking', '미감지')}`")
+                st.markdown(f"👨‍👩‍👧 **세대수**: `{doc_parsed_result.get('households', '미감지')}`")
+                st.markdown(f"🚪 **방/욕실**: `{doc_parsed_result.get('room_bath', '미감지')}`")
+                if "zone_info" in doc_parsed_result:
+                    st.markdown(f"🌐 **용도지역**: `{doc_parsed_result['zone_info']}`")
+
+            if st.button("⚡ 위 서류 정보를 16대 점검항목 & 썸네일에 1초 즉시 적용하기", type="primary", use_container_width=True, key="btn_apply_doc_info"):
+                # 점검항목 적용
+                if doc_parsed_result.get("location"):
+                    st.session_state.ad_location = doc_parsed_result["location"]
+                if doc_parsed_result.get("area_exclusive"):
+                    st.session_state.ad_area_exclusive = doc_parsed_result["area_exclusive"]
+                if doc_parsed_result.get("area_supply"):
+                    st.session_state.ad_area_supply = doc_parsed_result["area_supply"]
+                elif doc_parsed_result.get("area_exclusive"):
+                    st.session_state.ad_area_supply = doc_parsed_result["area_exclusive"]
+                if doc_parsed_result.get("floor_info"):
+                    st.session_state.ad_floor_info = doc_parsed_result["floor_info"]
+                if doc_parsed_result.get("room_bath"):
+                    st.session_state.ad_room_bath = doc_parsed_result["room_bath"]
+                if doc_parsed_result.get("building_use"):
+                    st.session_state.ad_building_use = doc_parsed_result["building_use"]
+                if doc_parsed_result.get("approval_date"):
+                    st.session_state.ad_approval_date = doc_parsed_result["approval_date"]
+                if doc_parsed_result.get("households"):
+                    st.session_state.ad_households = doc_parsed_result["households"]
+                if doc_parsed_result.get("parking"):
+                    st.session_state.ad_parking = doc_parsed_result["parking"]
+
+                # 썸네일 탭 연동
+                if doc_parsed_result.get("main_title"):
+                    st.session_state.main_title = doc_parsed_result["main_title"]
+                if doc_parsed_result.get("sub_title"):
+                    st.session_state.sub_title = doc_parsed_result["sub_title"]
+                if doc_parsed_result.get("feature_text"):
+                    st.session_state.feature_text = doc_parsed_result["feature_text"]
+                if doc_parsed_result.get("floor_info"):
+                    st.session_state.spec_line1 = doc_parsed_result["floor_info"]
+                if doc_parsed_result.get("area_exclusive"):
+                    st.session_state.spec_line2 = f"전용 {doc_parsed_result['area_exclusive']}㎡"
+                if doc_parsed_result.get("room_bath"):
+                    st.session_state.spec_line3 = doc_parsed_result["room_bath"]
+
+                st.success("✅ 공적서류 정보가 16대 점검항목과 썸네일에 완벽하게 반영되었습니다!")
+                st.rerun()
 
     # 썸네일 데이터에서 가져오기 및 퀵 컨트롤 버튼
     col_syn1, col_syn2, col_syn3 = st.columns([1, 1, 1])
@@ -810,13 +945,19 @@ with tab_ad:
             spec_card_img.save(card_byte_arr, format="PNG", quality=95)
             card_bytes = card_byte_arr.getvalue()
 
-            clean_loc = st.session_state.ad_location.split(" ")[-1].replace("(", "").replace(")", "")
-            card_filename = f"중개대상물표시_{clean_loc}_{st.session_state.ad_trade_type}.png"
+            clean_loc = re.sub(r'[^\w\s-]', '', (st.session_state.ad_location.split(" ")[-1] if st.session_state.ad_location else "매물")).strip()
+            clean_trade = re.sub(r'[^\w\s-]', '', (st.session_state.ad_trade_type or "매매")).strip()
+            card_filename = f"중개대상물표시_{clean_loc}_{clean_trade}.png"
 
             st.download_button(
-                label="📥 1080px 표시 카드 이미지 다운로드 (스마트폰 갤러리 저장)",
+                label="📥 1080px 표시 카드 이미지 다운로드 (기본 다운로드)",
                 data=card_bytes,
                 file_name=card_filename,
                 mime="image/png",
+                key="btn_card_spec_download_unique",
                 use_container_width=True
             )
+
+            # 브라우저 네이티브 다이렉트 다운로드 (오류 없이 100% 즉시 저장)
+            st.markdown(render_direct_download_button(card_bytes, card_filename, "💾 [즉시 다운로드] 브라우저 원클릭 파일 저장", "#1A202C"), unsafe_allow_html=True)
+            st.caption("📱 스마트폰에서는 위 이미지를 1초간 길게 누르시면 '사진 앱에 저장'도 가능합니다.")
