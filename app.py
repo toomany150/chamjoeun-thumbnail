@@ -739,7 +739,7 @@ with tab_ad:
         st.markdown("""
         <div style="display:flex; justify-content:space-between; align-items:center; margin-top: 10px;">
             <b>02. 공급 / 전용면적</b>
-            <span class="spec-badge badge-orange">㎡ 병기 필수</span>
+            <span class="spec-badge badge-orange">법정단위 ㎡ 표기 (평수 제외)</span>
         </div>
         """, unsafe_allow_html=True)
         c_ar1, c_ar2 = st.columns(2)
@@ -748,11 +748,11 @@ with tab_ad:
         with c_ar2:
             st.session_state.ad_area_exclusive = st.text_input("전용면적 (㎡)", value=st.session_state.ad_area_exclusive)
         
-        # 실시간 평수 및 전용률 환산 프리뷰
-        area_sum_m2, area_sum_py = format_area_text(st.session_state.ad_area_supply, st.session_state.ad_area_exclusive)
+        # 실시간 면적 및 전용률 계산 프리뷰 (법정계량단위 ㎡ 단독 표기, 평형 제외)
+        area_sum_m2, _ = format_area_text(st.session_state.ad_area_supply, st.session_state.ad_area_exclusive)
         st.markdown(f"""
         <div style="background:#F1F3F5; padding:6px 12px; border-radius:6px; font-size:13px; color:#495057; margin-bottom:8px;">
-            📐 <b>계산 결과:</b> {area_sum_m2} | <b>{area_sum_py}</b>
+            📐 <b>계산 결과:</b> {area_sum_m2}
         </div>
         """, unsafe_allow_html=True)
 
@@ -791,9 +791,14 @@ with tab_ad:
         """, unsafe_allow_html=True)
         c_mf1, c_mf2 = st.columns([1, 1.4])
         with c_mf1:
-            st.session_state.ad_maintenance_fee = st.text_input("월 관리비", value=st.session_state.ad_maintenance_fee)
+            st.session_state.ad_maintenance_fee = st.text_input("월 관리비", value=st.session_state.ad_maintenance_fee, placeholder="예: 월 18만 원")
         with c_mf2:
-            st.session_state.ad_maintenance_detail = st.text_input("세부내역", value=st.session_state.ad_maintenance_detail, help="공용관리비, 전기/수도 실비 분리 기재")
+            st.session_state.ad_maintenance_detail = st.text_input(
+                "세부내역 (알아보기 쉬운 분리 기재)",
+                value=st.session_state.ad_maintenance_detail,
+                placeholder="예: 공용관리비 약 13만 원 (수도·전기·가스 실사용량 별도 부과)",
+                help="공용관리비와 개별 사용량(전기/수도/가스)을 명확히 구분하여 기재"
+            )
 
         # 6. 거래 형태 & 7. 가격
         st.markdown("""

@@ -51,8 +51,8 @@ DEFAULT_SPEC = {
     "floor_info": "25 / 36층",
     "floor_type": "해당층 직접입력", # 또는 "고층", "중층", "저층"
     "room_bath": "방 3 / 욕실 2개",
-    "maintenance_fee": "18만 원",
-    "maintenance_detail": "공용관리비 약 13만원 (수도/전기/가스 실사용량 별도 부과)",
+    "maintenance_fee": "월 18만 원",
+    "maintenance_detail": "공용관리비 약 13만 원 (수도·전기·가스는 실사용량에 따라 별도 부과)",
     "trade_type": "매매",
     "price_text": "6억 2,000만 원",
     "deposit_sub": "- / -", # 기보증금 / 월세
@@ -87,7 +87,7 @@ SPEC_ITEMS_META = [
         "id": "area",
         "num": 2,
         "title": "공급/전용면적",
-        "guide": "평수 병기 시 ㎡를 반드시 함께 표기 (전용률 자동 계산)",
+        "guide": "법정단위인 ㎡만 표기 (평수 표기 금지, 전용률 자동 산출)",
         "badge": "법정필수"
     },
     {
@@ -191,27 +191,33 @@ SPEC_ITEMS_META = [
 ]
 
 def format_area_text(supply_str: str, exclusive_str: str) -> tuple[str, str]:
-    """공급면적과 전용면적으로 평형 환산 및 전용률 텍스트 생성"""
+    """공급면적과 전용면적으로 전용률 텍스트 생성 (법정 단위인 ㎡만 표기, 평형 삭제)"""
     try:
-        sup_m2 = float(supply_str.replace(",", "").strip())
-        exc_m2 = float(exclusive_str.replace(",", "").strip())
-        sup_py = round(sup_m2 * 0.3025, 1)
-        exc_py = round(exc_m2 * 0.3025, 1)
+        sup_m2 = float(str(supply_str).replace(",", "").strip())
+        exc_m2 = float(str(exclusive_str).replace(",", "").strip())
         rate = round((exc_m2 / sup_m2) * 100, 1) if sup_m2 > 0 else 0
         summary_m2 = f"{sup_m2:.2f}㎡ / {exc_m2:.2f}㎡ (전용률 {rate}%)"
-        summary_py = f"약 {sup_py}평 / {exc_py}평"
-        return summary_m2, summary_py
+        return summary_m2, ""
     except Exception:
         return f"{supply_str}㎡ / {exclusive_str}㎡", ""
 
 def get_ordered_spec_table_data(data: dict) -> list[dict]:
     """16개 항목 순서대로 정리된 데이터 리스트 반환"""
-    area_m2, area_py = format_area_text(data.get("area_supply", "111.42"), data.get("area_exclusive", "79.85"))
-    area_display = f"{area_m2} [ {area_py} ]" if area_py else area_m2
+    area_m2, _ = format_area_text(data.get("area_supply", "111.42"), data.get("area_exclusive", "79.85"))
+    area_display = area_m2 # 평수 표기 완전 삭제 (법정계량단위 ㎡ 단독 표기)
 
-    m_fee = data.get("maintenance_fee", "18만 원")
-    m_detail = data.get("maintenance_detail", "")
-    m_display = f"{m_fee} ({m_detail})" if m_detail else m_fee
+    m_fee = str(data.get("maintenance_fee", "월 18만 원")).strip()
+    m_detail = str(data.get("maintenance_detail", "")).strip()
+    
+    if m_fee and not m_fee.startswith("월") and "만" in m_fee:
+        m_fee_clean = f"월 {m_fee}"
+    else:
+        m_fee_clean = m_fee
+
+    if m_detail:
+        m_display = f"{m_fee_clean}\n• 세부내역: {m_detail}"
+    else:
+        m_display = m_fee_clean
 
     trade = data.get("trade_type", "매매")
     price = data.get("price_text", "6억 2,000만 원")
@@ -220,7 +226,7 @@ def get_ordered_spec_table_data(data: dict) -> list[dict]:
 
     items = [
         {"num": 1, "name": "소재지", "val": data.get("location", ""), "guide": "동·리 및 지번 표기 필수 (동·호수 생략 가능)"},
-        {"num": 2, "name": "공급/전용면적", "val": area_display, "guide": "평수 병기 시 ㎡ 단위 반드시 함께 표기"},
+        {"num": 2, "name": "공급/전용면적", "val": area_display, "guide": "법정단위인 ㎡만 표기 (평수 표기 금지)"},
         {"num": 3, "name": "해당층 / 총층", "val": data.get("floor_info", ""), "guide": "아파트 저/중/고층 대체 가능"},
         {"num": 4, "name": "방수 / 욕실수", "val": data.get("room_bath", ""), "guide": "건축물대장 기준"},
         {"num": 5, "name": "관리비", "val": m_display, "guide": "월 10만 원 이상 세부내역 분리 필수"},
@@ -366,27 +372,42 @@ def render_spec_table_image(data: dict) -> Image.Image:
     # 폰트 로드
     font_title = get_font("NanumGothicExtraBold.ttf", 36)
     font_sub = get_font("NanumGothicBold.ttf", 22)
+    font_trade_badge = get_font("NanumGothicExtraBold.ttf", 32)
     font_label = get_font("NanumGothicBold.ttf", 24)
     font_val = get_font("NanumGothic.ttf", 23)
     font_val_bold = get_font("NanumGothicBold.ttf", 24)
-    font_footer = get_font("NanumGothicBold.ttf", 24)
+    font_footer = get_font("NanumGothicBold.ttf", 25)
     font_footer_sub = get_font("NanumGothic.ttf", 19)
+    font_footer_brand = get_font("NanumGothicBold.ttf", 22)
 
     # 1. 상단 헤더 영역 (다크 네이비 #1E2022)
     header_h = 150
     draw.rectangle([(0, 0), (img_w, header_h)], fill=(30, 32, 34, 255))
     
-    # 주황색 액센트 라인
+    # 주황색 액센트 라인 (상단 6px)
     draw.rectangle([(0, 0), (img_w, 6)], fill=(244, 138, 38, 255))
 
     # 헤더 텍스트
     draw.text((45, 38), "중개대상물 인터넷 표시·광고 명시사항", font=font_title, fill=(255, 255, 255, 255))
     draw.text((45, 92), "공인중개사법 제18조의2 및 동법 시행령 제17조의2 준수", font=font_sub, fill=(244, 138, 38, 255))
 
-    # 우측 배지
-    trade = data.get("trade_type", "매매")
-    draw.rounded_rectangle([(img_w - 180, 48), (img_w - 45, 102)], radius=10, fill=(244, 138, 38, 255))
-    draw.text((img_w - 150, 58), trade, font=font_sub, fill=(255, 255, 255, 255))
+    # 우측 거래 형태 배지 (글자 크기 키우고 정중앙 완벽 배치)
+    trade = str(data.get("trade_type", "매매")).strip() or "매매"
+    badge_w = 160
+    badge_h = 66
+    badge_x1 = img_w - 45 - badge_w
+    badge_y1 = (header_h - badge_h) // 2
+    badge_x2 = badge_x1 + badge_w
+    badge_y2 = badge_y1 + badge_h
+    draw.rounded_rectangle([(badge_x1, badge_y1), (badge_x2, badge_y2)], radius=12, fill=(244, 138, 38, 255))
+
+    # 텍스트 바운딩 박스를 이용한 정확한 수평/수직 정중앙 좌표 계산
+    bbox = font_trade_badge.getbbox(trade)
+    t_w = bbox[2] - bbox[0]
+    t_h = bbox[3] - bbox[1]
+    t_x = badge_x1 + (badge_w - t_w) / 2 - bbox[0]
+    t_y = badge_y1 + (badge_h - t_h) / 2 - bbox[1]
+    draw.text((t_x, t_y), trade, font=font_trade_badge, fill=(255, 255, 255, 255))
 
     # 2. 본문 테이블 렌더링
     cur_y = header_h + 30
@@ -438,43 +459,92 @@ def render_spec_table_image(data: dict) -> Image.Image:
 
         cur_y += row_content_h + 4
 
-    # 3. 하단 풋터 영역 (중개사무소 정보 포함 여부에 따라 분기)
+    # 3. 하단 풋터 영역 (상단 헤더와 일체감을 이루는 프리미엄 다크 네이비 + 주황 액센트 라인 + 로고 이미지)
+    cur_y += 25
     include_office = data.get("include_office_info", True)
+
+    # 로고 이미지 로드 준비
+    logo_path = os.path.join(ASSETS_DIR, "logo.png")
+    logo_img = None
+    if os.path.exists(logo_path):
+        try:
+            logo_img = Image.open(logo_path).convert("RGBA")
+        except Exception:
+            logo_img = None
+
     if include_office:
-        cur_y += 20
-        footer_h = 135
-        draw.rectangle([(0, cur_y), (img_w, cur_y + footer_h)], fill=(244, 138, 38, 255))
-
-        # 로고 이미지 삽입 시도
-        office_name = data.get('office_name', '참좋은공인중개사사무소')
-        logo_path = os.path.join(ASSETS_DIR, "logo.png")
-        logo_drawn = False
-        if os.path.exists(logo_path) and ("참좋은" in office_name):
-            try:
-                logo_img = Image.open(logo_path).convert("RGBA")
-                lh = 75
-                lw = int(logo_img.width * (lh / logo_img.height))
-                logo_img = logo_img.resize((lw, lh), Image.Resampling.LANCZOS)
-                img.paste(logo_img, (margin_x, cur_y + 30), logo_img)
-                logo_drawn = True
-            except Exception:
-                pass
-
-        text_x = (margin_x + 95) if logo_drawn else margin_x
-        draw.text((text_x, cur_y + 26), f"{office_name}  |  대표: {data.get('office_owner', '신제환')}", font=font_footer, fill=(255, 255, 255, 255))
-        
+        # 중개사무소 정보 포함 시 (소공 유무에 따라 높이 150~180px 유동 조절)
         as_name = data.get("assistant_name", "").strip()
         as_phone = data.get("assistant_phone", "").strip()
-        footer_sub_text = f"직통: {data.get('office_phone', '010-9667-4201')}  •  등록번호: {data.get('office_reg_no', '제 26530-2021-00045 호')}"
-        if as_name or as_phone:
-            as_info = f"{as_name} ({as_phone})".strip() if as_phone else as_name
-            footer_sub_text += f"  •  담당(소공): {as_info}"
+        has_assistant = bool(as_name or as_phone)
+        footer_h = 175 if has_assistant else 150
 
-        draw.text((text_x, cur_y + 68), footer_sub_text, font=font_footer_sub, fill=(255, 240, 230, 255))
+        # 다크 네이비 배경 (#1E2022) 및 주황색 6px 라인 (#F48A26)
+        draw.rectangle([(0, cur_y), (img_w, cur_y + footer_h)], fill=(30, 32, 34, 255))
+        draw.rectangle([(0, cur_y), (img_w, cur_y + 6)], fill=(244, 138, 38, 255))
+
+        logo_w_total = 0
+        if logo_img:
+            try:
+                lh = 84
+                lw = int(logo_img.width * (lh / logo_img.height))
+                resized_logo = logo_img.resize((lw, lh), Image.Resampling.LANCZOS)
+                logo_pad_top = (footer_h - lh) // 2
+                draw.rounded_rectangle([(margin_x, cur_y + logo_pad_top - 6), (margin_x + lw + 16, cur_y + logo_pad_top + lh + 6)], radius=12, fill=(255, 255, 255, 240))
+                img.paste(resized_logo, (margin_x + 8, cur_y + logo_pad_top), resized_logo)
+                logo_w_total = lw + 36
+            except Exception:
+                logo_w_total = 0
+
+        text_x = margin_x + logo_w_total
+        office_name = data.get('office_name', '참좋은공인중개사사무소')
+        office_owner = data.get('office_owner', '신제환')
+        draw.text((text_x, cur_y + 22), f"{office_name}  |  대표: {office_owner}", font=font_footer, fill=(255, 255, 255, 255))
+        
+        office_phone = data.get('office_phone', '010-9667-4201')
+        office_reg_no = data.get('office_reg_no', '제 26530-2021-00045 호')
+        office_addr = data.get('office_address', '부산광역시 사상구 사상로 200, 1층')
+
+        footer_line2 = f"☎ 직통 문의: {office_phone}  •  등록번호: {office_reg_no}"
+        draw.text((text_x, cur_y + 60), footer_line2, font=font_footer_sub, fill=(225, 230, 235, 255))
+        
+        if has_assistant:
+            as_info = f"{as_name} ({as_phone})".strip() if as_phone else as_name
+            footer_line3 = f"[담당 소공] {as_info}"
+            draw.text((text_x, cur_y + 94), footer_line3, font=font_footer_sub, fill=(244, 138, 38, 255))
+            footer_line4 = f"소재지: {office_addr}"
+            draw.text((text_x, cur_y + 128), footer_line4, font=get_font("NanumGothic.ttf", 17), fill=(180, 190, 200, 255))
+        else:
+            footer_line3 = f"소재지: {office_addr}"
+            draw.text((text_x, cur_y + 96), footer_line3, font=font_footer_sub, fill=(180, 190, 200, 255))
+
         total_h = cur_y + footer_h
     else:
-        # 중개사무소 정보를 제외하는 경우 하단 풋터 없이 본문 직후 크롭
-        total_h = cur_y + 25
+        # 중개사무소 정보를 제외하는 경우에도 상단 헤더와 완벽하게 어울리는 브랜드 마감 풋터 (높이 135px)
+        footer_h = 135
+        # 다크 네이비 배경 (#1E2022)
+        draw.rectangle([(0, cur_y), (img_w, cur_y + footer_h)], fill=(30, 32, 34, 255))
+        # 상단 6px 주황색 액센트 라인 (#F48A26)
+        draw.rectangle([(0, cur_y), (img_w, cur_y + 6)], fill=(244, 138, 38, 255))
+
+        logo_w_total = 0
+        if logo_img:
+            try:
+                lh = 80
+                lw = int(logo_img.width * (lh / logo_img.height))
+                resized_logo = logo_img.resize((lw, lh), Image.Resampling.LANCZOS)
+                draw.rounded_rectangle([(margin_x, cur_y + 20), (margin_x + lw + 16, cur_y + 20 + lh + 10)], radius=10, fill=(255, 255, 255, 240))
+                img.paste(resized_logo, (margin_x + 8, cur_y + 25), resized_logo)
+                logo_w_total = lw + 36
+            except Exception:
+                logo_w_total = 0
+
+        text_x = margin_x + logo_w_total
+        draw.text((text_x, cur_y + 28), "중개대상물 인터넷 표시·광고 명시사항 (공식 확인 매물)", font=font_footer, fill=(255, 255, 255, 255))
+        draw.text((text_x, cur_y + 68), "공인중개사법 시행령에 따른 법정 필수 15개 항목을 엄격히 준수한 매물 정보입니다.", font=font_footer_sub, fill=(244, 138, 38, 255))
+        draw.text((text_x, cur_y + 98), "정직과 신뢰를 바탕으로 투명하고 안전한 부동산 거래 문화를 선도합니다.", font=get_font("NanumGothic.ttf", 17), fill=(180, 190, 200, 255))
+
+        total_h = cur_y + footer_h
 
     # 최종 크롭
     cropped_img = img.crop((0, 0, img_w, total_h))
