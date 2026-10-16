@@ -215,7 +215,14 @@ def get_ordered_spec_table_data(data: dict) -> list[dict]:
     dep_sub = data.get("deposit_sub", "")
     price_display = f"{price}" + (f" (기보증금/월세: {dep_sub})" if dep_sub and dep_sub != "- / -" else "")
 
-    office_full = f"{data.get('office_name', '참좋은공인중개사사무소')} | 대표: {data.get('office_owner', '신제환')} | 등록번호: {data.get('office_reg_no', '제 26530-2021-00045 호')}\n소재지: {data.get('office_address', '부산 사상구 사상로 200, 1층')} | 연락처: {data.get('office_phone', '010-9667-4201')}"
+    office_lines = [
+        f"• 상호: {data.get('office_name', '참좋은공인중개사사무소')}",
+        f"• 대표: {data.get('office_owner', '신제환')}",
+        f"• 등록번호: {data.get('office_reg_no', '제 26530-2021-00045 호')}",
+        f"• 소재지: {data.get('office_address', '부산광역시 사상구 사상로 200, 1층')}",
+        f"• 연락처: {data.get('office_phone', '010-9667-4201')}"
+    ]
+    office_full = "\n".join(office_lines)
 
     items = [
         {"num": 1, "name": "소재지", "val": data.get("location", ""), "guide": "동·리 및 지번 표기 필수 (동·호수 생략 가능)"},

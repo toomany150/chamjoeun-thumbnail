@@ -836,18 +836,27 @@ with tab_ad:
         """, unsafe_allow_html=True)
         st.session_state.ad_approval_date = st.text_input("사용승인일", value=st.session_state.ad_approval_date, help="건축물대장 상 사용승인일 기재 필수")
 
-        # 16. 중개사무소 정보 (신소장님 고정 정보)
-        with st.expander("🏢 16. 중개사무소 정보 (참좋은공인중개사사무소 고정)", expanded=False):
-            st.session_state.ad_office_name = st.text_input("중개사무소 명칭", value=st.session_state.ad_office_name)
+        # 16. 중개사무소 정보 (언제든 수정 가능하도록 항상 노출)
+        st.markdown("""
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-top: 15px; margin-bottom: 5px;">
+            <b>16. 중개사무소 정보</b>
+            <span class="spec-badge badge-green">상시 수정 가능</span>
+        </div>
+        """, unsafe_allow_html=True)
+        c_of1, c_of2 = st.columns(2)
+        with c_of1:
+            st.session_state.ad_office_name = st.text_input("중개사무소 명칭 (상호)", value=st.session_state.ad_office_name)
             st.session_state.ad_office_owner = st.text_input("대표 공인중개사 성명", value=st.session_state.ad_office_owner)
             st.session_state.ad_office_phone = st.text_input("연락처", value=st.session_state.ad_office_phone)
+        with c_of2:
             st.session_state.ad_office_reg_no = st.text_input("중개등록번호", value=st.session_state.ad_office_reg_no)
             st.session_state.ad_office_address = st.text_input("사무소 소재지", value=st.session_state.ad_office_address)
 
 
-    # 우측: 실시간 산출물 (네이버 광고 점검표 대조 / 블로그 HTML 표 / 카드 이미지)
+    # 우측: 실시간 완성 뷰 (네이버 광고 점검표 1:1 대조 리스트)
     with col_ad_output:
-        st.markdown("### 🚀 실시간 완성 뷰 & 산출물")
+        st.markdown("### 📋 네이버 광고 16개 점검표 (대조용)")
+        st.caption("네이버 부동산 매물 등록창을 띄워두고 위에서부터 순서대로 보며 입력하세요.")
 
         # 현재 입력 데이터 딕셔너리 구축
         current_spec_data = {
@@ -876,71 +885,29 @@ with tab_ad:
             "office_phone": st.session_state.ad_office_phone,
         }
 
-        # 서브 탭으로 산출물 3종 분류
-        subtab_check, subtab_blog, subtab_card = st.tabs([
-            "📋 네이버광고 점검표 (대조용)",
-            "📝 블로그용 본문 서식",
-            "🖼️ 표시 카드 이미지 (PNG)"
-        ])
+        # 16개 항목 카드 리스트 (코드 노출 없는 안전한 인라인 렌더링)
+        items_list = get_ordered_spec_table_data(current_spec_data)
+        
+        rows_html = []
+        for it in items_list:
+            num_str = f"{it['num']:02d}"
+            # 줄바꿈은 <br/>로 깔끔하게 한 줄씩 정돈
+            val_formatted = it['val'].replace('\n', '<br/>')
+            row_markup = f'<div style="border-bottom:1px solid #E9ECEF; padding:11px 6px;"><div style="display:flex; justify-content:space-between; margin-bottom:4px;"><span style="font-size:14px; font-weight:700; color:#333D4B;"><span style="color:#F48A26;">[{num_str}]</span> {it["name"]}</span><span style="font-size:12px; color:#8B95A1;">{it["guide"]}</span></div><div style="font-size:15px; color:#191F28; font-weight:600; line-height:1.6; background:#F8F9FB; padding:8px 12px; border-radius:6px; margin-top:4px;">{val_formatted}</div></div>'
+            rows_html.append(row_markup)
 
-        # ----------------------------------------------------
-        # 1. 네이버광고 점검표 (대조용)
-        # ----------------------------------------------------
-        with subtab_check:
-            st.caption("네이버 부동산 매물 등록창을 띄워두고 위에서부터 순서대로 보며 입력하세요.")
-            
-            # 16개 항목 카드 리스트 렌더링
-            items_list = get_ordered_spec_table_data(current_spec_data)
-            
-            check_box_html = '<div style="background:#FFFFFF; border:1px solid #E5E8EB; border-radius:10px; padding:12px 16px; max-height:480px; overflow-y:auto;">'
-            for it in items_list:
-                num_str = f"{it['num']:02d}"
-                check_box_html += f"""
-                <div class="check-row">
-                    <div style="display:flex; justify-content:space-between;">
-                        <span class="check-label"><span style="color:#F48A26;">[{num_str}]</span> {it['name']}</span>
-                        <span class="check-guide">{it['guide']}</span>
-                    </div>
-                    <div class="check-val">{it['val'].replace(chr(10), ' | ')}</div>
-                </div>
-                """
-            check_box_html += '</div>'
-            st.markdown(check_box_html, unsafe_allow_html=True)
+        full_table_html = f'<div style="background:#FFFFFF; border:1.5px solid #CBD5E0; border-radius:12px; padding:14px 18px; box-shadow:0 2px 8px rgba(0,0,0,0.04); max-height:680px; overflow-y:auto;">{"".join(rows_html)}</div>'
+        st.markdown(full_table_html, unsafe_allow_html=True)
 
-            # 가이드 텍스트 복사 영역
-            st.markdown("<br/>", unsafe_allow_html=True)
-            ad_guide_txt = generate_naver_ad_guide_text(current_spec_data)
-            st.text_area("📋 [네이버 광고 대조용] 전체 텍스트 복사", value=ad_guide_txt, height=140)
+        # 전체 텍스트 복사 영역
+        st.markdown("<br/>", unsafe_allow_html=True)
+        ad_guide_txt = generate_naver_ad_guide_text(current_spec_data)
+        st.text_area("📋 [네이버 광고 대조용] 전체 텍스트 복사", value=ad_guide_txt, height=130)
 
-        # ----------------------------------------------------
-        # 2. 블로그용 본문 서식
-        # ----------------------------------------------------
-        with subtab_blog:
-            st.caption("네이버 블로그 스마트에디터에 바로 붙여넣는 세련된 표 및 텍스트입니다.")
-            
-            # HTML 표 렌더링
-            blog_html = generate_blog_html_table(current_spec_data)
-            st.markdown(blog_html, unsafe_allow_html=True)
-
-            # 클립보드 텍스트 복사 영역
-            clip_text = generate_clipboard_text(current_spec_data)
-            st.text_area("📋 블로그 본문용 일반 텍스트 (Ctrl+C 복사)", value=clip_text, height=220)
-
-            with st.expander("💻 스마트에디터용 HTML 소스코드 보기"):
-                st.code(blog_html, language="html")
-
-        # ----------------------------------------------------
-        # 3. 고화질 표시 카드 이미지 (PNG)
-        # ----------------------------------------------------
-        with subtab_card:
-            st.caption("블로그 하단 첨부 또는 모바일 사진첩에 저장할 수 있는 1080px 고화질 카드 이미지입니다.")
-            
-            with st.spinner("중개대상물 표시 카드 렌더링 중..."):
+        # 필요 시 1080px 고화질 표시 카드 이미지 다운로드 접이식 메뉴 (중복 이미지는 삭제하고 다운로드 기능만 제공)
+        with st.expander("🖼️ [다운로드] 1080px 중개대상물 표시 카드 저장하기", expanded=False):
+            with st.spinner("표시 카드 렌더링 중..."):
                 spec_card_img = render_spec_table_image(current_spec_data)
-
-            st.image(spec_card_img, caption="중개대상물 인터넷 표시·광고 명시사항 카드 (1080px)", use_container_width=True)
-
-            # 다운로드 버튼
             card_byte_arr = io.BytesIO()
             spec_card_img.save(card_byte_arr, format="PNG", quality=95)
             card_bytes = card_byte_arr.getvalue()
@@ -949,15 +916,5 @@ with tab_ad:
             clean_trade = re.sub(r'[^\w\s-]', '', (st.session_state.ad_trade_type or "매매")).strip()
             card_filename = f"중개대상물표시_{clean_loc}_{clean_trade}.png"
 
-            st.download_button(
-                label="📥 1080px 표시 카드 이미지 다운로드 (기본 다운로드)",
-                data=card_bytes,
-                file_name=card_filename,
-                mime="image/png",
-                key="btn_card_spec_download_unique",
-                use_container_width=True
-            )
-
-            # 브라우저 네이티브 다이렉트 다운로드 (오류 없이 100% 즉시 저장)
-            st.markdown(render_direct_download_button(card_bytes, card_filename, "💾 [즉시 다운로드] 브라우저 원클릭 파일 저장", "#1A202C"), unsafe_allow_html=True)
-            st.caption("📱 스마트폰에서는 위 이미지를 1초간 길게 누르시면 '사진 앱에 저장'도 가능합니다.")
+            st.markdown(render_direct_download_button(card_bytes, card_filename, "💾 [원클릭 즉시 다운로드] 1080px 표시 카드 저장", "#1A202C"), unsafe_allow_html=True)
+            st.caption("스마트폰에서는 위 버튼을 누르시면 사진첩에 바로 다운로드 저장됩니다.")
