@@ -135,6 +135,27 @@ st.markdown("""
         box-shadow: 0 2px 6px rgba(0,0,0,0.03);
     }
 
+    /* 입력 필드 (text_input, selectbox) 눈에 확 띄는 선명한 흰색 박스 + 테두리 */
+    div[data-baseweb="input"], div[data-baseweb="select"] > div {
+        background-color: #FFFFFF !important;
+        border: 1.8px solid #CBD5E0 !important;
+        border-radius: 8px !important;
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06) !important;
+        transition: all 0.2s ease-in-out !important;
+    }
+    div[data-baseweb="input"]:hover, div[data-baseweb="select"] > div:hover {
+        border-color: #F48A26 !important;
+    }
+    div[data-baseweb="input"]:focus-within, div[data-baseweb="select"] > div:focus-within {
+        border-color: #F48A26 !important;
+        box-shadow: 0 0 0 3px rgba(244, 138, 38, 0.25) !important;
+    }
+    input.st-bc, input {
+        color: #1A202C !important;
+        font-weight: 600 !important;
+        font-size: 15px !important;
+    }
+
     /* 점검표 테이블 행 */
     .check-row {
         border-bottom: 1px solid #E9ECEF;
@@ -486,25 +507,59 @@ with tab_ad:
     </div>
     """, unsafe_allow_html=True)
 
-    # 썸네일 데이터에서 가져오기 버튼
-    col_syn1, col_syn2 = st.columns([1.5, 1])
+    # 썸네일 데이터에서 가져오기 및 퀵 컨트롤 버튼
+    col_syn1, col_syn2, col_syn3 = st.columns([1, 1, 1])
     with col_syn1:
-        st.caption("🔄 썸네일에 입력된 기본 정보가 점검표에 자동 연결되어 있습니다.")
-    with col_syn2:
-        if st.button("🔄 썸네일 탭 입력값으로 재동기화", use_container_width=True):
+        if st.button("🔄 썸네일 입력값 동기화", use_container_width=True, help="1단계 썸네일에 입력한 층수, 가격, 날짜 등을 가져옵니다."):
             st.session_state.ad_trade_type = st.session_state.thumb_trade_type
-            st.session_state.ad_price_text = st.session_state.thumb_price_text + " (상세 입력 필요)"
+            st.session_state.ad_price_text = st.session_state.thumb_price_text
             st.session_state.ad_floor_info = st.session_state.spec_line1
             st.session_state.ad_room_bath = st.session_state.spec_line3
             st.session_state.ad_move_in_date = st.session_state.spec_line4
             st.session_state.ad_direction = st.session_state.spec_line5
             st.success("썸네일 정보가 점검표에 반영되었습니다!")
             st.rerun()
+    with col_syn2:
+        if st.button("✨ 새 매물 빈 양식 만들기", use_container_width=True, help="새로운 매물을 등록할 수 있도록 모든 입력칸을 깨끗하게 비웁니다."):
+            st.session_state.ad_location = ""
+            st.session_state.ad_area_supply = ""
+            st.session_state.ad_area_exclusive = ""
+            st.session_state.ad_floor_info = ""
+            st.session_state.ad_room_bath = ""
+            st.session_state.ad_maintenance_fee = ""
+            st.session_state.ad_maintenance_detail = ""
+            st.session_state.ad_price_text = ""
+            st.session_state.ad_deposit_sub = "- / -"
+            st.session_state.ad_direction = ""
+            st.session_state.ad_move_in_date = "즉시입주 협의가능"
+            st.session_state.ad_parking = ""
+            st.session_state.ad_households = ""
+            st.session_state.ad_building_use = "공동주택 (아파트)"
+            st.session_state.ad_approval_date = ""
+            st.info("입력칸이 초기화되었습니다. 새로운 매물 정보를 입력해주세요.")
+            st.rerun()
+    with col_syn3:
+        if st.button("📋 사상 중흥S-클래스 예시 복원", use_container_width=True, help="기본 사상 중흥S-클래스 예시 데이터를 다시 채웁니다."):
+            for k, v in DEFAULT_SPEC.items():
+                st.session_state[f"ad_{k}"] = v
+            st.success("기본 예시 데이터로 복원되었습니다.")
+            st.rerun()
 
     # 좌우 컬럼 분할 (PC에서는 좌:입력 / 우:결과, 모바일에서는 위:입력 / 아래:결과)
     col_ad_input, col_ad_output = st.columns([1.1, 1.2])
 
     with col_ad_input:
+        st.markdown("""
+        <div style="background:#EBF8FF; border:1.5px solid #63B3ED; border-radius:10px; padding:12px 16px; margin-bottom:15px;">
+            <div style="font-size:14px; font-weight:700; color:#2B6CB0; margin-bottom:3px;">
+                ✏️ <b>입력 및 수정 방법</b>
+            </div>
+            <div style="font-size:13px; color:#2D3748; line-height:1.4;">
+                아래 흰색 <b>네모 칸을 마우스로 클릭</b>하시면 글자를 바로 지우고 자유롭게 수정하실 수 있습니다!<br/>
+                새로운 매물을 등록하시려면 상단의 <b>[✨ 새 매물 빈 양식 만들기]</b> 버튼을 누르시면 편리합니다.
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
         st.markdown("### 📋 16대 점검항목 입력 및 수정")
 
         # 1. 소재지
