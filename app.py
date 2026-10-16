@@ -278,11 +278,21 @@ if "spec_line4" not in st.session_state:
     st.session_state.spec_line4 = "즉시입주 협의가능"
 if "spec_line5" not in st.session_state:
     st.session_state.spec_line5 = "남동향 (거실 기준)"
+if "thumb_show_footer" not in st.session_state:
+    st.session_state.thumb_show_footer = True
+if "thumb_footer_text" not in st.session_state:
+    st.session_state.thumb_footer_text = ""
 
 # 2. 네이버 광고 & 대상중개물 표시 16개 점검 항목 상태 (신소장님 사상 중흥S-클래스 세팅값)
 for k, v in DEFAULT_SPEC.items():
     if f"ad_{k}" not in st.session_state:
         st.session_state[f"ad_{k}"] = v
+if "ad_include_office_info" not in st.session_state:
+    st.session_state.ad_include_office_info = True
+if "ad_assistant_name" not in st.session_state:
+    st.session_state.ad_assistant_name = ""
+if "ad_assistant_phone" not in st.session_state:
+    st.session_state.ad_assistant_phone = ""
 
 # 썸네일 프리셋 적용 함수
 def apply_preset(p_type):
@@ -464,7 +474,9 @@ with tab_thumb:
                 photo_width_ratio=photo_width_ratio,
                 bg_offset_x=bg_offset_x,
                 bg_offset_y=bg_offset_y,
-                bg_zoom=bg_zoom
+                bg_zoom=bg_zoom,
+                show_footer=st.session_state.thumb_show_footer,
+                footer_text=st.session_state.thumb_footer_text
             )
 
         st.image(thumbnail_img, caption="실시간 완성 미리보기 (1080 x 1080 px)", use_container_width=True)
@@ -490,6 +502,19 @@ with tab_thumb:
         st.session_state.spec_line3 = st.text_input("3행: 방/욕실 수", value=st.session_state.spec_line3)
         st.session_state.spec_line4 = st.text_input("4행: 입주시기", value=st.session_state.spec_line4)
         st.session_state.spec_line5 = st.text_input("5행: 방향 및 특징", value=st.session_state.spec_line5)
+
+        st.markdown("#### 🏢 하단 띠지 (중개사무소 정보)")
+        st.session_state.thumb_show_footer = st.checkbox(
+            "하단 띠지 표시 (체크 해제 시 전체 사진 영역 확장)",
+            value=st.session_state.thumb_show_footer,
+            help="소공 또는 타 중개사 협업 시 띠지 없이 매물 사진만 1080px 꽉 차게 내보낼 수 있습니다."
+        )
+        if st.session_state.thumb_show_footer:
+            st.session_state.thumb_footer_text = st.text_input(
+                "띠지 문구 (소공/직원 커스텀 문구 가능)",
+                value=st.session_state.thumb_footer_text,
+                placeholder="미입력 시: 참좋은공인중개사사무소 (부산 사상구) ☎ 051-313-2288"
+            )
 
         # 썸네일 이미지 다운로드
         img_byte_arr = io.BytesIO()
@@ -836,21 +861,38 @@ with tab_ad:
         """, unsafe_allow_html=True)
         st.session_state.ad_approval_date = st.text_input("사용승인일", value=st.session_state.ad_approval_date, help="건축물대장 상 사용승인일 기재 필수")
 
-        # 16. 중개사무소 정보 (언제든 수정 가능하도록 항상 노출)
+        # 16. 중개사무소 정보 (ON/OFF 선택 및 소공 지원)
         st.markdown("""
         <div style="display:flex; justify-content:space-between; align-items:center; margin-top: 15px; margin-bottom: 5px;">
             <b>16. 중개사무소 정보</b>
-            <span class="spec-badge badge-green">상시 수정 가능</span>
+            <span class="spec-badge badge-green">ON/OFF 선택 가능</span>
         </div>
         """, unsafe_allow_html=True)
-        c_of1, c_of2 = st.columns(2)
-        with c_of1:
-            st.session_state.ad_office_name = st.text_input("중개사무소 명칭 (상호)", value=st.session_state.ad_office_name)
-            st.session_state.ad_office_owner = st.text_input("대표 공인중개사 성명", value=st.session_state.ad_office_owner)
-            st.session_state.ad_office_phone = st.text_input("연락처", value=st.session_state.ad_office_phone)
-        with c_of2:
-            st.session_state.ad_office_reg_no = st.text_input("중개등록번호", value=st.session_state.ad_office_reg_no)
-            st.session_state.ad_office_address = st.text_input("사무소 소재지", value=st.session_state.ad_office_address)
+
+        st.session_state.ad_include_office_info = st.checkbox(
+            "✅ 중개사무소 정보 포함하기 (텍스트 및 카드 이미지에 반영)",
+            value=st.session_state.ad_include_office_info,
+            help="체크 해제 시 중개사무소 정보를 제외하고 순수 매물 정보(01~15번 항목)만 출력합니다."
+        )
+
+        if st.session_state.ad_include_office_info:
+            c_of1, c_of2 = st.columns(2)
+            with c_of1:
+                st.session_state.ad_office_name = st.text_input("중개사무소 명칭 (상호)", value=st.session_state.ad_office_name)
+                st.session_state.ad_office_owner = st.text_input("대표 공인중개사 성명", value=st.session_state.ad_office_owner)
+                st.session_state.ad_office_phone = st.text_input("사무실 연락처", value=st.session_state.ad_office_phone)
+            with c_of2:
+                st.session_state.ad_office_reg_no = st.text_input("중개등록번호", value=st.session_state.ad_office_reg_no)
+                st.session_state.ad_office_address = st.text_input("사무소 소재지", value=st.session_state.ad_office_address)
+
+            st.markdown("<b>👤 소속공인중개사(소공) 담당자 정보 (선택 입력)</b>", unsafe_allow_html=True)
+            c_as1, c_as2 = st.columns(2)
+            with c_as1:
+                st.session_state.ad_assistant_name = st.text_input("소공/담당자 성명", value=st.session_state.ad_assistant_name, placeholder="예: 김소공 소속공인중개사")
+            with c_as2:
+                st.session_state.ad_assistant_phone = st.text_input("담당자 직통 연락처", value=st.session_state.ad_assistant_phone, placeholder="예: 010-1234-5678")
+        else:
+            st.info("ℹ️ 중개사무소 정보가 제외되었습니다. 순수 매물 스펙(01~15번 항목)만 출력됩니다. (소공 및 협력 중개사 활용 가능)")
 
 
     # 우측: 실시간 완성 뷰 (네이버 광고 점검표 1:1 대조 리스트)
@@ -883,6 +925,9 @@ with tab_ad:
             "office_reg_no": st.session_state.ad_office_reg_no,
             "office_address": st.session_state.ad_office_address,
             "office_phone": st.session_state.ad_office_phone,
+            "include_office_info": st.session_state.ad_include_office_info,
+            "assistant_name": st.session_state.ad_assistant_name,
+            "assistant_phone": st.session_state.ad_assistant_phone,
         }
 
         # 16개 항목 카드 리스트 (코드 노출 없는 안전한 인라인 렌더링)

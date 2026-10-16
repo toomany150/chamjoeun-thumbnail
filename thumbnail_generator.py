@@ -102,6 +102,8 @@ def render_thumbnail(
     bg_offset_x: int = 0,
     bg_offset_y: int = 0,
     bg_zoom: float = 1.0,
+    show_footer: bool = True,
+    footer_text: str = "",
 ) -> Image.Image:
     """1080x1080 썸네일을 생성하여 PIL Image로 반환합니다."""
     if spec_lines is None:
@@ -114,8 +116,8 @@ def render_thumbnail(
         ]
 
     W, H = 1080, 1080
-    bottom_h = 80
-    content_h = H - bottom_h  # 1000px
+    bottom_h = 80 if show_footer else 0
+    content_h = H - bottom_h  # 1000px 또는 1080px
 
     if layout_mode == "top_panoramic":
         return _render_top_panoramic(
@@ -130,7 +132,8 @@ def render_thumbnail(
             bg_offset_x=bg_offset_x,
             bg_offset_y=bg_offset_y,
             bg_zoom=bg_zoom,
-            W=W, H=H, bottom_h=bottom_h, content_h=content_h
+            W=W, H=H, bottom_h=bottom_h, content_h=content_h,
+            show_footer=show_footer, footer_text=footer_text
         )
     else:
         # side_wide 또는 side_standard
@@ -149,12 +152,14 @@ def render_thumbnail(
             bg_offset_x=bg_offset_x,
             bg_offset_y=bg_offset_y,
             bg_zoom=bg_zoom,
-            W=W, H=H, bottom_h=bottom_h, content_h=content_h
+            W=W, H=H, bottom_h=bottom_h, content_h=content_h,
+            show_footer=show_footer, footer_text=footer_text
         )
 
 def _render_side_split(
     bg_image, item_no, main_title, sub_title, feature_text, trade_type, price_text, spec_lines,
-    photo_ratio, bg_offset_x, bg_offset_y, bg_zoom, W, H, bottom_h, content_h
+    photo_ratio, bg_offset_x, bg_offset_y, bg_zoom, W, H, bottom_h, content_h,
+    show_footer: bool = True, footer_text: str = ""
 ) -> Image.Image:
     """좌우 사선 분할 모드 (와이드 조절 지원)"""
     canvas = Image.new("RGBA", (W, H), (255, 255, 255, 255))
@@ -309,13 +314,14 @@ def _render_side_split(
         draw.text((left_x + icon_box + 14, cur_y + 2), txt, fill=(22, 24, 27, 255), font=font_spec)
 
     # 8. 하단 고정 바 렌더링
-    _draw_footer(canvas, draw, W, H, bottom_h, content_h)
+    _draw_footer(canvas, draw, W, H, bottom_h, content_h, footer_text=footer_text, show_footer=show_footer)
 
     return canvas.convert("RGB")
 
 def _render_top_panoramic(
     bg_image, item_no, main_title, sub_title, feature_text, trade_type, price_text, spec_lines,
-    bg_offset_x, bg_offset_y, bg_zoom, W, H, bottom_h, content_h
+    bg_offset_x, bg_offset_y, bg_zoom, W, H, bottom_h, content_h,
+    show_footer: bool = True, footer_text: str = ""
 ) -> Image.Image:
     """상하 파노라마 모드: 상단 약 68% 전체를 와이드 사진으로 노출 (사진 하단 잘림 방지 및 노출 극대화)"""
     canvas = Image.new("RGBA", (W, H), (255, 255, 255, 255))
@@ -453,28 +459,32 @@ def _render_top_panoramic(
         draw.text((right_x + icon_box + 12, cur_y + 1), txt, fill=(22, 24, 27, 255), font=font_spec)
 
     # 하단 바
-    _draw_footer(canvas, draw, W, H, bottom_h, content_h)
+    _draw_footer(canvas, draw, W, H, bottom_h, content_h, footer_text=footer_text, show_footer=show_footer)
 
     return canvas.convert("RGB")
 
-def _draw_footer(canvas, draw, W, H, bottom_h, content_h):
-    """하단 검은색 띠지 (고정 요소)"""
+def _draw_footer(canvas, draw, W, H, bottom_h, content_h, footer_text: str = "", show_footer: bool = True):
+    """하단 검은색 띠지 (소공/직원 커스텀 및 표시/숨김 지원)"""
+    if not show_footer:
+        return
+
     draw.rectangle([0, content_h, W, H], fill=(35, 36, 40, 255))
-    footer_text = "참좋은공인중개사사무소  010-9667-4201"
+    text_to_draw = footer_text.strip() if footer_text and footer_text.strip() else "참좋은공인중개사사무소  010-9667-4201"
     font_footer = get_font("NanumGothicBold.ttf", 30)
 
-    ft_box = draw.textbbox((0, 0), footer_text, font=font_footer)
+    ft_box = draw.textbbox((0, 0), text_to_draw, font=font_footer)
     ft_w, ft_h = ft_box[2] - ft_box[0], ft_box[3] - ft_box[1]
 
     logo_path = os.path.join(ASSETS_DIR, "logo.png")
-    logo_w = 50
-    has_logo = os.path.exists(logo_path)
-    if has_logo:
+    # "참좋은" 단어가 들어있을 때만 공식 로고 함께 부착
+    show_logo = os.path.exists(logo_path) and ("참좋은" in text_to_draw)
+    if show_logo:
         lg = Image.open(logo_path).convert("RGBA")
         logo_w = int(lg.width * (50 / lg.height))
         lg = lg.resize((logo_w, 50), Image.Resampling.LANCZOS)
         start_x = (W - (logo_w + 20 + ft_w)) // 2
         canvas.paste(lg, (start_x, content_h + (bottom_h - 50) // 2), lg)
-        draw.text((start_x + logo_w + 20, content_h + (bottom_h - ft_h) // 2 - 2), footer_text, fill=(255, 255, 255, 255), font=font_footer)
+        draw.text((start_x + logo_w + 20, content_h + (bottom_h - ft_h) // 2 - 2), text_to_draw, fill=(255, 255, 255, 255), font=font_footer)
     else:
-        draw.text(((W - ft_w) // 2, content_h + (bottom_h - ft_h) // 2), footer_text, fill=(255, 255, 255, 255), font=font_footer)
+        # 소공 또는 기타 텍스트는 중앙 정렬 깔끔하게 출력
+        draw.text(((W - ft_w) // 2, content_h + (bottom_h - ft_h) // 2), text_to_draw, fill=(255, 255, 255, 255), font=font_footer)

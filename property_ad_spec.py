@@ -69,6 +69,9 @@ DEFAULT_SPEC = {
     "office_reg_no": "제 26530-2021-00045 호",
     "office_address": "부산광역시 사상구 사상로 200, 1층",
     "office_phone": "010-9667-4201",
+    "include_office_info": True,
+    "assistant_name": "", # 소속공인중개사 성명
+    "assistant_phone": "", # 소속공인중개사 연락처
 }
 
 # 네이버 부동산 광고 입력 순서 16개 점검 항목 메타데이터
@@ -215,15 +218,6 @@ def get_ordered_spec_table_data(data: dict) -> list[dict]:
     dep_sub = data.get("deposit_sub", "")
     price_display = f"{price}" + (f" (기보증금/월세: {dep_sub})" if dep_sub and dep_sub != "- / -" else "")
 
-    office_lines = [
-        f"• 상호: {data.get('office_name', '참좋은공인중개사사무소')}",
-        f"• 대표: {data.get('office_owner', '신제환')}",
-        f"• 등록번호: {data.get('office_reg_no', '제 26530-2021-00045 호')}",
-        f"• 소재지: {data.get('office_address', '부산광역시 사상구 사상로 200, 1층')}",
-        f"• 연락처: {data.get('office_phone', '010-9667-4201')}"
-    ]
-    office_full = "\n".join(office_lines)
-
     items = [
         {"num": 1, "name": "소재지", "val": data.get("location", ""), "guide": "동·리 및 지번 표기 필수 (동·호수 생략 가능)"},
         {"num": 2, "name": "공급/전용면적", "val": area_display, "guide": "평수 병기 시 ㎡ 단위 반드시 함께 표기"},
@@ -240,9 +234,27 @@ def get_ordered_spec_table_data(data: dict) -> list[dict]:
         {"num": 13, "name": "해당면적 세대수", "val": data.get("households", "331세대 (총 1,572세대)"), "guide": "해당 면적형 세대수"},
         {"num": 14, "name": "건축물 용도", "val": data.get("building_use", "공동주택 (아파트)"), "guide": "건축물대장 상 용도"},
         {"num": 15, "name": "사용승인일", "val": data.get("approval_date", "2023년 07월 28일"), "guide": "건축물대장 상 사용승인일"},
-        {"num": 16, "name": "중개사무소 정보", "val": office_full, "guide": "상호, 소재지, 연락처, 등록번호, 대표자 5대 항목 필수"},
     ]
+
+    include_office = data.get("include_office_info", True)
+    if include_office:
+        office_lines = [
+            f"• 상호: {data.get('office_name', '참좋은공인중개사사무소')}",
+            f"• 대표: {data.get('office_owner', '신제환')}",
+            f"• 등록번호: {data.get('office_reg_no', '제 26530-2021-00045 호')}",
+            f"• 소재지: {data.get('office_address', '부산광역시 사상구 사상로 200, 1층')}",
+            f"• 연락처: {data.get('office_phone', '010-9667-4201')}"
+        ]
+        as_name = data.get("assistant_name", "").strip()
+        as_phone = data.get("assistant_phone", "").strip()
+        if as_name or as_phone:
+            as_info = f"{as_name} ({as_phone})".strip() if as_phone else as_name
+            office_lines.append(f"• 담당(소공): {as_info}")
+        office_full = "\n".join(office_lines)
+        items.append({"num": 16, "name": "중개사무소 정보", "val": office_full, "guide": "상호, 소재지, 연락처, 등록번호, 대표자 5대 항목 필수"})
+
     return items
+
 
 def generate_blog_html_table(data: dict) -> str:
     """네이버 블로그 스마트에디터에 바로 붙여넣을 수 있는 세련된 HTML 표 서식 생성"""
@@ -270,12 +282,28 @@ def generate_blog_html_table(data: dict) -> str:
                 </td>
             </tr>
 """
-    html += """
+    include_office = data.get("include_office_info", True)
+    if include_office:
+        office_name = data.get('office_name', '참좋은공인중개사사무소')
+        office_owner = data.get('office_owner', '신제환')
+        office_phone = data.get('office_phone', '010-9667-4201')
+        office_addr = data.get('office_address', '부산 사상구 사상로 200')
+        as_name = data.get("assistant_name", "").strip()
+        as_phone = data.get("assistant_phone", "").strip()
+        
+        as_tag = f" | 👤 담당(소공): {as_name} ({as_phone})" if (as_name or as_phone) else ""
+        html += f"""
         </tbody>
     </table>
     <div style="background-color: #F48A26; color: #FFFFFF; padding: 12px 20px; font-size: 14px; font-weight: 600; text-align: center;">
-        🏢 참좋은공인중개사사무소 (대표 신제환) ☎ 010-9667-4201 | 부산 사상구 사상로 200
+        🏢 {office_name} (대표 {office_owner}) ☎ {office_phone}{as_tag} | {office_addr}
     </div>
+</div>
+"""
+    else:
+        html += """
+        </tbody>
+    </table>
 </div>
 """
     return html.strip()
@@ -290,12 +318,22 @@ def generate_clipboard_text(data: dict) -> str:
     ]
     for it in items:
         lines.append(f"■ {it['num']:02d}. {it['name']}: {it['val']}")
-    lines.append("───────────────────────────────────────────")
-    lines.append(f"🏢 {data.get('office_name', '참좋은공인중개사사무소')} (대표: {data.get('office_owner', '신제환')})")
-    lines.append(f"📞 직통 문의: {data.get('office_phone', '010-9667-4201')}")
-    lines.append(f"📍 등록번호: {data.get('office_reg_no', '제 26530-2021-00045 호')}")
-    lines.append(f"📍 사무소 소재지: {data.get('office_address', '부산광역시 사상구 사상로 200, 1층')}")
-    lines.append("═══════════════════════════════════════════")
+    
+    include_office = data.get("include_office_info", True)
+    if include_office:
+        lines.append("───────────────────────────────────────────")
+        lines.append(f"🏢 {data.get('office_name', '참좋은공인중개사사무소')} (대표: {data.get('office_owner', '신제환')})")
+        lines.append(f"📞 직통 문의: {data.get('office_phone', '010-9667-4201')}")
+        lines.append(f"📍 등록번호: {data.get('office_reg_no', '제 26530-2021-00045 호')}")
+        lines.append(f"📍 사무소 소재지: {data.get('office_address', '부산광역시 사상구 사상로 200, 1층')}")
+        as_name = data.get("assistant_name", "").strip()
+        as_phone = data.get("assistant_phone", "").strip()
+        if as_name or as_phone:
+            as_info = f"{as_name} ({as_phone})".strip() if as_phone else as_name
+            lines.append(f"👤 담당(소공): {as_info}")
+        lines.append("═══════════════════════════════════════════")
+    else:
+        lines.append("═══════════════════════════════════════════")
     return "\n".join(lines)
 
 def generate_naver_ad_guide_text(data: dict) -> str:
@@ -400,31 +438,44 @@ def render_spec_table_image(data: dict) -> Image.Image:
 
         cur_y += row_content_h + 4
 
-    # 3. 하단 풋터 영역 (참좋은공인중개사사무소)
-    cur_y += 20
-    footer_h = 130
-    draw.rectangle([(0, cur_y), (img_w, cur_y + footer_h)], fill=(244, 138, 38, 255))
+    # 3. 하단 풋터 영역 (중개사무소 정보 포함 여부에 따라 분기)
+    include_office = data.get("include_office_info", True)
+    if include_office:
+        cur_y += 20
+        footer_h = 135
+        draw.rectangle([(0, cur_y), (img_w, cur_y + footer_h)], fill=(244, 138, 38, 255))
 
-    # 로고 이미지 삽입 시도
-    logo_path = os.path.join(ASSETS_DIR, "logo.png")
-    logo_drawn = False
-    if os.path.exists(logo_path):
-        try:
-            logo_img = Image.open(logo_path).convert("RGBA")
-            # 풋터에 맞게 리사이즈
-            lh = 75
-            lw = int(logo_img.width * (lh / logo_img.height))
-            logo_img = logo_img.resize((lw, lh), Image.Resampling.LANCZOS)
-            img.paste(logo_img, (margin_x, cur_y + 28), logo_img)
-            logo_drawn = True
-        except Exception:
-            pass
+        # 로고 이미지 삽입 시도
+        office_name = data.get('office_name', '참좋은공인중개사사무소')
+        logo_path = os.path.join(ASSETS_DIR, "logo.png")
+        logo_drawn = False
+        if os.path.exists(logo_path) and ("참좋은" in office_name):
+            try:
+                logo_img = Image.open(logo_path).convert("RGBA")
+                lh = 75
+                lw = int(logo_img.width * (lh / logo_img.height))
+                logo_img = logo_img.resize((lw, lh), Image.Resampling.LANCZOS)
+                img.paste(logo_img, (margin_x, cur_y + 30), logo_img)
+                logo_drawn = True
+            except Exception:
+                pass
 
-    text_x = (margin_x + 95) if logo_drawn else margin_x
-    draw.text((text_x, cur_y + 28), f"{data.get('office_name', '참좋은공인중개사사무소')}  |  대표: {data.get('office_owner', '신제환')}", font=font_footer, fill=(255, 255, 255, 255))
-    draw.text((text_x, cur_y + 68), f"직통: {data.get('office_phone', '010-9667-4201')}  •  등록번호: {data.get('office_reg_no', '제 26530-2021-00045 호')}", font=font_footer_sub, fill=(255, 240, 230, 255))
+        text_x = (margin_x + 95) if logo_drawn else margin_x
+        draw.text((text_x, cur_y + 26), f"{office_name}  |  대표: {data.get('office_owner', '신제환')}", font=font_footer, fill=(255, 255, 255, 255))
+        
+        as_name = data.get("assistant_name", "").strip()
+        as_phone = data.get("assistant_phone", "").strip()
+        footer_sub_text = f"직통: {data.get('office_phone', '010-9667-4201')}  •  등록번호: {data.get('office_reg_no', '제 26530-2021-00045 호')}"
+        if as_name or as_phone:
+            as_info = f"{as_name} ({as_phone})".strip() if as_phone else as_name
+            footer_sub_text += f"  •  담당(소공): {as_info}"
+
+        draw.text((text_x, cur_y + 68), footer_sub_text, font=font_footer_sub, fill=(255, 240, 230, 255))
+        total_h = cur_y + footer_h
+    else:
+        # 중개사무소 정보를 제외하는 경우 하단 풋터 없이 본문 직후 크롭
+        total_h = cur_y + 25
 
     # 최종 크롭
-    total_h = cur_y + footer_h
     cropped_img = img.crop((0, 0, img_w, total_h))
     return cropped_img
