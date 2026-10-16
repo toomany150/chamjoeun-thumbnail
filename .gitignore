@@ -4,5 +4,6 @@ __pycache__/
 cloudflared.exe
 test_*.png
 mobile_qr.html
+Gemini_Generated_Image_*.png
 .vscode/
 .idea/
