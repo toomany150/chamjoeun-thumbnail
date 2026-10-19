@@ -22,19 +22,32 @@ def extract_pages_text_from_pdf(pdf_file) -> List[str]:
     if not HAS_PDFPLUMBER:
         raise ImportError("pdfplumber 라이브러리가 설치되어 있지 않습니다.")
     
+    if hasattr(pdf_file, "seek"):
+        try:
+            pdf_file.seek(0)
+        except Exception:
+            pass
+
     pages_text = []
-    with pdfplumber.open(pdf_file) as pdf:
-        for page in pdf.pages:
-            t = page.extract_text() or ""
-            table_lines = []
-            tables = page.extract_tables()
-            for table in tables:
-                for row in table:
-                    clean_row = [str(c).strip().replace("\n", " ") for c in row if c is not None and str(c).strip()]
-                    if clean_row:
-                        table_lines.append(" | ".join(clean_row))
-            combined_page = t + "\n" + "\n".join(table_lines)
-            pages_text.append(combined_page)
+    try:
+        with pdfplumber.open(pdf_file) as pdf:
+            for page in pdf.pages:
+                t = page.extract_text() or ""
+                table_lines = []
+                try:
+                    tables = page.extract_tables()
+                    for table in tables:
+                        for row in table:
+                            clean_row = [str(c).strip().replace("\n", " ") for c in row if c is not None and str(c).strip()]
+                            if clean_row:
+                                table_lines.append(" | ".join(clean_row))
+                except Exception:
+                    pass
+                combined_page = (t + "\n" + "\n".join(table_lines)).strip()
+                if combined_page:
+                    pages_text.append(combined_page)
+    except Exception as e:
+        pass
             
     return pages_text
 
@@ -634,7 +647,9 @@ def parse_single_or_multi_document(pages_text: List[str]) -> Tuple[str, Dict[str
     """
     다중 페이지 또는 복합 서류를 분석하여 표제부와 전유부가 둘 다 있는 경우 자동 병합합니다.
     """
-    full_text = "\n".join(pages_text)
+    full_text = "\n".join(pages_text).strip()
+    if not full_text:
+        return "보안/DRM 문서 (텍스트 미감지)", {}, ""
     doc_type = identify_document_type(full_text)
 
     # 1. 표제부 + 전유부 복합 서류인 경우

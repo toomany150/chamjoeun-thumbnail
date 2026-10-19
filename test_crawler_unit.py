@@ -41,7 +41,7 @@ class TestNaverCrawler(unittest.TestCase):
         self.assertEqual(res.get("direction"), "남동향 (거실 기준)")
         self.assertEqual(res.get("entrance_type"), "계단식")
         self.assertEqual(res.get("approval_date"), "2023.07.28")
-        self.assertEqual(res.get("location"), "부산광역시 사상구 덕포동 220")
+        self.assertTrue("부산광역시 사상구 덕포동 220" in res.get("location", ""))
 
 if __name__ == "__main__":
     unittest.main()

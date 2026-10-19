@@ -193,13 +193,49 @@ def parse_naver_clipboard_text(text: str) -> Dict[str, Any]:
     if loc_match:
         res["location"] = loc_match.group(1).strip()
 
-    # 단지명/건물명 탐색
+    # 단지명 및 동/호수 탐색 (첫 5줄 내)
     for line in lines[:5]:
-        if any(apt_kw in line for apt_kw in ["아파트", "클래스", "자이", "푸르지오", "힐스테이트", "래미안", "롯데캐슬", "센텀", "더샵", "오피스텔", "아이파크", "e편한세상", "SK뷰"]):
-            clean_b = re.sub(r"[\[\]\(\)]", " ", line).strip()
-            clean_b = clean_b.split(" ")[0] if len(clean_b.split(" ")) > 1 else clean_b
-            res["main_title"] = clean_b
+        line_s = line.strip()
+        if any(kw in line_s for kw in ["매매", "전세", "월세", "공급", "전용", "해당층", "관리비"]):
+            continue
+        dong_m = re.search(r"((?:제)?\s*\d{2,4}\s*동)", line_s)
+        ho_m = re.search(r"((?:제)?\s*\d{2,4}\s*호)", line_s)
+        
+        d_val = dong_m.group(1).replace(" ", "") if dong_m else ""
+        h_val = ho_m.group(1).replace(" ", "") if ho_m else ""
+        
+        apt_title = line_s
+        if dong_m:
+            apt_title = apt_title.replace(dong_m.group(0), "")
+        if ho_m:
+            apt_title = apt_title.replace(ho_m.group(0), "")
+        apt_title = re.sub(r"[\[\]\(\)]", " ", apt_title).strip()
+        
+        if apt_title:
+            res["main_title"] = apt_title
+        if d_val or h_val:
+            res["sub_title"] = f"{d_val} {h_val}".strip()
+            res["dong_name"] = d_val
+            res["ho_name"] = h_val
+        if res.get("main_title"):
             break
+
+    # 소재지와 건물명 조합
+    if res.get("location") and res.get("main_title"):
+        b_full = res["main_title"]
+        if res.get("sub_title"):
+            b_full += f" {res['sub_title']}"
+        if b_full not in res["location"]:
+            res["location"] = f"{res['location']} ({b_full})"
+
+    # 특징 문구 자동 생성
+    feat_parts = []
+    if res.get("households"):
+        feat_parts.append(res["households"].split(" ")[0])
+    if res.get("main_title"):
+        feat_parts.append(res["main_title"])
+    if feat_parts:
+        res["feature_text"] = " · ".join(feat_parts) + " 추천 매물"
 
     # 썸네일 요약 필드 구성
     if res.get("floor_info"):
@@ -241,7 +277,7 @@ def crawl_naver_article(article_input: str) -> Tuple[bool, str, Dict[str, Any]]:
             # HTML 타이틀에서 단지명 및 기본 정보 추출
             title_match = re.search(r"<title>(.*?)</title>", html)
             if title_match:
-                title_text = title_match.group(1).replace("Npay 부동산", "").strip()
+                title_text = title_match.group(1).replace("Npay 부동산", "").replace(":", "").replace("매물", "").strip()
                 if title_text:
                     res_data["main_title"] = title_text
 
@@ -340,7 +376,8 @@ def crawl_naver_article(article_input: str) -> Tuple[bool, str, Dict[str, Any]]:
     # ----------------------------------------------------
     # 데이터 후처리 및 완성도 보강
     # ----------------------------------------------------
-    if res_data:
+    has_valid_specs = any(res_data.get(k) for k in ["price_text", "area_exclusive", "area_supply", "floor_info", "room_bath"])
+    if res_data and has_valid_specs:
         # 서브 타이틀 및 소재지 조립
         d_name = res_data.get("dong_name", "")
         m_title = res_data.get("main_title", "")
@@ -373,4 +410,4 @@ def crawl_naver_article(article_input: str) -> Tuple[bool, str, Dict[str, Any]]:
         return True, f"네이버 매물 [{article_no}] 크롤링 성공!", res_data
 
     # 만약 네이버 측의 봇 차단이나 유효하지 않은 매물 번호인 경우 친절한 안내 제공
-    return False, f"네이버 부동산에서 매물번호 [{article_no}]의 데이터를 일시적으로 가져오지 못했습니다. (네이버 방화벽 정책 또는 유효하지 않은 매물번호). 네이버 부동산 상세 화면을 드래그 복사하여 아래 [📋 매물 텍스트 붙여넣기]를 이용하시면 0.1초 만에 완성됩니다!", {}
+    return False, f"네이버 부동산 방화벽(Rate limit: TOO_MANY_REQUESTS) 정책으로 인해 프로그램의 직접 API 호출이 차단되었습니다. 네이버 부동산 상세 화면을 마우스로 드래그 복사(Ctrl+C)하여 옆의 [📋 네이버 화면 복사 텍스트 붙여넣기]를 이용하시면 100% 완벽하게 자동 완성됩니다!", {}

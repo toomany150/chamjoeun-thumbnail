@@ -35,7 +35,8 @@ from document_parser import (
 from naver_crawler import (
     crawl_naver_article,
     parse_naver_clipboard_text,
-    extract_article_number
+    extract_article_number,
+    format_thumb_price
 )
 
 def render_direct_download_button(image_bytes: bytes, file_name: str, button_label: str, bg_color: str = "#F48A26") -> str:
@@ -375,44 +376,51 @@ def apply_preset(p_type):
 
 def apply_crawled_or_doc_data(data: dict):
     """크롤링 데이터 또는 공적서류 분석 데이터를 16대 점검항목 및 썸네일 세션에 일괄 주입합니다."""
+    if not data:
+        return
+
     # 1. 16대 점검항목 적용
-    if data.get("location"): st.session_state.ad_location = data["location"]
-    if data.get("area_exclusive"): st.session_state.ad_area_exclusive = data["area_exclusive"]
-    if data.get("area_supply"): st.session_state.ad_area_supply = data["area_supply"]
-    elif data.get("area_exclusive"): st.session_state.ad_area_supply = data["area_exclusive"]
-    if data.get("floor_info"): st.session_state.ad_floor_info = data["floor_info"]
-    if data.get("room_bath"): st.session_state.ad_room_bath = data["room_bath"]
-    if data.get("building_use"): st.session_state.ad_building_use = data["building_use"]
-    if data.get("approval_date"): st.session_state.ad_approval_date = data["approval_date"]
-    if data.get("households"): st.session_state.ad_households = data["households"]
-    if data.get("parking"): st.session_state.ad_parking = data["parking"]
-    if data.get("trade_type"): st.session_state.ad_trade_type = data["trade_type"]
-    if data.get("price_text"): st.session_state.ad_price_text = data["price_text"]
-    if data.get("direction"): st.session_state.ad_direction = data["direction"]
-    if data.get("entrance_type"): st.session_state.ad_entrance_type = data["entrance_type"]
-    if data.get("heating"): st.session_state.ad_heating = data["heating"]
-    if data.get("move_in_date"): st.session_state.ad_move_in_date = data["move_in_date"]
-    if data.get("maintenance_fee"): st.session_state.ad_maintenance_fee = data["maintenance_fee"]
-    if data.get("maintenance_detail"): st.session_state.ad_maintenance_detail = data["maintenance_detail"]
-    if data.get("deposit_sub"): st.session_state.ad_deposit_sub = data["deposit_sub"]
+    if data.get("location"): st.session_state["ad_location"] = str(data["location"])
+    if data.get("area_exclusive"): st.session_state["ad_area_exclusive"] = str(data["area_exclusive"])
+    if data.get("area_supply"): st.session_state["ad_area_supply"] = str(data["area_supply"])
+    elif data.get("area_exclusive"): st.session_state["ad_area_supply"] = str(data["area_exclusive"])
+    if data.get("floor_info"): st.session_state["ad_floor_info"] = str(data["floor_info"])
+    if data.get("room_bath"): st.session_state["ad_room_bath"] = str(data["room_bath"])
+    if data.get("building_use"): st.session_state["ad_building_use"] = str(data["building_use"])
+    if data.get("approval_date"): st.session_state["ad_approval_date"] = str(data["approval_date"])
+    if data.get("households"): st.session_state["ad_households"] = str(data["households"])
+    if data.get("parking"): st.session_state["ad_parking"] = str(data["parking"])
+    if data.get("trade_type"): st.session_state["ad_trade_type"] = str(data["trade_type"])
+    if data.get("price_text"): st.session_state["ad_price_text"] = str(data["price_text"])
+    if data.get("direction"): st.session_state["ad_direction"] = str(data["direction"])
+    if data.get("entrance_type"): st.session_state["ad_entrance_type"] = str(data["entrance_type"])
+    if data.get("heating"): st.session_state["ad_heating"] = str(data["heating"])
+    if data.get("move_in_date"): st.session_state["ad_move_in_date"] = str(data["move_in_date"])
+    if data.get("maintenance_fee"): st.session_state["ad_maintenance_fee"] = str(data["maintenance_fee"])
+    if data.get("maintenance_detail"): st.session_state["ad_maintenance_detail"] = str(data["maintenance_detail"])
+    if data.get("deposit_sub"): st.session_state["ad_deposit_sub"] = str(data["deposit_sub"])
 
     # 2. 썸네일 탭 연동
-    if data.get("main_title"): st.session_state.main_title = data["main_title"]
-    if data.get("sub_title"): st.session_state.sub_title = data["sub_title"]
-    if data.get("feature_text"): st.session_state.feature_text = data["feature_text"]
-    if data.get("thumb_trade_type"): st.session_state.thumb_trade_type = data["thumb_trade_type"]
-    elif data.get("trade_type"): st.session_state.thumb_trade_type = data["trade_type"]
-    if data.get("thumb_price_text"): st.session_state.thumb_price_text = data["thumb_price_text"]
-    if data.get("spec_line1"): st.session_state.spec_line1 = data["spec_line1"]
-    elif data.get("floor_info"): st.session_state.spec_line1 = data["floor_info"]
-    if data.get("spec_line2"): st.session_state.spec_line2 = data["spec_line2"]
-    elif data.get("area_exclusive"): st.session_state.spec_line2 = f"공급 {data.get('area_supply', data['area_exclusive'])}㎡ / 전용 {data['area_exclusive']}㎡"
-    if data.get("spec_line3"): st.session_state.spec_line3 = data["spec_line3"]
-    elif data.get("room_bath"): st.session_state.spec_line3 = data["room_bath"]
-    if data.get("spec_line4"): st.session_state.spec_line4 = data["spec_line4"]
-    elif data.get("move_in_date"): st.session_state.spec_line4 = data["move_in_date"]
-    if data.get("spec_line5"): st.session_state.spec_line5 = data["spec_line5"]
-    elif data.get("direction"): st.session_state.spec_line5 = data["direction"]
+    if data.get("main_title"): st.session_state["main_title"] = str(data["main_title"])
+    if data.get("sub_title"): st.session_state["sub_title"] = str(data["sub_title"])
+    if data.get("feature_text"): st.session_state["feature_text"] = str(data["feature_text"])
+    if data.get("thumb_trade_type"): st.session_state["thumb_trade_type"] = str(data["thumb_trade_type"])
+    elif data.get("trade_type"): st.session_state["thumb_trade_type"] = str(data["trade_type"])
+    if data.get("thumb_price_text"): st.session_state["thumb_price_text"] = str(data["thumb_price_text"])
+    elif data.get("price_text"):
+        st.session_state["thumb_price_text"] = format_thumb_price(str(data["price_text"]))
+    if data.get("spec_line1"): st.session_state["spec_line1"] = str(data["spec_line1"])
+    elif data.get("floor_info"): st.session_state["spec_line1"] = str(data["floor_info"])
+    if data.get("spec_line2"): st.session_state["spec_line2"] = str(data["spec_line2"])
+    elif data.get("area_exclusive"):
+        s_area = data.get("area_supply", data["area_exclusive"])
+        st.session_state["spec_line2"] = f"공급 {s_area}㎡ / 전용 {data['area_exclusive']}㎡"
+    if data.get("spec_line3"): st.session_state["spec_line3"] = str(data["spec_line3"])
+    elif data.get("room_bath"): st.session_state["spec_line3"] = str(data["room_bath"])
+    if data.get("spec_line4"): st.session_state["spec_line4"] = str(data["spec_line4"])
+    elif data.get("move_in_date"): st.session_state["spec_line4"] = str(data["move_in_date"])
+    if data.get("spec_line5"): st.session_state["spec_line5"] = str(data["spec_line5"])
+    elif data.get("direction"): st.session_state["spec_line5"] = str(data["direction"])
 
 # -------------------------
 # 상단 타이틀 & 모바일 접속 안내
@@ -539,36 +547,37 @@ with tab_thumb:
 
     with col_t_right:
         st.markdown("### 🛠️ 썸네일 텍스트 수정")
-        st.session_state.item_no = st.text_input("🏷️ 물건 번호", value=st.session_state.item_no)
-        st.session_state.main_title = st.text_input("🏢 메인 타이틀 (아파트명)", value=st.session_state.main_title)
-        st.session_state.sub_title = st.text_input("📍 서브 타이틀 (동/단지명)", value=st.session_state.sub_title)
-        st.session_state.feature_text = st.text_input("✨ 매물 핵심 특징", value=st.session_state.feature_text)
+        st.text_input("🏷️ 물건 번호", key="item_no")
+        st.text_input("🏢 메인 타이틀 (아파트명)", key="main_title")
+        st.text_input("📍 서브 타이틀 (동/단지명)", key="sub_title")
+        st.text_input("✨ 매물 핵심 특징", key="feature_text")
         
         c_tr1, c_tr2 = st.columns([1, 1.3])
         with c_tr1:
             trade_opts = ["매매", "전세", "월세", "분양", "급매"]
-            cur_idx = trade_opts.index(st.session_state.thumb_trade_type) if st.session_state.thumb_trade_type in trade_opts else 0
-            st.session_state.thumb_trade_type = st.selectbox("거래 형태", trade_opts, index=cur_idx)
+            if st.session_state.thumb_trade_type not in trade_opts:
+                trade_opts.append(st.session_state.thumb_trade_type)
+            st.selectbox("거래 형태", trade_opts, key="thumb_trade_type")
         with c_tr2:
-            st.session_state.thumb_price_text = st.text_input("금액 (예: 6억2천)", value=st.session_state.thumb_price_text)
+            st.text_input("금액 (예: 6억2천)", key="thumb_price_text")
 
         st.markdown("#### 📋 5대 스펙 텍스트")
-        st.session_state.spec_line1 = st.text_input("1행: 해당동 / 층수", value=st.session_state.spec_line1)
-        st.session_state.spec_line2 = st.text_input("2행: 공급/전용면적", value=st.session_state.spec_line2)
-        st.session_state.spec_line3 = st.text_input("3행: 방/욕실 수", value=st.session_state.spec_line3)
-        st.session_state.spec_line4 = st.text_input("4행: 입주시기", value=st.session_state.spec_line4)
-        st.session_state.spec_line5 = st.text_input("5행: 방향 및 특징", value=st.session_state.spec_line5)
+        st.text_input("1행: 해당동 / 층수", key="spec_line1")
+        st.text_input("2행: 공급/전용면적", key="spec_line2")
+        st.text_input("3행: 방/욕실 수", key="spec_line3")
+        st.text_input("4행: 입주시기", key="spec_line4")
+        st.text_input("5행: 방향 및 특징", key="spec_line5")
 
         st.markdown("#### 🏢 하단 띠지 (중개사무소 정보)")
-        st.session_state.thumb_show_footer = st.checkbox(
+        st.checkbox(
             "하단 띠지 표시 (체크 해제 시 전체 사진 영역 확장)",
-            value=st.session_state.thumb_show_footer,
+            key="thumb_show_footer",
             help="소공 또는 타 중개사 협업 시 띠지 없이 매물 사진만 1080px 꽉 차게 내보낼 수 있습니다."
         )
         if st.session_state.thumb_show_footer:
-            st.session_state.thumb_footer_text = st.text_input(
+            st.text_input(
                 "띠지 문구 (소공/직원 커스텀 문구 가능)",
-                value=st.session_state.thumb_footer_text,
+                key="thumb_footer_text",
                 placeholder="미입력 시: 참좋은공인중개사사무소 (부산 사상구) ☎ 051-313-2288"
             )
 
@@ -613,23 +622,49 @@ with tab_ad:
     </div>
     """, unsafe_allow_html=True)
 
+    # 최근 자동완성 성공 알림 배너
+    if st.session_state.get("last_applied_msg"):
+        st.success(st.session_state["last_applied_msg"])
+
     # ----------------------------------------------------
-    # 🌐 [요구사항 2] 네이버 부동산 매물 번호 1초 크롤링 & 자동완성
+    # 🌐 [요구사항 2] 네이버 부동산 매물 연동 (복사 텍스트 & 매물번호)
     # ----------------------------------------------------
-    with st.expander("🌐 [원클릭 1초 크롤링] 네이버 부동산 매물 번호로 자동완성", expanded=True):
+    with st.expander("🌐 [원클릭 1초 자동완성] 네이버 부동산 매물 연동 (클립보드 복사 & 매물번호)", expanded=True):
         st.markdown("""
         <div style="font-size:14px; color:#1A365D; background:#EBF8FF; border:1px solid #BEE3F8; padding:10px 14px; border-radius:8px; margin-bottom:12px;">
-            🔗 네이버 부동산의 <b>매물 번호(예: 2428591234)</b> 또는 <b>매물 상세 링크(URL)</b>를 입력하시면, 
+            🔗 네이버 부동산의 <b>화면 복사 텍스트</b>를 붙여넣거나 <b>매물 번호</b>를 입력하시면, 
             실시간으로 <b>매물명, 거래가격, 층수, 전용/공급면적, 방수, 방향, 주차대수, 준공일 등 16대 점검항목</b>과 <b>블로그 썸네일</b>을 1초 만에 자동 완성합니다!
         </div>
         """, unsafe_allow_html=True)
 
-        tab_crawl_num, tab_crawl_txt = st.tabs([
-            "🔍 네이버 매물번호 / URL 실시간 크롤링",
-            "📋 네이버 화면 복사 텍스트 붙여넣기 (초고속 백업)"
+        tab_crawl_txt, tab_crawl_num = st.tabs([
+            "📋 네이버 화면 복사 텍스트 붙여넣기 (가장 확실 & 1초 완성! 추천)",
+            "🔍 네이버 매물번호 / URL 크롤링 (실험적)"
         ])
 
-        crawled_result_data = None
+        with tab_crawl_txt:
+            st.markdown("""
+            <div style="font-size:13px; color:#2B6CB0; background:#EBF8FF; border:1px solid #BEE3F8; padding:8px 12px; border-radius:6px; margin-bottom:8px;">
+                💡 <b>1초 자동완성 방법:</b> 네이버 부동산 매물 화면에서 마우스로 매물 정보 영역(매물명, 가격, 면적, 층수 등)을 드래그 복사(Ctrl+C)하여 아래에 붙여넣으세요! 네이버 봇 차단 없이 100% 즉시 반영됩니다.
+            </div>
+            """, unsafe_allow_html=True)
+            clip_article_text = st.text_area(
+                "네이버 부동산 매물 상세 복사 텍스트",
+                height=120,
+                placeholder="예:\n사상 중흥S-클래스 105동 매매 6억 2,000만원\n아파트 공급 111.42㎡ / 전용 79.85㎡, 25/36층, 남동향\n관리비 18만원, 방수/욕실수 3/2개...",
+                key="input_naver_clip_text"
+            )
+            if st.button("⚡ 붙여넣은 매물 텍스트 0.1초 분석 & 16개 항목 즉시 적용", type="primary", use_container_width=True, key="btn_parse_clip_text"):
+                if clip_article_text.strip():
+                    parsed_clip = parse_naver_clipboard_text(clip_article_text)
+                    if parsed_clip:
+                        apply_crawled_or_doc_data(parsed_clip)
+                        st.session_state["last_applied_msg"] = f"🎉 네이버 매물 [{parsed_clip.get('main_title', '')}] 텍스트 분석 완료! 16대 점검항목과 썸네일에 즉시 자동 반영되었습니다."
+                        st.rerun()
+                    else:
+                        st.warning("붙여넣은 텍스트에서 매물 정보를 식별하지 못했습니다. 형식을 확인해주세요.")
+                else:
+                    st.warning("네이버 부동산 매물 상세 텍스트를 먼저 붙여넣어 주세요.")
 
         with tab_crawl_num:
             c_cr_in, c_cr_btn = st.columns([2.5, 1])
@@ -642,61 +677,20 @@ with tab_ad:
                 )
             with c_cr_btn:
                 st.markdown("<div style='height: 28px;'></div>", unsafe_allow_html=True)
-                btn_do_crawl = st.button("🚀 1초 크롤링 & 자동완성", type="primary", use_container_width=True, key="btn_crawl_naver")
+                btn_do_crawl = st.button("🚀 1초 크롤링 시도", type="primary", use_container_width=True, key="btn_crawl_naver")
 
             if btn_do_crawl:
                 if input_article_val.strip():
-                    with st.spinner("네이버 부동산 매물 정보 실시간 크롤링 중..."):
+                    with st.spinner("네이버 부동산 매물 정보 실시간 조회 중..."):
                         is_ok, msg, c_data = crawl_naver_article(input_article_val.strip())
                         if is_ok:
-                            crawled_result_data = c_data
-                            st.session_state["last_crawled_data"] = c_data
-                            st.session_state["last_crawled_msg"] = msg
+                            apply_crawled_or_doc_data(c_data)
+                            st.session_state["last_applied_msg"] = f"🎉 {msg} 16대 점검항목과 썸네일에 즉시 자동 반영되었습니다."
+                            st.rerun()
                         else:
-                            st.warning(f"⚠️ {msg}")
+                            st.error(f"⚠️ {msg}")
                 else:
                     st.warning("매물 번호 또는 매물 링크 URL을 입력해주세요.")
-
-        with tab_crawl_txt:
-            st.caption("💡 네이버 부동산 화면에서 마우스로 매물 정보 영역을 드래그 복사(Ctrl+C)한 뒤 여기에 붙여넣으세요.")
-            clip_article_text = st.text_area(
-                "네이버 부동산 매물 상세 복사 텍스트",
-                height=120,
-                placeholder="예:\n사상 중흥S-클래스 105동 매매 6억 2,000만원\n아파트 공급 111.42㎡ / 전용 79.85㎡, 25/36층, 남동향\n관리비 18만원, 방수/욕실수 3/2개...",
-                key="input_naver_clip_text"
-            )
-            if st.button("⚡ 붙여넣은 매물 텍스트 0.1초 분석 & 적용", use_container_width=True, key="btn_parse_clip_text"):
-                if clip_article_text.strip():
-                    parsed_clip = parse_naver_clipboard_text(clip_article_text)
-                    if parsed_clip:
-                        crawled_result_data = parsed_clip
-                        st.session_state["last_crawled_data"] = parsed_clip
-                        st.session_state["last_crawled_msg"] = "네이버 복사 텍스트 1초 파싱 완료!"
-                    else:
-                        st.warning("붙여넣은 텍스트에서 매물 정보를 식별하지 못했습니다. 형식을 확인해주세요.")
-
-        # 크롤링 또는 복사 텍스트 분석 결과 프리뷰
-        active_c_data = crawled_result_data or st.session_state.get("last_crawled_data")
-        if active_c_data:
-            st.success(f"🎉 **{st.session_state.get('last_crawled_msg', '매물 정보 수집 성공!')}**")
-            c_cp1, c_cp2, c_cp3 = st.columns(3)
-            with c_cp1:
-                st.markdown(f"🏢 **단지/매물명**: `{active_c_data.get('main_title', active_c_data.get('location', '-'))}`")
-                st.markdown(f"💰 **거래금액**: `{active_c_data.get('price_text', '-')}` ({active_c_data.get('trade_type', '-')})")
-                st.markdown(f"🏢 **층수정보**: `{active_c_data.get('floor_info', '-')}`")
-            with c_cp2:
-                st.markdown(f"📐 **공급/전용**: `{active_c_data.get('area_supply', '-')}㎡ / {active_c_data.get('area_exclusive', '-')}㎡`")
-                st.markdown(f"🚪 **방/욕실수**: `{active_c_data.get('room_bath', '-')}`")
-                st.markdown(f"🧭 **방향**: `{active_c_data.get('direction', '-')}`")
-            with c_cp3:
-                st.markdown(f"🚗 **주차대수**: `{active_c_data.get('parking', '-')}`")
-                st.markdown(f"👨‍👩‍👧 **세대수**: `{active_c_data.get('households', '-')}`")
-                st.markdown(f"📅 **준공/승인일**: `{active_c_data.get('approval_date', '-')}`")
-
-            if st.button("✨ 위 매물 정보를 16대 점검항목 & 썸네일에 즉시 적용하기", type="primary", use_container_width=True, key="btn_apply_crawled_data"):
-                apply_crawled_or_doc_data(active_c_data)
-                st.success("✅ 네이버 매물 정보가 16대 점검항목과 썸네일에 완벽하게 반영되었습니다!")
-                st.rerun()
 
     # ----------------------------------------------------
     # 📄 [요구사항 1] 공적서류 (집합건물 표제부/전유부, 토지대장) 자동 분석
@@ -713,11 +707,8 @@ with tab_ad:
         tab_doc_smart, tab_doc_split, tab_doc_txt = st.tabs([
             "📁 스마트 다중/통합 PDF 업로드 (표제부+전유부 자동 병합)",
             "🏢 표제부 & 🚪 전유부 2단계 분리 업로드 (집합건물 전용)",
-            "📋 서류 텍스트 직접 붙여넣기"
+            "📋 서류 텍스트 직접 붙여넣기 (정부24 보안문서 100% 대응)"
         ])
-
-        doc_parsed_result = None
-        doc_parsed_type = ""
 
         # [탭 1] 스마트 통합/다중 업로드
         with tab_doc_smart:
@@ -729,43 +720,52 @@ with tab_ad:
                 key="doc_multi_pdf_uploader_key"
             )
             if uploaded_docs:
-                try:
-                    with st.spinner("공적서류 정밀 분석 및 지능형 병합 중..."):
-                        if len(uploaded_docs) == 1:
-                            # 1개 파일인 경우 (단일 서류 또는 다중 페이지 복합 서류)
-                            doc_parsed_type, doc_parsed_result, _ = parse_official_document(uploaded_docs[0], uploaded_docs[0].name)
-                        else:
-                            # 2개 이상 파일인 경우 (예: 표제부.pdf + 전유부.pdf)
-                            title_data = {}
-                            exclusive_data = {}
-                            other_data = {}
-                            types_found = []
-
-                            for u_file in uploaded_docs:
-                                p_type, p_res, _ = parse_official_document(u_file, u_file.name)
-                                types_found.append(p_type)
-                                if "표제부" in p_type:
-                                    title_data.update(p_res)
-                                elif "전유부" in p_type:
-                                    exclusive_data.update(p_res)
-                                else:
-                                    other_data.update(p_res)
-
-                            if title_data and exclusive_data:
-                                doc_parsed_result = merge_building_registers(title_data, exclusive_data)
-                                doc_parsed_type = "집합건축물대장 (표제부 + 전유부 2개 서류 완벽 통합)"
-                            elif title_data:
-                                doc_parsed_result = title_data
-                                doc_parsed_type = "집합건축물대장 (표제부)"
-                            elif exclusive_data:
-                                doc_parsed_result = exclusive_data
-                                doc_parsed_type = "집합건축물대장 (전유부)"
+                upload_sig = "-".join([f"{f.name}_{f.size}" for f in uploaded_docs])
+                if st.session_state.get("last_smart_upload_sig") != upload_sig:
+                    try:
+                        with st.spinner("공적서류 정밀 분석 및 16대 항목 자동 반영 중..."):
+                            doc_parsed_result = None
+                            doc_parsed_type = ""
+                            if len(uploaded_docs) == 1:
+                                doc_parsed_type, doc_parsed_result, _ = parse_official_document(uploaded_docs[0], uploaded_docs[0].name)
                             else:
-                                doc_parsed_result = other_data
-                                doc_parsed_type = ", ".join(types_found)
+                                title_data = {}
+                                exclusive_data = {}
+                                other_data = {}
+                                types_found = []
 
-                except Exception as e:
-                    st.error(f"서류 분석 중 오류가 발생했습니다: {e}")
+                                for u_file in uploaded_docs:
+                                    p_type, p_res, _ = parse_official_document(u_file, u_file.name)
+                                    types_found.append(p_type)
+                                    if "표제부" in p_type:
+                                        title_data.update(p_res)
+                                    elif "전유부" in p_type:
+                                        exclusive_data.update(p_res)
+                                    else:
+                                        other_data.update(p_res)
+
+                                if title_data and exclusive_data:
+                                    doc_parsed_result = merge_building_registers(title_data, exclusive_data)
+                                    doc_parsed_type = "집합건축물대장 (표제부 + 전유부 2개 서류 완벽 통합)"
+                                elif title_data:
+                                    doc_parsed_result = title_data
+                                    doc_parsed_type = "집합건축물대장 (표제부)"
+                                elif exclusive_data:
+                                    doc_parsed_result = exclusive_data
+                                    doc_parsed_type = "집합건축물대장 (전유부)"
+                                else:
+                                    doc_parsed_result = other_data
+                                    doc_parsed_type = ", ".join(types_found)
+
+                            st.session_state["last_smart_upload_sig"] = upload_sig
+                            if doc_parsed_result:
+                                apply_crawled_or_doc_data(doc_parsed_result)
+                                st.session_state["last_applied_msg"] = f"🎉 [{doc_parsed_type}] 분석 완료! 16대 점검항목과 썸네일에 1초 만에 즉시 반영되었습니다."
+                                st.rerun()
+                            else:
+                                st.error("⚠️ 업로드하신 PDF 서류에서 텍스트를 읽어오지 못했습니다. 정부24/세움터의 위변조 방지 보안 인쇄(DRM) 전자문서이거나 스캔 이미지일 가능성이 높습니다. 정부24 열람 화면에서 마우스로 텍스트를 복사(Ctrl+C)하여 세 번째 [📋 서류 텍스트 직접 붙여넣기] 탭에 넣어주시면 0.1초 만에 완벽하게 분석됩니다!")
+                    except Exception as e:
+                        st.error(f"서류 분석 중 오류가 발생했습니다: {e}")
 
         # [탭 2] 표제부 & 전유부 분리 업로드
         with tab_doc_split:
@@ -789,26 +789,38 @@ with tab_ad:
                 up_excl_file = st.file_uploader("전유부 PDF 업로드", type=["pdf"], key="up_split_excl")
 
             if up_title_file or up_excl_file:
-                try:
-                    with st.spinner("표제부 및 전유부 정밀 분석 중..."):
-                        t_data_sp = {}
-                        e_data_sp = {}
-                        if up_title_file:
-                            _, t_data_sp, _ = parse_official_document(up_title_file, up_title_file.name)
-                        if up_excl_file:
-                            _, e_data_sp, _ = parse_official_document(up_excl_file, up_excl_file.name)
+                split_sig = f"{getattr(up_title_file, 'name', '')}_{getattr(up_title_file, 'size', '')}_{getattr(up_excl_file, 'name', '')}_{getattr(up_excl_file, 'size', '')}"
+                if st.session_state.get("last_split_upload_sig") != split_sig:
+                    try:
+                        with st.spinner("표제부 및 전유부 정밀 분석 중..."):
+                            t_data_sp = {}
+                            e_data_sp = {}
+                            if up_title_file:
+                                _, t_data_sp, _ = parse_official_document(up_title_file, up_title_file.name)
+                            if up_excl_file:
+                                _, e_data_sp, _ = parse_official_document(up_excl_file, up_excl_file.name)
 
-                        if t_data_sp and e_data_sp:
-                            doc_parsed_result = merge_building_registers(t_data_sp, e_data_sp)
-                            doc_parsed_type = "집합건축물대장 (표제부 + 전유부 2단계 통합 완성)"
-                        elif t_data_sp:
-                            doc_parsed_result = t_data_sp
-                            doc_parsed_type = "집합건축물대장 (표제부 단독)"
-                        elif e_data_sp:
-                            doc_parsed_result = e_data_sp
-                            doc_parsed_type = "집합건축물대장 (전유부 단독)"
-                except Exception as e:
-                    st.error(f"분리 서류 분석 중 오류: {e}")
+                            doc_parsed_res_sp = None
+                            doc_type_sp = ""
+                            if t_data_sp and e_data_sp:
+                                doc_parsed_res_sp = merge_building_registers(t_data_sp, e_data_sp)
+                                doc_type_sp = "집합건축물대장 (표제부 + 전유부 2단계 통합 완성)"
+                            elif t_data_sp:
+                                doc_parsed_res_sp = t_data_sp
+                                doc_type_sp = "집합건축물대장 (표제부 단독)"
+                            elif e_data_sp:
+                                doc_parsed_res_sp = e_data_sp
+                                doc_type_sp = "집합건축물대장 (전유부 단독)"
+
+                            st.session_state["last_split_upload_sig"] = split_sig
+                            if doc_parsed_res_sp:
+                                apply_crawled_or_doc_data(doc_parsed_res_sp)
+                                st.session_state["last_applied_msg"] = f"🎉 [{doc_type_sp}] 분석 완료! 16대 점검항목과 썸네일에 즉시 자동 반영되었습니다."
+                                st.rerun()
+                            else:
+                                st.error("⚠️ 분리 업로드된 PDF 파일에서 텍스트를 감지하지 못했습니다. 보안(DRM) 문서인 경우 세 번째 [📋 서류 텍스트 직접 붙여넣기] 탭을 이용해주세요!")
+                    except Exception as e:
+                        st.error(f"분리 서류 분석 중 오류: {e}")
 
         # [탭 3] 텍스트 직접 붙여넣기
         with tab_doc_txt:
@@ -830,44 +842,28 @@ with tab_ad:
                     key="txt_raw_excl"
                 )
 
-            if st.button("🔍 붙여넣은 표제부/전유부 텍스트 분석하기", key="btn_parse_split_text", use_container_width=True):
+            if st.button("🔍 붙여넣은 표제부/전유부 텍스트 분석 및 즉시 적용", type="primary", key="btn_parse_split_text", use_container_width=True):
                 t_parsed = parse_building_register_title(raw_title_txt) if raw_title_txt.strip() else {}
                 e_parsed = parse_building_register_exclusive(raw_excl_txt) if raw_excl_txt.strip() else {}
 
+                doc_parsed_res_txt = None
+                doc_type_txt = ""
                 if t_parsed and e_parsed:
-                    doc_parsed_result = merge_building_registers(t_parsed, e_parsed)
-                    doc_parsed_type = "집합건축물대장 (표제부 + 전유부 텍스트 통합완료)"
+                    doc_parsed_res_txt = merge_building_registers(t_parsed, e_parsed)
+                    doc_type_txt = "집합건축물대장 (표제부 + 전유부 텍스트 통합완료)"
                 elif t_parsed:
-                    doc_parsed_result = t_parsed
-                    doc_parsed_type = "집합건축물대장 (표제부 텍스트)"
+                    doc_parsed_res_txt = t_parsed
+                    doc_type_txt = "집합건축물대장 (표제부 텍스트)"
                 elif e_parsed:
-                    doc_parsed_result = e_parsed
-                    doc_parsed_type = "집합건축물대장 (전유부 텍스트)"
+                    doc_parsed_res_txt = e_parsed
+                    doc_type_txt = "집합건축물대장 (전유부 텍스트)"
 
-        # 분석 결과 프리뷰 및 자동완성 적용 버튼
-        if doc_parsed_result:
-            st.success(f"🎉 **{doc_parsed_type}** 서류 분석이 완료되었습니다!")
-            
-            c_pv1, c_pv2, c_pv3 = st.columns(3)
-            with c_pv1:
-                st.markdown(f"📍 **소재지**: `{doc_parsed_result.get('location', '미감지')}`")
-                st.markdown(f"🏢 **주용도**: `{doc_parsed_result.get('building_use', '미감지')}`")
-                st.markdown(f"📅 **사용승인일**: `{doc_parsed_result.get('approval_date', '미감지')}`")
-            with c_pv2:
-                st.markdown(f"📐 **전용면적**: `{doc_parsed_result.get('area_exclusive', '-')} ㎡`")
-                st.markdown(f"📐 **공급/연면적**: `{doc_parsed_result.get('area_supply', '-')} ㎡`")
-                st.markdown(f"🏢 **층수정보**: `{doc_parsed_result.get('floor_info', '미감지')}`")
-            with c_pv3:
-                st.markdown(f"🚗 **주차대수**: `{doc_parsed_result.get('parking', '미감지')}`")
-                st.markdown(f"👨‍👩‍👧 **세대수**: `{doc_parsed_result.get('households', '미감지')}`")
-                st.markdown(f"🚪 **방/욕실**: `{doc_parsed_result.get('room_bath', '미감지')}`")
-                if "zone_info" in doc_parsed_result:
-                    st.markdown(f"🌐 **용도지역**: `{doc_parsed_result['zone_info']}`")
-
-            if st.button("⚡ 위 서류 정보를 16대 점검항목 & 썸네일에 1초 즉시 적용하기", type="primary", use_container_width=True, key="btn_apply_doc_info"):
-                apply_crawled_or_doc_data(doc_parsed_result)
-                st.success("✅ 공적서류 정보가 16대 점검항목과 썸네일에 완벽하게 반영되었습니다!")
-                st.rerun()
+                if doc_parsed_res_txt:
+                    apply_crawled_or_doc_data(doc_parsed_res_txt)
+                    st.session_state["last_applied_msg"] = f"🎉 [{doc_type_txt}] 분석 완료! 16대 점검항목과 썸네일에 즉시 자동 반영되었습니다."
+                    st.rerun()
+                else:
+                    st.warning("붙여넣은 텍스트에서 건축물대장 정보를 식별하지 못했습니다. 내용을 확인해주세요.")
 
     # 썸네일 데이터에서 가져오기 및 퀵 컨트롤 버튼
     col_syn1, col_syn2, col_syn3 = st.columns([1, 1, 1])
@@ -931,9 +927,9 @@ with tab_ad:
             <span class="spec-badge badge-red">동·리·지번 필수</span>
         </div>
         """, unsafe_allow_html=True)
-        st.session_state.ad_location = st.text_input(
+        st.text_input(
             "소재지 주소",
-            value=st.session_state.ad_location,
+            key="ad_location",
             help="동·리 및 지번 표기 필수 (아파트 동·호수는 생략 가능)"
         )
 
@@ -946,9 +942,9 @@ with tab_ad:
         """, unsafe_allow_html=True)
         c_ar1, c_ar2 = st.columns(2)
         with c_ar1:
-            st.session_state.ad_area_supply = st.text_input("공급면적 (㎡)", value=st.session_state.ad_area_supply)
+            st.text_input("공급면적 (㎡)", key="ad_area_supply")
         with c_ar2:
-            st.session_state.ad_area_exclusive = st.text_input("전용면적 (㎡)", value=st.session_state.ad_area_exclusive)
+            st.text_input("전용면적 (㎡)", key="ad_area_exclusive")
         
         # 실시간 면적 및 전용률 계산 프리뷰 (법정계량단위 ㎡ 단독 표기, 평형 제외)
         area_sum_m2, _ = format_area_text(st.session_state.ad_area_supply, st.session_state.ad_area_exclusive)
@@ -965,9 +961,9 @@ with tab_ad:
             <span class="spec-badge badge-green">저/중/고 표기가능</span>
         </div>
         """, unsafe_allow_html=True)
-        st.session_state.ad_floor_info = st.text_input(
+        st.text_input(
             "해당층 / 총층",
-            value=st.session_state.ad_floor_info,
+            key="ad_floor_info",
             help="예: 25 / 36층 (아파트의 경우 의뢰인 요청 시 저/중/고층 대체 가능)"
         )
 
@@ -978,9 +974,9 @@ with tab_ad:
             <span class="spec-badge badge-gray">대장 기준</span>
         </div>
         """, unsafe_allow_html=True)
-        st.session_state.ad_room_bath = st.text_input(
+        st.text_input(
             "방수 / 욕실수",
-            value=st.session_state.ad_room_bath,
+            key="ad_room_bath",
             help="예: 3 / 2개"
         )
 
@@ -993,11 +989,11 @@ with tab_ad:
         """, unsafe_allow_html=True)
         c_mf1, c_mf2 = st.columns([1, 1.4])
         with c_mf1:
-            st.session_state.ad_maintenance_fee = st.text_input("월 관리비", value=st.session_state.ad_maintenance_fee, placeholder="예: 월 18만 원")
+            st.text_input("월 관리비", key="ad_maintenance_fee", placeholder="예: 월 18만 원")
         with c_mf2:
-            st.session_state.ad_maintenance_detail = st.text_input(
+            st.text_input(
                 "세부내역 (알아보기 쉬운 분리 기재)",
-                value=st.session_state.ad_maintenance_detail,
+                key="ad_maintenance_detail",
                 placeholder="예: 공용관리비 약 13만 원 (수도·전기·가스 실사용량 별도 부과)",
                 help="공용관리비와 개별 사용량(전기/수도/가스)을 명확히 구분하여 기재"
             )
@@ -1012,14 +1008,15 @@ with tab_ad:
         c_pr1, c_pr2 = st.columns([1, 1.4])
         with c_pr1:
             trade_opts_ad = ["매매", "전세", "월세", "단기임대"]
-            cur_trade_idx = trade_opts_ad.index(st.session_state.ad_trade_type) if st.session_state.ad_trade_type in trade_opts_ad else 0
-            st.session_state.ad_trade_type = st.selectbox("거래 형태", trade_opts_ad, index=cur_trade_idx)
+            if st.session_state.ad_trade_type not in trade_opts_ad:
+                st.session_state.ad_trade_type = trade_opts_ad[0]
+            st.selectbox("거래 형태", trade_opts_ad, key="ad_trade_type")
         with c_pr2:
-            st.session_state.ad_price_text = st.text_input("거래 가격", value=st.session_state.ad_price_text)
+            st.text_input("거래 가격", key="ad_price_text")
         
-        st.session_state.ad_deposit_sub = st.text_input(
+        st.text_input(
             "기보증금 / 월세 승계액",
-            value=st.session_state.ad_deposit_sub,
+            key="ad_deposit_sub",
             help="기보증금 또는 월세가 있는 경우 작성 (없으면 '- / -')"
         )
 
@@ -1030,34 +1027,37 @@ with tab_ad:
             <span class="spec-badge badge-green">주실(거실) 기준</span>
         </div>
         """, unsafe_allow_html=True)
-        st.session_state.ad_direction = st.text_input("방향", value=st.session_state.ad_direction, help="예: 남동향 (거실 기준)")
+        st.text_input("방향", key="ad_direction", help="예: 남동향 (거실 기준)")
 
         # 9. 현관구조 & 10. 난방
         c_et1, c_et2 = st.columns(2)
         with c_et1:
             st.markdown("<b>09. 현관구조</b>", unsafe_allow_html=True)
-            st.session_state.ad_entrance_type = st.selectbox("현관구조", ["계단식", "복도식", "복합식"], index=["계단식", "복도식", "복합식"].index(st.session_state.ad_entrance_type) if st.session_state.ad_entrance_type in ["계단식", "복도식", "복합식"] else 0)
+            entrance_opts = ["계단식", "복도식", "복합식"]
+            if st.session_state.ad_entrance_type not in entrance_opts:
+                st.session_state.ad_entrance_type = entrance_opts[0]
+            st.selectbox("현관구조", entrance_opts, key="ad_entrance_type")
         with c_et2:
             st.markdown("<b>10. 난방(방식/연료)</b>", unsafe_allow_html=True)
-            st.session_state.ad_heating = st.text_input("난방방식/연료", value=st.session_state.ad_heating)
+            st.text_input("난방방식/연료", key="ad_heating")
 
         # 11. 입주가능일 & 12. 총주차대수
         c_mv1, c_mv2 = st.columns(2)
         with c_mv1:
             st.markdown("<b>11. 입주가능일</b>", unsafe_allow_html=True)
-            st.session_state.ad_move_in_date = st.text_input("입주가능일", value=st.session_state.ad_move_in_date)
+            st.text_input("입주가능일", key="ad_move_in_date")
         with c_mv2:
             st.markdown("<b>12. 총주차대수</b>", unsafe_allow_html=True)
-            st.session_state.ad_parking = st.text_input("총주차대수", value=st.session_state.ad_parking)
+            st.text_input("총주차대수", key="ad_parking")
 
         # 13. 해당면적 세대수 & 14. 건축물 용도
         c_hs1, c_hs2 = st.columns(2)
         with c_hs1:
             st.markdown("<b>13. 해당면적 세대수</b>", unsafe_allow_html=True)
-            st.session_state.ad_households = st.text_input("해당면적 세대수", value=st.session_state.ad_households)
+            st.text_input("해당면적 세대수", key="ad_households")
         with c_hs2:
             st.markdown("<b>14. 건축물 용도</b>", unsafe_allow_html=True)
-            st.session_state.ad_building_use = st.text_input("건축물 용도", value=st.session_state.ad_building_use)
+            st.text_input("건축물 용도", key="ad_building_use")
 
         # 15. 사용승인일
         st.markdown("""
@@ -1066,7 +1066,7 @@ with tab_ad:
             <span class="spec-badge badge-red">대장 기준 필수</span>
         </div>
         """, unsafe_allow_html=True)
-        st.session_state.ad_approval_date = st.text_input("사용승인일", value=st.session_state.ad_approval_date, help="건축물대장 상 사용승인일 기재 필수")
+        st.text_input("사용승인일", key="ad_approval_date", help="건축물대장 상 사용승인일 기재 필수")
 
         # 16. 중개사무소 정보 (ON/OFF 선택 및 소공 지원)
         st.markdown("""
@@ -1076,28 +1076,28 @@ with tab_ad:
         </div>
         """, unsafe_allow_html=True)
 
-        st.session_state.ad_include_office_info = st.checkbox(
+        st.checkbox(
             "✅ 중개사무소 정보 포함하기 (텍스트 및 카드 이미지에 반영)",
-            value=st.session_state.ad_include_office_info,
+            key="ad_include_office_info",
             help="체크 해제 시 중개사무소 정보를 제외하고 순수 매물 정보(01~15번 항목)만 출력합니다."
         )
 
         if st.session_state.ad_include_office_info:
             c_of1, c_of2 = st.columns(2)
             with c_of1:
-                st.session_state.ad_office_name = st.text_input("중개사무소 명칭 (상호)", value=st.session_state.ad_office_name)
-                st.session_state.ad_office_owner = st.text_input("대표 공인중개사 성명", value=st.session_state.ad_office_owner)
-                st.session_state.ad_office_phone = st.text_input("사무실 연락처", value=st.session_state.ad_office_phone)
+                st.text_input("중개사무소 명칭 (상호)", key="ad_office_name")
+                st.text_input("대표 공인중개사 성명", key="ad_office_owner")
+                st.text_input("사무실 연락처", key="ad_office_phone")
             with c_of2:
-                st.session_state.ad_office_reg_no = st.text_input("중개등록번호", value=st.session_state.ad_office_reg_no)
-                st.session_state.ad_office_address = st.text_input("사무소 소재지", value=st.session_state.ad_office_address)
+                st.text_input("중개등록번호", key="ad_office_reg_no")
+                st.text_input("사무소 소재지", key="ad_office_address")
 
             st.markdown("<b>👤 소속공인중개사(소공) 담당자 정보 (선택 입력)</b>", unsafe_allow_html=True)
             c_as1, c_as2 = st.columns(2)
             with c_as1:
-                st.session_state.ad_assistant_name = st.text_input("소공/담당자 성명", value=st.session_state.ad_assistant_name, placeholder="예: 김소공 소속공인중개사")
+                st.text_input("소공/담당자 성명", key="ad_assistant_name", placeholder="예: 김소공 소속공인중개사")
             with c_as2:
-                st.session_state.ad_assistant_phone = st.text_input("담당자 직통 연락처", value=st.session_state.ad_assistant_phone, placeholder="예: 010-1234-5678")
+                st.text_input("담당자 직통 연락처", key="ad_assistant_phone", placeholder="예: 010-1234-5678")
         else:
             st.info("ℹ️ 중개사무소 정보가 제외되었습니다. 순수 매물 스펙(01~15번 항목)만 출력됩니다. (소공 및 협력 중개사 활용 가능)")
 
