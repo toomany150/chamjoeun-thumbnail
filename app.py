@@ -6,13 +6,19 @@ import base64
 import importlib
 import thumbnail_generator
 import property_ad_spec
+import commercial_ad_spec
 import document_parser
 import naver_crawler
 importlib.reload(thumbnail_generator)
 importlib.reload(property_ad_spec)
+importlib.reload(commercial_ad_spec)
 importlib.reload(document_parser)
 importlib.reload(naver_crawler)
-from thumbnail_generator import render_thumbnail
+from thumbnail_generator import (
+    render_thumbnail,
+    render_commercial_lease_thumbnail,
+    render_commercial_sale_thumbnail
+)
 from property_ad_spec import (
     DEFAULT_SPEC,
     SPEC_ITEMS_META,
@@ -22,6 +28,16 @@ from property_ad_spec import (
     generate_clipboard_text,
     generate_naver_ad_guide_text,
     render_spec_table_image
+)
+from commercial_ad_spec import (
+    DEFAULT_COMMERCIAL_SPEC_LEASE,
+    DEFAULT_COMMERCIAL_SPEC_SALE,
+    format_commercial_area_text,
+    get_commercial_spec_table_data,
+    generate_commercial_blog_html_table,
+    generate_commercial_clipboard_text,
+    generate_commercial_naver_ad_guide_text,
+    render_commercial_spec_table_image
 )
 from document_parser import (
     parse_official_document,
@@ -374,6 +390,88 @@ def apply_preset(p_type):
         st.session_state.ad_building_use = "업무시설 (오피스텔)"
         st.session_state.ad_approval_date = "2021년 05월 12일"
 
+# 3. 상가 썸네일 관련 상태 (임차 & 매매)
+if "comm_thumb_mode" not in st.session_state:
+    st.session_state.comm_thumb_mode = "🔑 상가 임차 (월세)"
+
+# 임차 썸네일 세션 상태
+if "comm_lease_top_badge" not in st.session_state:
+    st.session_state.comm_lease_top_badge = "사상역 초역세권 · 무권리 추천매물"
+if "comm_lease_cp_top" not in st.session_state:
+    st.session_state.comm_lease_cp_top = "유동인구 1등! 대로변 1층"
+if "comm_lease_main_title" not in st.session_state:
+    st.session_state.comm_lease_main_title = "코너 상가 임차"
+if "comm_lease_cp_bot" not in st.session_state:
+    st.session_state.comm_lease_cp_bot = "가시성 최고! 즉시 입점 가능"
+if "comm_lease_pin_bubble" not in st.session_state:
+    st.session_state.comm_lease_pin_bubble = "목 좋은 자리!"
+if "comm_lease_show_pin" not in st.session_state:
+    st.session_state.comm_lease_show_pin = True
+if "comm_lease_spec1" not in st.session_state:
+    st.session_state.comm_lease_spec1 = "전용 25평 | 보증금 3,000만 / 월 180만"
+if "comm_lease_spec2" not in st.session_state:
+    st.session_state.comm_lease_spec2 = "추천 : 카페 · 음식점 · 판매점"
+if "comm_lease_show_footer" not in st.session_state:
+    st.session_state.comm_lease_show_footer = True
+if "comm_lease_office" not in st.session_state:
+    st.session_state.comm_lease_office = "참좋은 공인중개사사무소"
+if "comm_lease_broker" not in st.session_state:
+    st.session_state.comm_lease_broker = "황금터잡이 신소장"
+
+# 매매 썸네일 세션 상태
+if "comm_sale_top_left" not in st.session_state:
+    st.session_state.comm_sale_top_left = "사상 핵심상권 매매"
+if "comm_sale_top_right" not in st.session_state:
+    st.session_state.comm_sale_top_right = "우량 임차인 성업중"
+if "comm_sale_show_chart" not in st.session_state:
+    st.session_state.comm_sale_show_chart = True
+if "comm_sale_main_hl" not in st.session_state:
+    st.session_state.comm_sale_main_hl = "확정 수익률 6.8%"
+if "comm_sale_main_sub" not in st.session_state:
+    st.session_state.comm_sale_main_sub = "안정적인 알짜 상가 매매"
+if "comm_sale_price_spec" not in st.session_state:
+    st.session_state.comm_sale_price_spec = "매매가 15억 | 보증금 8천 / 월수익 650만 | 실투자금 6억"
+if "comm_sale_show_footer" not in st.session_state:
+    st.session_state.comm_sale_show_footer = True
+if "comm_sale_office" not in st.session_state:
+    st.session_state.comm_sale_office = "참좋은 공인중개사사무소"
+if "comm_sale_broker" not in st.session_state:
+    st.session_state.comm_sale_broker = "황금터잡이 신소장"
+
+# 4. 상가 중개대상물 표시 항목 상태 (임차 & 매매)
+if "comm_ad_mode" not in st.session_state:
+    st.session_state.comm_ad_mode = "🔑 상가 임대차 (월세)"
+for k, v in DEFAULT_COMMERCIAL_SPEC_LEASE.items():
+    if f"comm_ad_{k}" not in st.session_state:
+        st.session_state[f"comm_ad_{k}"] = v
+for k, v in DEFAULT_COMMERCIAL_SPEC_SALE.items():
+    if f"comm_ad_{k}" not in st.session_state:
+        st.session_state[f"comm_ad_{k}"] = v
+
+def apply_comm_preset(p_type):
+    if p_type == "lease":
+        st.session_state.comm_thumb_mode = "🔑 상가 임차 (월세)"
+        st.session_state.comm_lease_top_badge = "사상역 초역세권 · 무권리 추천매물"
+        st.session_state.comm_lease_cp_top = "유동인구 1등! 대로변 1층"
+        st.session_state.comm_lease_main_title = "코너 상가 임차"
+        st.session_state.comm_lease_cp_bot = "가시성 최고! 즉시 입점 가능"
+        st.session_state.comm_lease_pin_bubble = "목 좋은 자리!"
+        st.session_state.comm_lease_show_pin = True
+        st.session_state.comm_lease_spec1 = "전용 25평 | 보증금 3,000만 / 월 180만"
+        st.session_state.comm_lease_spec2 = "추천 : 카페 · 음식점 · 판매점"
+        for k, v in DEFAULT_COMMERCIAL_SPEC_LEASE.items():
+            st.session_state[f"comm_ad_{k}"] = v
+    elif p_type == "sale":
+        st.session_state.comm_thumb_mode = "💰 상가 매매 (수익형)"
+        st.session_state.comm_sale_top_left = "사상 핵심상권 매매"
+        st.session_state.comm_sale_top_right = "우량 임차인 성업중"
+        st.session_state.comm_sale_show_chart = True
+        st.session_state.comm_sale_main_hl = "확정 수익률 6.8%"
+        st.session_state.comm_sale_main_sub = "안정적인 알짜 상가 매매"
+        st.session_state.comm_sale_price_spec = "매매가 15억 | 보증금 8천 / 월수익 650만 | 실투자금 6억"
+        for k, v in DEFAULT_COMMERCIAL_SPEC_SALE.items():
+            st.session_state[f"comm_ad_{k}"] = v
+
 def apply_crawled_or_doc_data(data: dict):
     """크롤링 데이터 또는 공적서류 분석 데이터를 16대 점검항목 및 썸네일 세션에 일괄 주입합니다."""
     if not data:
@@ -446,15 +544,17 @@ with col_h2:
 # ----------------------------------------------------
 # 🌟 메인 2대 탭 구성 (1. 썸네일 생성 / 2. 네이버광고 점검표)
 # ----------------------------------------------------
-tab_thumb, tab_ad = st.tabs([
-    "🎨 1단계: 블로그 썸네일 생성기 (1080x1080)",
-    "📝 2단계: 네이버 광고 점검표 & 대상중개물 표시"
+tab_apt_thumb, tab_comm_thumb, tab_apt_ad, tab_comm_ad = st.tabs([
+    "🏢 ① 아파트 썸네일",
+    "🏬 ② 상가 썸네일 (임차·매매)",
+    "📝 ③ 아파트 중개대상물 표시",
+    "🏪 ④ 상가 중개대상물 표시 (임차·매매)"
 ])
 
 # ====================================================
-# [ 탭 1 ] 블로그 썸네일 생성기
+# [ 탭 1 ] 아파트 블로그 썸네일 생성기
 # ====================================================
-with tab_thumb:
+with tab_apt_thumb:
     col_t_left, col_t_right = st.columns([1.25, 0.75])
     
     with col_t_left:
@@ -603,14 +703,176 @@ with tab_thumb:
         st.markdown(render_direct_download_button(img_bytes, download_filename, "💾 [즉시 다운로드] 브라우저 원클릭 파일 저장"), unsafe_allow_html=True)
         st.caption("📱 스마트폰에서는 위 이미지를 1초간 길게 누르시면 '사진 앱에 저장'도 가능합니다.")
 
-        st.info("💡 썸네일을 만드셨다면, 상단의 **'2단계: 네이버 광고 점검표'** 탭을 클릭하여 네이버 부동산 광고 및 블로그 본문 서식을 바로 확인하세요!")
+        st.info("💡 아파트 썸네일을 만드셨다면, 상단의 **'📝 ③ 아파트 중개대상물 표시'** 탭을 클릭하여 네이버 부동산 광고 및 블로그 본문 서식을 바로 확인하세요!")
 
 
 # ====================================================
-# [ 탭 2 ] 네이버 광고 & 대상중개물 표시 생성기
+# [ 탭 2 ] 상가 썸네일 생성기 (임차 & 매매 2대 모드)
+# ====================================================
+with tab_comm_thumb:
+    col_ct_left, col_ct_right = st.columns([1.25, 0.75])
+    
+    with col_ct_left:
+        # 상가 모드 선택 (임차 vs 매매)
+        c_mode_opts = ["🔑 상가 임차 (월세)", "💰 상가 매매 (수익형)"]
+        selected_comm_mode = st.radio(
+            "상가 매물 유형 선택",
+            options=c_mode_opts,
+            index=0 if "임차" in st.session_state.comm_thumb_mode else 1,
+            horizontal=True,
+            key="comm_thumb_mode_selector"
+        )
+        st.session_state.comm_thumb_mode = selected_comm_mode
+        is_sale_mode = "매매" in selected_comm_mode
+
+        # 빠른 추천 프리셋
+        col_cpr1, col_cpr2, col_cpr3 = st.columns([1, 1, 1])
+        with col_cpr1:
+            if st.button("⚡ 사상역 코너 상가 임차 예시", use_container_width=True):
+                apply_comm_preset("lease")
+                st.rerun()
+        with col_cpr2:
+            if st.button("⚡ 사상 핵심상권 상가 매매 예시", use_container_width=True):
+                apply_comm_preset("sale")
+                st.rerun()
+        with col_cpr3:
+            st.caption("👈 버튼을 누르면 추천 예시가 즉시 채워집니다.")
+
+        # 내가 찍어온 사진 업로드
+        uploaded_comm_bg = st.file_uploader(
+            "📸 내가 찍어온 현장 상가 사진 업로드 (스마트폰 촬영 사진 즉시 지원)",
+            type=["jpg", "jpeg", "png", "webp"],
+            key="comm_bg_uploader_key"
+        )
+
+        with st.expander("🔍 사진 위치 / 확대 미세 조정", expanded=False):
+            cz1, cz2, cz3 = st.columns(3)
+            with cz1:
+                comm_bg_zoom = st.slider("사진 확대/축소", 0.6, 2.0, 1.0, 0.05, key="comm_bg_zoom_slider")
+            with cz2:
+                comm_bg_offset_x = st.slider("사진 좌우 이동 (px)", -450, 450, 0, 10, key="comm_bg_offset_x_slider")
+            with cz3:
+                comm_bg_offset_y = st.slider("사진 상하 이동 (px)", -450, 450, 0, 10, key="comm_bg_offset_y_slider")
+
+        # 실시간 고화질 렌더링
+        with st.spinner("고화질 상가 썸네일 렌더링 중..."):
+            if not is_sale_mode:
+                comm_thumb_img = render_commercial_lease_thumbnail(
+                    bg_image=uploaded_comm_bg,
+                    top_badge_text=st.session_state.comm_lease_top_badge,
+                    catchphrase_top=st.session_state.comm_lease_cp_top,
+                    main_title=st.session_state.comm_lease_main_title,
+                    catchphrase_bot=st.session_state.comm_lease_cp_bot,
+                    pin_bubble_text=st.session_state.comm_lease_pin_bubble,
+                    show_pin=st.session_state.comm_lease_show_pin,
+                    spec_line1=st.session_state.comm_lease_spec1,
+                    spec_line2=st.session_state.comm_lease_spec2,
+                    bg_offset_x=comm_bg_offset_x,
+                    bg_offset_y=comm_bg_offset_y,
+                    bg_zoom=comm_bg_zoom,
+                    show_footer=st.session_state.comm_lease_show_footer,
+                    office_name=st.session_state.comm_lease_office,
+                    broker_title=st.session_state.comm_lease_broker
+                )
+            else:
+                comm_thumb_img = render_commercial_sale_thumbnail(
+                    bg_image=uploaded_comm_bg,
+                    top_badge_left=st.session_state.comm_sale_top_left,
+                    top_badge_right=st.session_state.comm_sale_top_right,
+                    show_chart_icon=st.session_state.comm_sale_show_chart,
+                    main_highlight_title=st.session_state.comm_sale_main_hl,
+                    main_sub_title=st.session_state.comm_sale_main_sub,
+                    price_spec_text=st.session_state.comm_sale_price_spec,
+                    bg_offset_x=comm_bg_offset_x,
+                    bg_offset_y=comm_bg_offset_y,
+                    bg_zoom=comm_bg_zoom,
+                    show_footer=st.session_state.comm_sale_show_footer,
+                    office_name=st.session_state.comm_sale_office,
+                    broker_title=st.session_state.comm_sale_broker
+                )
+
+        caption_title = "실시간 완성 미리보기: 상가 임차 (1080 x 1080 px)" if not is_sale_mode else "실시간 완성 미리보기: 상가 매매 (1080 x 1080 px)"
+        st.image(comm_thumb_img, caption=caption_title, use_container_width=True)
+
+    with col_ct_right:
+        if not is_sale_mode:
+            st.markdown("### 🛠️ 상가 임차 텍스트 수정")
+            st.text_input("🏷️ 상단 캡슐 뱃지 문구", key="comm_lease_top_badge")
+            st.text_input("📢 상단 강조 카피 (1행)", key="comm_lease_cp_top")
+            st.text_input("🏬 메인 타이틀 (골드 3D)", key="comm_lease_main_title")
+            st.text_input("✨ 하단 서브 카피 (2행)", key="comm_lease_cp_bot")
+            
+            st.markdown("#### 📍 중앙 골드 핀 & 말풍선")
+            st.checkbox("3D 골드 위치 핀 및 말풍선 표시", key="comm_lease_show_pin")
+            if st.session_state.comm_lease_show_pin:
+                st.text_input("말풍선 문구", key="comm_lease_pin_bubble")
+
+            st.markdown("#### 📋 다크 글래스모피즘 스펙 박스")
+            st.text_input("스펙 1행 (전용면적 | 보증금/월세)", key="comm_lease_spec1")
+            st.text_input("스펙 2행 (추천 업종 / 특징)", key="comm_lease_spec2")
+
+            st.markdown("#### 🏢 하단 띠지 정보")
+            st.checkbox("하단 띠지 표시", key="comm_lease_show_footer")
+            if st.session_state.comm_lease_show_footer:
+                c_of1, c_of2 = st.columns(2)
+                with c_of1:
+                    st.text_input("사무소 상호", key="comm_lease_office")
+                with c_of2:
+                    st.text_input("소장명 / 직책", key="comm_lease_broker")
+        else:
+            st.markdown("### 🛠️ 상가 매매 텍스트 수정")
+            c_sb1, c_sb2 = st.columns(2)
+            with c_sb1:
+                st.text_input("🏷️ 상단 좌측 골드 뱃지", key="comm_sale_top_left")
+            with c_sb2:
+                st.text_input("🏷️ 상단 좌측 다크 뱃지", key="comm_sale_top_right")
+
+            st.checkbox("상단 우측 골드 차트/빌딩 아이콘 표시", key="comm_sale_show_chart")
+
+            st.text_input("💰 메인 하이라이트 (수익률 등 골드 대형)", key="comm_sale_main_hl")
+            st.text_input("🏬 메인 서브 타이틀 (화이트 볼드)", key="comm_sale_main_sub")
+
+            st.markdown("#### 📊 하단 스펙 인포 바")
+            st.text_input("금액 및 투자 스펙 요약", key="comm_sale_price_spec")
+
+            st.markdown("#### 🏢 하단 띠지 정보")
+            st.checkbox("하단 띠지 표시", key="comm_sale_show_footer")
+            if st.session_state.comm_sale_show_footer:
+                c_of1, c_of2 = st.columns(2)
+                with c_of1:
+                    st.text_input("사무소 상호", key="comm_sale_office")
+                with c_of2:
+                    st.text_input("소장명 / 직책", key="comm_sale_broker")
+
+        # 다운로드 버튼
+        img_byte_arr = io.BytesIO()
+        comm_thumb_img.save(img_byte_arr, format="PNG", quality=98)
+        img_bytes = img_byte_arr.getvalue()
+
+        mode_tag = "상가임차" if not is_sale_mode else "상가매매"
+        comm_clean_title = re.sub(r'[^\w\s-]', '', (st.session_state.comm_lease_main_title if not is_sale_mode else st.session_state.comm_sale_main_sub)).strip().replace(" ", "_")
+        comm_filename = f"{mode_tag}_{comm_clean_title}.png"
+
+        st.download_button(
+            label=f"📥 1080x1080 {mode_tag} 썸네일 저장 (기본 다운로드)",
+            data=img_bytes,
+            file_name=comm_filename,
+            mime="image/png",
+            key="btn_comm_thumb_download",
+            use_container_width=True
+        )
+
+        st.markdown(render_direct_download_button(img_bytes, comm_filename, "💾 [즉시 다운로드] 브라우저 원클릭 파일 저장", bg_color="#DAA844"), unsafe_allow_html=True)
+        st.caption("📱 스마트폰에서는 위 이미지를 1초간 길게 누르시면 '사진 앱에 저장'도 가능합니다.")
+
+        st.info("💡 상가 썸네일을 만드셨다면, 상단의 **'🏪 ④ 상가 중개대상물 표시'** 탭을 클릭하여 상가 전용 네이버 광고 체크리스트 및 블로그 서식을 확인하세요!")
+
+
+# ====================================================
+# [ 탭 3 ] 아파트 네이버 광고 & 대상중개물 표시 생성기
 # (신소장님 지정 16개 순서 완벽 적용)
 # ====================================================
-with tab_ad:
+with tab_apt_ad:
     st.markdown("""
     <div style="background-color: #F8F9FB; border-left: 4px solid #F48A26; padding: 12px 18px; border-radius: 6px; margin-bottom: 20px;">
         <span style="font-size: 15px; font-weight: 700; color: #1E2022;">
@@ -1170,3 +1432,299 @@ with tab_ad:
 
             st.markdown(render_direct_download_button(card_bytes, card_filename, "💾 [원클릭 즉시 다운로드] 1080px 표시 카드 저장", "#1A202C"), unsafe_allow_html=True)
             st.caption("스마트폰에서는 위 버튼을 누르시면 사진첩에 바로 다운로드 저장됩니다.")
+
+
+# ====================================================
+# [ 탭 4 ] 상가 중개대상물 표시 생성기 (임차 & 매매 전용)
+# ====================================================
+with tab_comm_ad:
+    st.markdown("""
+    <div style="background-color: #181C24; border-left: 4px solid #DAA844; padding: 14px 18px; border-radius: 6px; margin-bottom: 20px; color: #FFFFFF;">
+        <span style="font-size: 16px; font-weight: 700; color: #DAA844;">
+            🏪 상가(근린생활시설/점포/건물) 인터넷 표시·광고 점검표 & 블로그 서식 생성기
+        </span><br/>
+        <span style="font-size: 13px; color: #CBD5E0;">
+            주출입구 방향, 화장실 구분, 권리금, 추천업종, 전기/설비, 매매 시 연간 수익률 분석 등 상가 실무에 특화된 법정 표시사항을 완벽하게 생성합니다.
+        </span>
+    </div>
+    """, unsafe_allow_html=True)
+
+    # 1. 거래 형태 라디오 (임대차 vs 매매)
+    comm_ad_mode_select = st.radio(
+        "상가 거래 형태 선택",
+        options=["🔑 상가 임대차 (월세)", "💰 상가 매매 (수익형)"],
+        index=0 if "임대차" in st.session_state.comm_ad_mode or "월세" in st.session_state.comm_ad_mode else 1,
+        horizontal=True,
+        key="comm_ad_mode_radio_selector"
+    )
+    st.session_state.comm_ad_mode = comm_ad_mode_select
+    is_comm_ad_sale = "매매" in comm_ad_mode_select
+
+    # 2. 퀵 액션 버튼들
+    c_btn1, c_btn2, c_btn3 = st.columns([1.2, 1, 1])
+    with c_btn1:
+        if st.button("🔄 상가 썸네일 입력값 동기화", use_container_width=True, help="② 상가 썸네일 탭에 입력한 타이틀과 스펙을 점검표로 가져옵니다."):
+            if not is_comm_ad_sale:
+                st.session_state.comm_ad_trade_type = "월세"
+                st.session_state.comm_ad_recommended_use = st.session_state.comm_lease_spec2.replace("추천 :", "").strip()
+                if "|" in st.session_state.comm_lease_spec1:
+                    parts = st.session_state.comm_lease_spec1.split("|")
+                    st.session_state.comm_ad_price_text = parts[1].strip()
+            else:
+                st.session_state.comm_ad_trade_type = "매매"
+                st.session_state.comm_ad_yield_rate = st.session_state.comm_sale_main_hl
+                st.session_state.comm_ad_deposit_rent_summary = st.session_state.comm_sale_price_spec
+            st.success("상가 썸네일 입력값이 점검표에 동기화되었습니다!")
+            st.rerun()
+    with c_btn2:
+        if st.button("📋 추천 상가 예시 복원", use_container_width=True):
+            defaults = DEFAULT_COMMERCIAL_SPEC_SALE if is_comm_ad_sale else DEFAULT_COMMERCIAL_SPEC_LEASE
+            for k, v in defaults.items():
+                st.session_state[f"comm_ad_{k}"] = v
+            st.success("기본 추천 예시로 복원되었습니다.")
+            st.rerun()
+    with c_btn3:
+        if st.button("✨ 새 상가 빈 양식 만들기", use_container_width=True):
+            empty_keys = [
+                "location", "area_exclusive", "area_contract", "floor_info", "restroom",
+                "maintenance_fee", "maintenance_detail", "price_text", "premium_fee",
+                "deposit_rent_summary", "loan_amount", "actual_investment", "yield_rate",
+                "direction", "move_in_date", "parking", "current_use", "recommended_use",
+                "building_use", "approval_date", "facility_info"
+            ]
+            for k in empty_keys:
+                st.session_state[f"comm_ad_{k}"] = ""
+            st.info("입력칸이 초기화되었습니다.")
+            st.rerun()
+
+    # 3. 좌우 분할 (입력 / 출력)
+    col_cad_in, col_cad_out = st.columns([1.1, 1.2])
+
+    with col_cad_in:
+        st.markdown("### 📋 상가 필수 점검항목 입력 및 수정")
+
+        # 01. 소재지
+        st.markdown("""
+        <div style="display:flex; justify-content:space-between; align-items:center;">
+            <b>01. 소재지</b>
+            <span class="spec-badge badge-red">동·리·지번 필수</span>
+        </div>
+        """, unsafe_allow_html=True)
+        st.text_input("소재지 주소", key="comm_ad_location")
+
+        # 02. 면적 (전용/계약)
+        st.markdown("""
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-top: 10px;">
+            <b>02. 면적 (전용 / 계약)</b>
+            <span class="spec-badge badge-orange">법정단위 ㎡ 표기 (평수 제외)</span>
+        </div>
+        """, unsafe_allow_html=True)
+        car1, car2 = st.columns(2)
+        with car1:
+            st.text_input("전용면적 (㎡)", key="comm_ad_area_exclusive")
+        with car2:
+            st.text_input("계약/연면적 (㎡)", key="comm_ad_area_contract")
+
+        area_calc_m2 = format_commercial_area_text(st.session_state.comm_ad_area_exclusive, st.session_state.comm_ad_area_contract)
+        st.markdown(f"""
+        <div style="background:#F1F3F5; padding:6px 12px; border-radius:6px; font-size:13px; color:#495057; margin-bottom:8px;">
+            📐 <b>계산 결과:</b> {area_calc_m2}
+        </div>
+        """, unsafe_allow_html=True)
+
+        # 03. 해당층 / 총층수
+        st.markdown("<b>03. 해당층 / 총층수</b>", unsafe_allow_html=True)
+        st.text_input("해당층 / 총층수", key="comm_ad_floor_info", placeholder="예: 1층 / 지상 5층 (지하 1층)")
+
+        # 04. 화장실 구분 (상가 필수)
+        st.markdown("""
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-top: 10px;">
+            <b>04. 화장실 구분</b>
+            <span class="spec-badge badge-green">상가 특화</span>
+        </div>
+        """, unsafe_allow_html=True)
+        restroom_opts = ["내부 남녀구분 화장실 완비", "내부 단독 화장실", "각 층별 남녀 분리 화장실 (외부 공용)", "외부 공용 화장실"]
+        if st.session_state.comm_ad_restroom not in restroom_opts:
+            restroom_opts.append(st.session_state.comm_ad_restroom)
+        st.selectbox("화장실 구분", restroom_opts, key="comm_ad_restroom")
+
+        # 05. 관리비 & 세부내역
+        st.markdown("""
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-top: 10px;">
+            <b>05. 관리비 & 세부내역</b>
+            <span class="spec-badge badge-red">월 10만원↑ 세부내역 필수</span>
+        </div>
+        """, unsafe_allow_html=True)
+        cmf1, cmf2 = st.columns([1, 1.4])
+        with cmf1:
+            st.text_input("월 관리비", key="comm_ad_maintenance_fee", placeholder="예: 월 15만 원 또는 자체관리")
+        with cmf2:
+            st.text_input("세부내역", key="comm_ad_maintenance_detail", placeholder="예: 공용청소, 승강기유지비 등")
+
+        # 06. 거래 형태 & 07. 거래 가격
+        st.markdown("<b>06. 거래 형태 & 07. 가격</b>", unsafe_allow_html=True)
+        cpr1, cpr2 = st.columns([1, 1.4])
+        with cpr1:
+            c_trades = ["월세", "전세", "매매"] if not is_comm_ad_sale else ["매매", "월세"]
+            if st.session_state.comm_ad_trade_type not in c_trades:
+                c_trades.append(st.session_state.comm_ad_trade_type)
+            st.selectbox("거래 형태", c_trades, key="comm_ad_trade_type")
+        with cpr2:
+            st.text_input("거래 가격", key="comm_ad_price_text", placeholder="예: 보증금 3,000만 / 월 180만 또는 15억 원")
+
+        # 08. [임차] 권리금 / [매매] 수익률 & 투자금 분석
+        if not is_comm_ad_sale:
+            st.markdown("""
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-top: 10px;">
+                <b>08. 권리금 유무</b>
+                <span class="spec-badge badge-orange">임차 필수</span>
+            </div>
+            """, unsafe_allow_html=True)
+            st.text_input("권리금 정보", key="comm_ad_premium_fee", placeholder="예: 무권리 (권리금 없음) 또는 시설권리금 협의")
+        else:
+            st.markdown("""
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-top: 10px;">
+                <b>08. 수익률 및 투자금 분석</b>
+                <span class="spec-badge badge-gold">수익형 매매 핵심</span>
+            </div>
+            """, unsafe_allow_html=True)
+            st.text_input("기임대차 현황 (보증금/월세)", key="comm_ad_deposit_rent_summary", placeholder="예: 보증금 8,000만 원 / 월 650만 원")
+            cs_inv1, cs_inv2, cs_inv3 = st.columns(3)
+            with cs_inv1:
+                st.text_input("융자금(대출)", key="comm_ad_loan_amount", placeholder="예: 6억 원")
+            with cs_inv2:
+                st.text_input("실투자금", key="comm_ad_actual_investment", placeholder="예: 8억 2,000만 원")
+            with cs_inv3:
+                st.text_input("연간 수익률", key="comm_ad_yield_rate", placeholder="예: 확정 수익률 연 6.8%")
+
+        # 09. 방향 (주출입구 기준)
+        st.markdown("""
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-top: 10px;">
+            <b>09. 방향 (주된 출입구 기준)</b>
+            <span class="spec-badge badge-green">출입구 기준</span>
+        </div>
+        """, unsafe_allow_html=True)
+        st.text_input("방향", key="comm_ad_direction", placeholder="예: 남서향 (주된 출입구 기준)")
+
+        # 10. 입점(입주)가능일 & 11. 총주차대수
+        cmv1, cmv2 = st.columns(2)
+        with cmv1:
+            st.markdown("<b>10. 입점(입주)가능일</b>", unsafe_allow_html=True)
+            st.text_input("입점가능일", key="comm_ad_move_in_date", placeholder="예: 즉시입점 협의가능")
+        with cmv2:
+            st.markdown("<b>11. 총주차대수</b>", unsafe_allow_html=True)
+            st.text_input("총주차대수", key="comm_ad_parking", placeholder="예: 총 20대 (점포 1대 무료)")
+
+        # 12. 현재 업종 & 추천 업종
+        st.markdown("<b>12. 현재 및 추천 업종</b>", unsafe_allow_html=True)
+        cus1, cus2 = st.columns(2)
+        with cus1:
+            st.text_input("현재 상태/업종", key="comm_ad_current_use", placeholder="예: 공실 또는 카페 성업중")
+        with cus2:
+            st.text_input("추천 업종", key="comm_ad_recommended_use", placeholder="예: 카페, 음식점, 베이커리 등")
+
+        # 13. 건축물 용도 & 14. 사용승인일
+        cbu1, cbu2 = st.columns(2)
+        with cbu1:
+            st.markdown("<b>13. 건축물 용도</b>", unsafe_allow_html=True)
+            st.text_input("건축물 용도", key="comm_ad_building_use", placeholder="예: 제1종 근린생활시설")
+        with cbu2:
+            st.markdown("<b>14. 사용승인일 (준공일)</b>", unsafe_allow_html=True)
+            st.text_input("사용승인일", key="comm_ad_approval_date", placeholder="예: 2018년 06월 15일")
+
+        # 15. 주요 설비 및 시설
+        st.markdown("<b>15. 주요 설비 및 시설 (전기/가스/승강기)</b>", unsafe_allow_html=True)
+        st.text_input("시설 정보", key="comm_ad_facility_info", placeholder="예: 전기 15kW 승압, 도시가스, 엘리베이터 완비")
+
+        # 16. 중개사무소 정보
+        st.markdown("<b>16. 중개사무소 정보</b>", unsafe_allow_html=True)
+        st.checkbox("✅ 중개사무소 정보 포함하기", key="comm_ad_include_office_info")
+        if st.session_state.comm_ad_include_office_info:
+            cof1, cof2 = st.columns(2)
+            with cof1:
+                st.text_input("중개사무소 상호", key="comm_ad_office_name")
+                st.text_input("대표자 성명", key="comm_ad_office_owner")
+                st.text_input("사무소 연락처", key="comm_ad_office_phone")
+            with cof2:
+                st.text_input("등록번호", key="comm_ad_office_reg_no")
+                st.text_input("소재지", key="comm_ad_office_address")
+
+            cas1, cas2 = st.columns(2)
+            with cas1:
+                st.text_input("소공/담당자 성명", key="comm_ad_assistant_name")
+            with cas2:
+                st.text_input("담당자 직통 연락처", key="comm_ad_assistant_phone")
+
+    with col_cad_out:
+        st.markdown("### 📋 네이버 광고 상가 점검표 (대조용)")
+        st.caption("네이버 부동산 상가 매물 등록창을 띄워두고 위에서부터 순서대로 보며 등록하세요.")
+
+        current_comm_spec_data = {
+            "comm_mode": "sale" if is_comm_ad_sale else "lease",
+            "location": st.session_state.get("comm_ad_location", ""),
+            "area_exclusive": st.session_state.get("comm_ad_area_exclusive", ""),
+            "area_contract": st.session_state.get("comm_ad_area_contract", ""),
+            "floor_info": st.session_state.get("comm_ad_floor_info", ""),
+            "restroom": st.session_state.get("comm_ad_restroom", ""),
+            "maintenance_fee": st.session_state.get("comm_ad_maintenance_fee", ""),
+            "maintenance_detail": st.session_state.get("comm_ad_maintenance_detail", ""),
+            "trade_type": st.session_state.get("comm_ad_trade_type", "월세" if not is_comm_ad_sale else "매매"),
+            "price_text": st.session_state.get("comm_ad_price_text", ""),
+            "premium_fee": st.session_state.get("comm_ad_premium_fee", ""),
+            "deposit_rent_summary": st.session_state.get("comm_ad_deposit_rent_summary", ""),
+            "loan_amount": st.session_state.get("comm_ad_loan_amount", ""),
+            "actual_investment": st.session_state.get("comm_ad_actual_investment", ""),
+            "yield_rate": st.session_state.get("comm_ad_yield_rate", ""),
+            "direction": st.session_state.get("comm_ad_direction", ""),
+            "move_in_date": st.session_state.get("comm_ad_move_in_date", ""),
+            "parking": st.session_state.get("comm_ad_parking", ""),
+            "current_use": st.session_state.get("comm_ad_current_use", ""),
+            "recommended_use": st.session_state.get("comm_ad_recommended_use", ""),
+            "building_use": st.session_state.get("comm_ad_building_use", ""),
+            "approval_date": st.session_state.get("comm_ad_approval_date", ""),
+            "facility_info": st.session_state.get("comm_ad_facility_info", ""),
+            "office_name": st.session_state.get("comm_ad_office_name", "참좋은공인중개사사무소"),
+            "office_owner": st.session_state.get("comm_ad_office_owner", "신제환"),
+            "office_reg_no": st.session_state.get("comm_ad_office_reg_no", "제 26530-2021-00045 호"),
+            "office_address": st.session_state.get("comm_ad_office_address", "부산광역시 사상구 사상로 200, 1층"),
+            "office_phone": st.session_state.get("comm_ad_office_phone", "010-9667-4201"),
+            "include_office_info": st.session_state.get("comm_ad_include_office_info", True),
+            "assistant_name": st.session_state.get("comm_ad_assistant_name", ""),
+            "assistant_phone": st.session_state.get("comm_ad_assistant_phone", ""),
+        }
+
+        comm_items_list = get_commercial_spec_table_data(current_comm_spec_data)
+        c_rows_html = []
+        for it in comm_items_list:
+            num_str = f"{it['num']:02d}"
+            val_formatted = it['val'].replace('\n', '<br/>')
+            row_markup = f'<div style="border-bottom:1px solid #E9ECEF; padding:11px 6px;"><div style="display:flex; justify-content:space-between; margin-bottom:4px;"><span style="font-size:14px; font-weight:700; color:#333D4B;"><span style="color:#DAA844;">[{num_str}]</span> {it["name"]}</span><span style="font-size:12px; color:#8B95A1;">{it["guide"]}</span></div><div style="font-size:15px; color:#191F28; font-weight:600; line-height:1.6; background:#F8F9FB; padding:8px 12px; border-radius:6px; margin-top:4px;">{val_formatted}</div></div>'
+            c_rows_html.append(row_markup)
+
+        full_comm_table_html = f'<div style="background:#FFFFFF; border:1.5px solid #CBD5E0; border-radius:12px; padding:14px 18px; box-shadow:0 2px 8px rgba(0,0,0,0.04); max-height:680px; overflow-y:auto;">{"".join(c_rows_html)}</div>'
+        st.markdown(full_comm_table_html, unsafe_allow_html=True)
+
+        st.markdown("<br/>", unsafe_allow_html=True)
+        comm_guide_txt = generate_commercial_naver_ad_guide_text(current_comm_spec_data)
+        st.text_area("📋 [네이버 부동산 광고 대조용] 상가 전체 텍스트 복사", value=comm_guide_txt, height=130)
+
+        comm_clip_txt = generate_commercial_clipboard_text(current_comm_spec_data)
+        st.text_area("💬 [카카오톡 / 블로그 본문용] 상가 일반 텍스트 복사", value=comm_clip_txt, height=110)
+
+        comm_blog_html = generate_commercial_blog_html_table(current_comm_spec_data)
+        st.text_area("📝 [네이버 블로그용] 스마트에디터 다크골드 HTML 표 서식", value=comm_blog_html, height=110)
+
+        # 1080px 고화질 상가 카드 다운로드
+        with st.expander("🖼️ [다운로드] 1080px 상가 중개대상물 표시 카드 저장하기", expanded=False):
+            with st.spinner("상가 표시 카드 렌더링 중..."):
+                comm_card_img = render_commercial_spec_table_image(current_comm_spec_data)
+            comm_card_byte_arr = io.BytesIO()
+            comm_card_img.save(comm_card_byte_arr, format="PNG", quality=95)
+            comm_card_bytes = comm_card_byte_arr.getvalue()
+
+            clean_comm_loc = re.sub(r'[^\w\s-]', '', (st.session_state.comm_ad_location.split(" ")[-1] if st.session_state.comm_ad_location else "상가매물")).strip()
+            comm_card_filename = f"상가중개대상물표시_{clean_comm_loc}_{'매매' if is_comm_ad_sale else '임차'}.png"
+
+            st.markdown(render_direct_download_button(comm_card_bytes, comm_card_filename, "💾 [원클릭 즉시 다운로드] 1080px 상가 표시 카드 저장", bg_color="#DAA844"), unsafe_allow_html=True)
+            st.caption("스마트폰에서는 위 버튼을 누르시면 사진첩에 바로 다운로드 저장됩니다.")
+
