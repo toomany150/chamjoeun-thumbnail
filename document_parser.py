@@ -84,7 +84,7 @@ def identify_document_type(text: str) -> str:
 
 
 # 다음 필드 키워드 패턴 (필드 끝 경계 인식 - 값 내부의 '구조' 단어가 잘리지 않도록 콜론/구분자가 있는 경우만 매칭)
-NEXT_KW = r"(?=\s*(?:대지위치|도로명주소|지번\s*[:|]|건축물명칭|명칭\s*[:|]|동명칭|호명칭|주용도|용도\s*[:|]|층수\s*[:|]|사용승인일|허가일|착공일|준공일|주차장\s*[:|]|총주차대수|세대수\s*[:|]|가구수\s*[:|]|주구조\s*[:|]|소재지|지목\s*[:|]|면적\s*[:|]|개별공시지가|소유자|국토의|$))"
+NEXT_KW = r"(?=\s*(?:대지위치|도로명주소|지번\s*[:|]|건축물명칭|명칭\s*[:|]|동명칭|호명칭|주용도|용도\s*[:|]|층수\s*[:|]|사용승인일|허가일|착공일|준공일|주차장\s*[:|]|총주차대수|세대수\s*[:|]|가구수\s*[:|]|주구조\s*[:|]|구조\s*[:|]|지역\s*[:|]|지구\s*[:|]|구역\s*[:|]|소재지|지목\s*[:|]|면적\s*[:|]|개별공시지가|소유자|국토의|$))"
 
 
 def clean_val(s: str) -> str:
@@ -225,20 +225,66 @@ def parse_building_register_title(text: str) -> Dict[str, Any]:
     struct_match = re.search(r"(?:주구조|주\s*구조|구조)\s*[:|]?\s*([^|\n\r]+?)" + NEXT_KW, text)
     if struct_match:
         res["structure"] = clean_val(struct_match.group(1))
+    else:
+        common_structs = [
+            "철골철근콘크리트구조", "철근콘크리트구조", "철골콘크리트구조", "일반철골구조",
+            "경량철골구조", "철골구조", "철골조", "조적조", "벽돌구조", "연와조", "목구조"
+        ]
+        for cs in common_structs:
+            if cs in text:
+                res["structure"] = cs
+                break
 
-    # 7. 주용도
+    # 7. 용도지역 및 용도지구/구역 (상가 핵심 법적 표기 항목)
+    region_match = re.search(r"(?:용도지역|지역\s*[:|]|지역명)\s*[:|]?\s*([^|\n\r]+?)" + NEXT_KW, text)
+    if region_match:
+        res["zone_region"] = clean_val(region_match.group(1))
+    else:
+        common_regions = [
+            "중심상업지역", "일반상업지역", "근린상업지역", "유통상업지역",
+            "준주거지역", "제1종전용주거지역", "제2종전용주거지역",
+            "제1종일반주거지역", "제2종일반주거지역", "제3종일반주거지역",
+            "전용공업지역", "일반공업지역", "준공업지역",
+            "보전녹지지역", "생산녹지지역", "자연녹지지역", "계획관리지역"
+        ]
+        for cr in common_regions:
+            if cr in text:
+                res["zone_region"] = cr
+                break
+
+    district_match = re.search(r"(?:용도지구|지구\s*[:|]|구역\s*[:|])\s*[:|]?\s*([^|\n\r]+?)" + NEXT_KW, text)
+    if district_match:
+        res["zone_district"] = clean_val(district_match.group(1))
+    else:
+        common_districts = ["방화지구", "지구단위계획구역", "시가지경관지구", "상대보호구역", "절대보호구역", "역점관리구역", "과밀억제권역"]
+        found_dist = [cd for cd in common_districts if cd in text]
+        if found_dist:
+            res["zone_district"] = ", ".join(found_dist)
+
+    # 8. 승강기 (엘리베이터)
+    elev_match = re.search(r"(?:승강기|엘리베이터|승용|비상용)\s*[:|]?\s*([^\n\r]+?)" + NEXT_KW, text)
+    if elev_match:
+        res["elevator"] = clean_val(elev_match.group(1))
+    else:
+        elev_num = re.search(r"승용\s*(\d+)\s*대", text)
+        if elev_num:
+            res["elevator"] = f"승강기 {elev_num.group(1)}대 완비"
+
+    # 9. 주용도
     use_match = re.search(r"(?:주용도|주\s*용도)\s*[:|]?\s*([^|\n\r]+?)" + NEXT_KW, text)
     if use_match:
         res["building_use"] = clean_val(use_match.group(1))
     else:
-        if "아파트" in text:
+        if "근린생활시설" in text or "상가" in text:
+            res["building_use"] = "제1종 및 제2종 근린생활시설"
+        elif "아파트" in text:
             res["building_use"] = "공동주택 (아파트)"
         elif "오피스텔" in text:
             res["building_use"] = "업무시설 (오피스텔)"
         elif "다세대" in text or "연립" in text:
             res["building_use"] = "공동주택 (다세대/연립)"
 
-    # 8. 연면적
+    # 10. 연면적
     yeon_match = re.search(r"(?:연면적|연\s*면적)\s*[:|]?\s*([\d,.]+)", text)
     if yeon_match:
         res["area_total"] = yeon_match.group(1).replace(",", "").strip()
@@ -536,7 +582,24 @@ def merge_building_registers(title_data: Dict[str, Any], exclusive_data: Dict[st
     elif exclusive_data.get("structure"):
         merged["structure"] = exclusive_data["structure"]
 
-    # 10. 썸네일 특징 문구 자동 생성
+    # 10. 용도지역 및 용도지구
+    if title_data.get("zone_region"):
+        merged["zone_region"] = title_data["zone_region"]
+    elif exclusive_data.get("zone_region"):
+        merged["zone_region"] = exclusive_data["zone_region"]
+
+    if title_data.get("zone_district"):
+        merged["zone_district"] = title_data["zone_district"]
+    elif exclusive_data.get("zone_district"):
+        merged["zone_district"] = exclusive_data["zone_district"]
+
+    # 11. 승강기 설비
+    if title_data.get("elevator"):
+        merged["elevator"] = title_data["elevator"]
+    elif exclusive_data.get("elevator"):
+        merged["elevator"] = exclusive_data["elevator"]
+
+    # 12. 썸네일 특징 문구 자동 생성
     feature_parts = []
     if merged.get("households"):
         feature_parts.append(merged["households"])
@@ -638,7 +701,14 @@ def parse_land_use_plan(text: str) -> Dict[str, Any]:
         res["zone_info"] = clean_val(zone_match.group(1))
 
     if "zone_info" in res:
+        res["zone_region"] = res["zone_info"]
         res["feature_text"] = f"{res['zone_info']} 추천 매물"
+
+    # 기타 지구/구역 탐색
+    common_districts = ["방화지구", "지구단위계획구역", "시가지경관지구", "상대보호구역", "절대보호구역", "역점관리구역", "과밀억제권역"]
+    found_dist = [cd for cd in common_districts if cd in text]
+    if found_dist:
+        res["zone_district"] = ", ".join(found_dist)
 
     return res
 

@@ -178,10 +178,12 @@ def parse_naver_clipboard_text(text: str) -> Dict[str, Any]:
     if pk_match:
         res["parking"] = pk_match.group(1).strip()
 
-    # 12. 건축물 용도
-    use_match = re.search(r"(?:건축물\s*용도|용도)\s*[:|]?\s*([^|\n\r]+)", text)
+    # 12. 건축물 용도 (용도지역/지구 제외)
+    use_match = re.search(r"(?:건축물\s*용도|주용도|주\s*용도|건축물용도|(?:^|\s)용도(?!\s*지역|\s*지구|\s*구역))\s*[:|]?\s*([^|\n\r]+)", text)
     if use_match:
-        res["building_use"] = use_match.group(1).strip()
+        clean_u = use_match.group(1).strip()
+        if "상업지역" not in clean_u and "주거지역" not in clean_u and "공업지역" not in clean_u:
+            res["building_use"] = clean_u
 
     # 13. 사용승인일
     app_match = re.search(r"(?:사용승인일|준공년월|준공일)\s*[:|]?\s*([^|\n\r]+)", text)
@@ -192,6 +194,51 @@ def parse_naver_clipboard_text(text: str) -> Dict[str, Any]:
     loc_match = re.search(r"(?:소재지|위치)\s*[:|]?\s*([^|\n\r]+)", text)
     if loc_match:
         res["location"] = loc_match.group(1).strip()
+
+    # 15. 상가 특화 항목: 주구조, 용도지역, 용도지구, 권리금, 추천업종, 화장실
+    struct_m = re.search(r"(?:주구조|주\s*구조|구조)\s*[:|]?\s*([^|\n\r]+)", text)
+    if struct_m:
+        res["structure"] = struct_m.group(1).strip()
+    else:
+        for cs in ["철골철근콘크리트구조", "철근콘크리트구조", "철골콘크리트구조", "일반철골구조", "경량철골구조", "철골구조", "철골조", "조적조", "벽돌구조"]:
+            if cs in text:
+                res["structure"] = cs
+                break
+
+    zone_m = re.search(r"(?:용도지역|지역)\s*[:|]?\s*([^|\n\r]+)", text)
+    if zone_m:
+        res["zone_region"] = zone_m.group(1).strip()
+    else:
+        for z in ["중심상업지역", "일반상업지역", "근린상업지역", "유통상업지역", "준주거지역", "제1종일반주거지역", "제2종일반주거지역", "제3종일반주거지역", "준공업지역", "일반공업지역"]:
+            if z in text:
+                res["zone_region"] = z
+                break
+
+    dist_m = re.search(r"(?:용도지구|지구|구역)\s*[:|]?\s*([^|\n\r]+)", text)
+    if dist_m:
+        res["zone_district"] = dist_m.group(1).strip()
+    else:
+        found_dists = [d for d in ["방화지구", "지구단위계획구역", "시가지경관지구", "과밀억제권역"] if d in text]
+        if found_dists:
+            res["zone_district"] = ", ".join(found_dists)
+
+    prem_m = re.search(r"(?:권리금)\s*[:|]?\s*([^|\n\r]+)", text)
+    if prem_m:
+        res["premium_fee"] = prem_m.group(1).strip()
+    elif "무권리" in text:
+        res["premium_fee"] = "무권리 (권리금 없음)"
+
+    rec_m = re.search(r"(?:추천업종|추천\s*업종)\s*[:|]?\s*([^|\n\r]+)", text)
+    if rec_m:
+        res["recommended_use"] = rec_m.group(1).strip()
+
+    cur_m = re.search(r"(?:현재업종|현\s*업종|현재상태)\s*[:|]?\s*([^|\n\r]+)", text)
+    if cur_m:
+        res["current_use"] = cur_m.group(1).strip()
+
+    rest_m = re.search(r"(?:화장실)\s*[:|]?\s*([^|\n\r]+)", text)
+    if rest_m:
+        res["restroom"] = rest_m.group(1).strip()
 
     # 단지명 및 동/호수 탐색 (첫 5줄 내)
     for line in lines[:5]:

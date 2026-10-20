@@ -520,6 +520,99 @@ def apply_crawled_or_doc_data(data: dict):
     if data.get("spec_line5"): st.session_state["spec_line5"] = str(data["spec_line5"])
     elif data.get("direction"): st.session_state["spec_line5"] = str(data["direction"])
 
+def apply_commercial_crawled_or_doc_data(data: dict):
+    """크롤링 데이터 또는 공적서류 분석 데이터를 상가 18대 점검항목 및 상가 썸네일 세션에 일괄 주입합니다."""
+    if not data:
+        return
+
+    # 1. 상가 필수 점검항목 적용
+    if data.get("location"):
+        st.session_state["comm_ad_location"] = str(data["location"])
+    if data.get("area_exclusive"):
+        st.session_state["comm_ad_area_exclusive"] = str(data["area_exclusive"])
+    if data.get("area_supply"):
+        st.session_state["comm_ad_area_contract"] = str(data["area_supply"])
+    elif data.get("area_contract"):
+        st.session_state["comm_ad_area_contract"] = str(data["area_contract"])
+    elif data.get("area_exclusive"):
+        st.session_state["comm_ad_area_contract"] = str(data["area_exclusive"])
+    if data.get("floor_info"):
+        st.session_state["comm_ad_floor_info"] = str(data["floor_info"])
+    if data.get("building_use"):
+        st.session_state["comm_ad_building_use"] = str(data["building_use"])
+    if data.get("zone_region"):
+        st.session_state["comm_ad_zone_region"] = str(data["zone_region"])
+    if data.get("zone_district"):
+        st.session_state["comm_ad_zone_district"] = str(data["zone_district"])
+    if data.get("structure"):
+        st.session_state["comm_ad_structure"] = str(data["structure"])
+    if data.get("approval_date"):
+        st.session_state["comm_ad_approval_date"] = str(data["approval_date"])
+    if data.get("parking"):
+        st.session_state["comm_ad_parking"] = str(data["parking"])
+    if data.get("trade_type"):
+        st.session_state["comm_ad_trade_type"] = str(data["trade_type"])
+    if data.get("price_text"):
+        st.session_state["comm_ad_price_text"] = str(data["price_text"])
+    if data.get("premium_fee"):
+        st.session_state["comm_ad_premium_fee"] = str(data["premium_fee"])
+    if data.get("direction"):
+        d_val = str(data["direction"])
+        if "출입구" not in d_val:
+            d_val = re.sub(r"\s*\(.*?\)", "", d_val).strip() + " (주된 출입구 기준)"
+        st.session_state["comm_ad_direction"] = d_val
+    if data.get("move_in_date"):
+        st.session_state["comm_ad_move_in_date"] = str(data["move_in_date"])
+    if data.get("maintenance_fee"):
+        st.session_state["comm_ad_maintenance_fee"] = str(data["maintenance_fee"])
+    if data.get("maintenance_detail"):
+        st.session_state["comm_ad_maintenance_detail"] = str(data["maintenance_detail"])
+    if data.get("restroom"):
+        st.session_state["comm_ad_restroom"] = str(data["restroom"])
+    if data.get("current_use"):
+        st.session_state["comm_ad_current_use"] = str(data["current_use"])
+    if data.get("recommended_use"):
+        st.session_state["comm_ad_recommended_use"] = str(data["recommended_use"])
+    if data.get("elevator"):
+        elev_str = str(data["elevator"])
+        cur_fac = st.session_state.get("comm_ad_facility_info", "")
+        if "승강기" not in cur_fac and "엘리베이터" not in cur_fac:
+            st.session_state["comm_ad_facility_info"] = f"{cur_fac}, {elev_str}".strip(", ")
+    elif data.get("facility_info"):
+        st.session_state["comm_ad_facility_info"] = str(data["facility_info"])
+
+    # 2. 상가 썸네일(임차 / 매매) 탭 실시간 연동
+    is_sale_mode = "매매" in st.session_state.get("comm_ad_trade_type", "")
+    py_val = ""
+    try:
+        if data.get("area_exclusive"):
+            py_val = f"전용 {round(float(data['area_exclusive']) * 0.3025)}평"
+    except Exception:
+        pass
+
+    loc_short = data.get("main_title") or (data.get("location", "").split(" ")[-1] if data.get("location") else "상가")
+    
+    if not is_sale_mode:
+        # 임차 썸네일 동기화
+        if loc_short:
+            st.session_state["comm_lease_main_title"] = f"{loc_short} 상가 임차"
+            st.session_state["comm_lease_top_badge"] = f"{loc_short} 추천 매물 · {st.session_state.get('comm_ad_premium_fee', '무권리')}"
+        price_summary = st.session_state.get("comm_ad_price_text", "")
+        if py_val and price_summary:
+            st.session_state["comm_lease_spec1"] = f"{py_val} | {price_summary}"
+        elif py_val:
+            st.session_state["comm_lease_spec1"] = py_val
+        if data.get("recommended_use"):
+            st.session_state["comm_lease_spec2"] = f"추천 : {data['recommended_use']}"
+    else:
+        # 매매 썸네일 동기화
+        if loc_short:
+            st.session_state["comm_sale_top_left"] = f"{loc_short} 상가 매매"
+            st.session_state["comm_sale_main_sub"] = f"안정적인 {loc_short} 상가 매매"
+        if data.get("price_text"):
+            st.session_state["comm_sale_price_spec"] = f"매매가 {data['price_text']} | {st.session_state.get('comm_ad_structure', '철근콘크리트')} | {py_val}"
+
+
 # -------------------------
 # 상단 타이틀 & 모바일 접속 안내
 # -------------------------
@@ -1490,12 +1583,229 @@ with tab_comm_ad:
                 "maintenance_fee", "maintenance_detail", "price_text", "premium_fee",
                 "deposit_rent_summary", "loan_amount", "actual_investment", "yield_rate",
                 "direction", "move_in_date", "parking", "current_use", "recommended_use",
-                "building_use", "approval_date", "facility_info"
+                "building_use", "zone_region", "zone_district", "structure", "approval_date", "facility_info"
             ]
             for k in empty_keys:
                 st.session_state[f"comm_ad_{k}"] = ""
             st.info("입력칸이 초기화되었습니다.")
             st.rerun()
+
+    # 최근 상가 자동완성 성공 알림 배너
+    if st.session_state.get("last_comm_applied_msg"):
+        st.success(st.session_state["last_comm_applied_msg"])
+
+    # ----------------------------------------------------
+    # 🌐 상가 네이버 부동산 매물 연동 (복사 텍스트 & 매물번호)
+    # ----------------------------------------------------
+    with st.expander("🌐 [원클릭 1초 자동완성] 네이버 부동산 상가 매물 연동 (클립보드 복사 & 매물번호)", expanded=True):
+        st.markdown("""
+        <div style="font-size:14px; color:#1A365D; background:#EBF8FF; border:1px solid #BEE3F8; padding:10px 14px; border-radius:8px; margin-bottom:12px;">
+            🔗 네이버 부동산의 <b>상가 매물 화면 복사 텍스트</b>를 붙여넣거나 <b>상가 매물 번호</b>를 입력하시면, 
+            실시간으로 <b>소재지, 가격, 층수, 전용/계약면적, 방향, 주차대수, 용도, 주구조, 권리금 등 상가 18대 항목</b>과 <b>상가 썸네일</b>을 1초 만에 자동 완성합니다!
+        </div>
+        """, unsafe_allow_html=True)
+
+        comm_tab_crawl_txt, comm_tab_crawl_num = st.tabs([
+            "📋 네이버 상가 화면 복사 텍스트 붙여넣기 (가장 확실 & 1초 완성! 추천)",
+            "🔍 네이버 상가 매물번호 / URL 크롤링 (실험적)"
+        ])
+
+        with comm_tab_crawl_txt:
+            st.markdown("""
+            <div style="font-size:13px; color:#2B6CB0; background:#EBF8FF; border:1px solid #BEE3F8; padding:8px 12px; border-radius:6px; margin-bottom:8px;">
+                💡 <b>1초 자동완성 방법:</b> 네이버 부동산 상가 매물 화면에서 매물 상세 영역을 마우스로 드래그 복사(Ctrl+C)하여 아래에 붙여넣으세요! 네이버 차단 없이 100% 즉시 반영됩니다.
+            </div>
+            """, unsafe_allow_html=True)
+            comm_clip_article_text = st.text_area(
+                "네이버 부동산 상가 매물 상세 복사 텍스트",
+                height=120,
+                placeholder="예:\n괘법동 1층 상가 월세 3,000/180\n제1종근린생활시설 계약 125㎡ / 전용 82.64㎡, 1/5층, 남서향\n무권리, 주구조 철근콘크리트구조, 일반상업지역, 방화지구...",
+                key="comm_input_naver_clip_text"
+            )
+            if st.button("⚡ 붙여넣은 상가 텍스트 0.1초 분석 & 상가 항목 즉시 적용", type="primary", use_container_width=True, key="btn_parse_comm_clip_text"):
+                if comm_clip_article_text.strip():
+                    parsed_clip = parse_naver_clipboard_text(comm_clip_article_text)
+                    if parsed_clip:
+                        apply_commercial_crawled_or_doc_data(parsed_clip)
+                        st.session_state["last_comm_applied_msg"] = f"🎉 네이버 상가 매물 [{parsed_clip.get('main_title', '상가')}] 텍스트 분석 완료! 상가 18대 점검항목과 썸네일에 즉시 자동 반영되었습니다."
+                        st.rerun()
+                    else:
+                        st.warning("붙여넣은 텍스트에서 상가 매물 정보를 식별하지 못했습니다. 형식을 확인해주세요.")
+                else:
+                    st.warning("네이버 부동산 상가 매물 상세 텍스트를 먼저 붙여넣어 주세요.")
+
+        with comm_tab_crawl_num:
+            c_ccr_in, c_ccr_btn = st.columns([2.5, 1])
+            with c_ccr_in:
+                comm_input_article_val = st.text_input(
+                    "네이버 부동산 상가 매물 번호 또는 URL",
+                    placeholder="예: 2428591234 또는 https://fin.land.naver.com/articles/2428591234",
+                    help="네이버 부동산 매물 번호(10자리 내외) 또는 브라우저 주소창 링크를 붙여넣으세요.",
+                    key="comm_input_naver_article_no"
+                )
+            with c_ccr_btn:
+                st.markdown("<div style='height: 28px;'></div>", unsafe_allow_html=True)
+                btn_do_comm_crawl = st.button("🚀 상가 1초 크롤링 시도", type="primary", use_container_width=True, key="btn_crawl_comm_naver")
+
+            if btn_do_comm_crawl:
+                if comm_input_article_val.strip():
+                    with st.spinner("네이버 부동산 상가 매물 정보 실시간 조회 중..."):
+                        is_ok, msg, c_data = crawl_naver_article(comm_input_article_val.strip())
+                        if is_ok:
+                            apply_commercial_crawled_or_doc_data(c_data)
+                            st.session_state["last_comm_applied_msg"] = f"🎉 {msg} 상가 18대 점검항목과 썸네일에 즉시 자동 반영되었습니다."
+                            st.rerun()
+                        else:
+                            st.error(f"⚠️ {msg}")
+                else:
+                    st.warning("상가 매물 번호 또는 매물 링크 URL을 입력해주세요.")
+
+    # ----------------------------------------------------
+    # 📄 상가 건축물대장 (일반 / 표제부 / 전유부) & 공적서류 자동 분석
+    # ----------------------------------------------------
+    with st.expander("📄 [원클릭 1초 자동완성] 상가 건축물대장 (표제부 / 전유부 / 일반건축물) & 토지이용계획 분석", expanded=True):
+        st.markdown("""
+        <div style="font-size:14px; color:#2D3748; margin-bottom:10px;">
+            정부24, 세움터, 일사편리에서 발급받은 <b>건축물대장(일반/표제부/전유부)</b>, <b>토지대장</b>, <b>토지이용계획원</b> PDF 파일을 올리시면 
+            <b>소재지, 전용/계약면적, 층수, 용도, 용도지역, 용도지구, 주구조, 준공일, 주차대수, 승강기</b>가 상가 점검항목에 1초 만에 자동 완성됩니다!<br/>
+            <span style="color:#C53030; font-weight:700;">🏬 통상가·근린생활시설 건물의 경우 일반건축물대장 또는 총괄표제부를 올리시면 건물 전체 스펙이 완벽하게 추출됩니다.</span>
+        </div>
+        """, unsafe_allow_html=True)
+
+        comm_tab_doc_smart, comm_tab_doc_split, comm_tab_doc_txt = st.tabs([
+            "📁 스마트 다중/통합 PDF 업로드 (일반건축물 / 표제부+전유부 자동 병합)",
+            "🏢 표제부 & 🚪 전유부 2단계 분리 업로드 (구분상가 전용)",
+            "📋 서류 텍스트 직접 붙여넣기 (정부24 보안문서 100% 대응)"
+        ])
+
+        with comm_tab_doc_smart:
+            uploaded_comm_docs = st.file_uploader(
+                "건축물대장(일반/표제부/전유부) / 토지이용계획원 PDF 서류를 드래그하여 놓으세요 (복수 선택 지원)",
+                type=["pdf"],
+                accept_multiple_files=True,
+                help="일반건축물대장, 표제부, 전유부 PDF를 선택하거나 드래그하시면 자동으로 각각 분석하여 하나의 완벽한 상가 점검표로 병합합니다.",
+                key="comm_doc_multi_pdf_uploader_key"
+            )
+            if uploaded_comm_docs:
+                upload_sig = "-".join([f"{f.name}_{f.size}" for f in uploaded_comm_docs])
+                if st.session_state.get("last_comm_smart_upload_sig") != upload_sig:
+                    try:
+                        with st.spinner("상가 공적서류 정밀 분석 및 상가 18대 항목 자동 반영 중..."):
+                            doc_parsed_result = None
+                            doc_parsed_type = ""
+                            if len(uploaded_comm_docs) == 1:
+                                doc_parsed_type, doc_parsed_result, _ = parse_official_document(uploaded_comm_docs[0], uploaded_comm_docs[0].name)
+                            else:
+                                title_data = {}
+                                exclusive_data = {}
+                                other_data = {}
+                                types_found = []
+
+                                for u_file in uploaded_comm_docs:
+                                    p_type, p_res, _ = parse_official_document(u_file, u_file.name)
+                                    types_found.append(p_type)
+                                    if "표제부" in p_type:
+                                        title_data.update(p_res)
+                                    elif "전유부" in p_type:
+                                        exclusive_data.update(p_res)
+                                    else:
+                                        other_data.update(p_res)
+
+                                if title_data and exclusive_data:
+                                    doc_parsed_result = merge_building_registers(title_data, exclusive_data)
+                                    doc_parsed_type = "집합건축물대장 (표제부 + 전유부 통합완료)"
+                                elif title_data:
+                                    doc_parsed_result = title_data
+                                    doc_parsed_type = "집합건축물대장 (표제부)"
+                                elif exclusive_data:
+                                    doc_parsed_result = exclusive_data
+                                    doc_parsed_type = "집합건축물대장 (전유부)"
+                                else:
+                                    doc_parsed_result = other_data
+                                    doc_parsed_type = ", ".join(types_found)
+
+                            st.session_state["last_comm_smart_upload_sig"] = upload_sig
+                            if doc_parsed_result:
+                                apply_commercial_crawled_or_doc_data(doc_parsed_result)
+                                st.session_state["last_comm_applied_msg"] = f"🎉 [{doc_parsed_type}] 분석 완료! 상가 18대 점검항목과 썸네일에 1초 만에 즉시 반영되었습니다."
+                                st.rerun()
+                            else:
+                                st.error("⚠️ 업로드하신 PDF 서류에서 텍스트를 읽어오지 못했습니다. 정부24/세움터의 위변조 방지 보안 전자문서인 경우 세 번째 [📋 서류 텍스트 직접 붙여넣기] 탭에 복사해 넣어주세요!")
+                    except Exception as e:
+                        st.error(f"서류 분석 중 오류가 발생했습니다: {e}")
+
+        with comm_tab_doc_split:
+            col_csp_title, col_csp_excl = st.columns(2)
+            with col_csp_title:
+                st.markdown("""
+                <div style="background:#EBF8FF; border:1px solid #90CDF4; border-radius:8px; padding:8px 12px; margin-bottom:8px;">
+                    <b>🏢 1. 표제부 (총괄표제부 / 일반건축물대장)</b><br/>
+                    <span style="font-size:12px; color:#4A5568;">소재지, 주구조, 용도지역, 층수, 주차, 승강기, 준공일</span>
+                </div>
+                """, unsafe_allow_html=True)
+                up_c_title = st.file_uploader("표제부 PDF", type=["pdf"], key="comm_doc_title_pdf_key")
+            with col_csp_excl:
+                st.markdown("""
+                <div style="background:#FEFCBF; border:1px solid #FAF089; border-radius:8px; padding:8px 12px; margin-bottom:8px;">
+                    <b>🚪 2. 전유부 (구분점포 / 개별호실)</b><br/>
+                    <span style="font-size:12px; color:#744210;">호실, 전용면적, 해당층, 전유부 용도</span>
+                </div>
+                """, unsafe_allow_html=True)
+                up_c_excl = st.file_uploader("전유부 PDF", type=["pdf"], key="comm_doc_excl_pdf_key")
+
+            if up_c_title or up_c_excl:
+                split_sig = f"{getattr(up_c_title, 'name', '')}_{getattr(up_c_excl, 'name', '')}"
+                if st.session_state.get("last_comm_split_upload_sig") != split_sig:
+                    try:
+                        with st.spinner("표제부 및 전유부 융합 분석 중..."):
+                            t_data = {}
+                            e_data = {}
+                            if up_c_title:
+                                _, t_data, _ = parse_official_document(up_c_title, up_c_title.name)
+                            if up_c_excl:
+                                _, e_data, _ = parse_official_document(up_c_excl, up_c_excl.name)
+
+                            if t_data and e_data:
+                                res_m = merge_building_registers(t_data, e_data)
+                                apply_commercial_crawled_or_doc_data(res_m)
+                                st.session_state["last_comm_applied_msg"] = "🎉 표제부와 전유부 2개 서류가 완벽하게 결합되어 상가 항목에 적용되었습니다!"
+                            elif t_data:
+                                apply_commercial_crawled_or_doc_data(t_data)
+                                st.session_state["last_comm_applied_msg"] = "🎉 표제부 분석 완료! 건물 기본 스펙이 상가 항목에 적용되었습니다."
+                            elif e_data:
+                                apply_commercial_crawled_or_doc_data(e_data)
+                                st.session_state["last_comm_applied_msg"] = "🎉 전유부 분석 완료! 개별 호실 면적이 상가 항목에 적용되었습니다."
+
+                            st.session_state["last_comm_split_upload_sig"] = split_sig
+                            st.rerun()
+                    except Exception as e:
+                        st.error(f"분리 서류 분석 오류: {e}")
+
+        with comm_tab_doc_txt:
+            st.markdown("""
+            <div style="font-size:13px; color:#2D3748; background:#FFF5F5; border:1px solid #FEB2B2; padding:10px 14px; border-radius:6px; margin-bottom:10px;">
+                💡 <b>정부24 보안문서 해결책:</b> 전자증명서 PDF에 위변조방지 보안이 걸려있는 경우, 
+                정부24 열람 화면에서 마우스로 표 전체를 드래그 복사(Ctrl+C)하여 아래에 붙여넣으세요!
+            </div>
+            """, unsafe_allow_html=True)
+
+            comm_pasted_doc_text = st.text_area(
+                "건축물대장 / 토지대장 / 토지이용계획원 복사 텍스트 붙여넣기",
+                height=130,
+                placeholder="예:\n[표제부]\n대지위치: 부산광역시 사상구 괘법동 560-1\n주구조: 철근콘크리트구조\n지역: 일반상업지역\n지구: 방화지구, 지구단위계획구역\n주용도: 제1종근린생활시설\n사용승인일: 2018.06.15...",
+                key="comm_direct_pasted_doc_text"
+            )
+            if st.button("🚀 붙여넣은 공적서류 텍스트 0.1초 분석 & 상가 항목 즉시 적용", type="primary", use_container_width=True, key="btn_apply_comm_pasted_doc"):
+                if comm_pasted_doc_text.strip():
+                    doc_type, parsed_dict, _ = parse_single_or_multi_document([comm_pasted_doc_text])
+                    if parsed_dict:
+                        apply_commercial_crawled_or_doc_data(parsed_dict)
+                        st.session_state["last_comm_applied_msg"] = f"🎉 [{doc_type}] 텍스트 분석 완료! 상가 18대 점검항목과 썸네일에 즉시 반영되었습니다."
+                        st.rerun()
+                    else:
+                        st.warning("붙여넣은 텍스트에서 상가 건축물대장 정보를 찾지 못했습니다.")
+                else:
+                    st.warning("공적서류 텍스트를 먼저 붙여넣어 주세요.")
 
     # 3. 좌우 분할 (입력 / 출력)
     col_cad_in, col_cad_out = st.columns([1.1, 1.2])
@@ -1623,21 +1933,43 @@ with tab_comm_ad:
         with cus2:
             st.text_input("추천 업종", key="comm_ad_recommended_use", placeholder="예: 카페, 음식점, 베이커리 등")
 
-        # 13. 건축물 용도 & 14. 사용승인일
+        # 13. 건축물 법정 용도
+        st.markdown("<b>13. 건축물 용도 (법정 주용도)</b>", unsafe_allow_html=True)
+        st.text_input("건축물 용도", key="comm_ad_building_use", placeholder="예: 제1종 근린생활시설")
+
+        # 14. 용도지역 & 용도지구 (신소장님 필수 항목)
+        st.markdown("""
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-top: 10px;">
+            <b>14. 용도지역 및 용도지구</b>
+            <span class="spec-badge badge-gold">인허가 핵심</span>
+        </div>
+        """, unsafe_allow_html=True)
+        czn1, czn2 = st.columns(2)
+        with czn1:
+            st.text_input("용도지역", key="comm_ad_zone_region", placeholder="예: 일반상업지역, 준주거지역 등")
+        with czn2:
+            st.text_input("용도지구/구역", key="comm_ad_zone_district", placeholder="예: 방화지구, 지구단위계획구역")
+
+        # 15. 주구조 (건축물 주구조)
+        st.markdown("""
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-top: 10px;">
+            <b>15. 주구조 (건물 구조)</b>
+            <span class="spec-badge badge-green">대장 표제부 기준</span>
+        </div>
+        """, unsafe_allow_html=True)
+        st.text_input("주구조", key="comm_ad_structure", placeholder="예: 철근콘크리트구조, 일반철골구조 등")
+
+        # 16. 사용승인일 (준공일) & 17. 주요 설비 및 시설
         cbu1, cbu2 = st.columns(2)
         with cbu1:
-            st.markdown("<b>13. 건축물 용도</b>", unsafe_allow_html=True)
-            st.text_input("건축물 용도", key="comm_ad_building_use", placeholder="예: 제1종 근린생활시설")
-        with cbu2:
-            st.markdown("<b>14. 사용승인일 (준공일)</b>", unsafe_allow_html=True)
+            st.markdown("<b>16. 사용승인일 (준공일)</b>", unsafe_allow_html=True)
             st.text_input("사용승인일", key="comm_ad_approval_date", placeholder="예: 2018년 06월 15일")
+        with cbu2:
+            st.markdown("<b>17. 주요 설비 및 시설</b>", unsafe_allow_html=True)
+            st.text_input("시설 정보", key="comm_ad_facility_info", placeholder="예: 전기 15kW 승압, 도시가스, 승강기 완비")
 
-        # 15. 주요 설비 및 시설
-        st.markdown("<b>15. 주요 설비 및 시설 (전기/가스/승강기)</b>", unsafe_allow_html=True)
-        st.text_input("시설 정보", key="comm_ad_facility_info", placeholder="예: 전기 15kW 승압, 도시가스, 엘리베이터 완비")
-
-        # 16. 중개사무소 정보
-        st.markdown("<b>16. 중개사무소 정보</b>", unsafe_allow_html=True)
+        # 18. 중개사무소 정보
+        st.markdown("<b>18. 중개사무소 정보</b>", unsafe_allow_html=True)
         st.checkbox("✅ 중개사무소 정보 포함하기", key="comm_ad_include_office_info")
         if st.session_state.comm_ad_include_office_info:
             cof1, cof2 = st.columns(2)
@@ -1681,6 +2013,9 @@ with tab_comm_ad:
             "current_use": st.session_state.get("comm_ad_current_use", ""),
             "recommended_use": st.session_state.get("comm_ad_recommended_use", ""),
             "building_use": st.session_state.get("comm_ad_building_use", ""),
+            "zone_region": st.session_state.get("comm_ad_zone_region", "일반상업지역"),
+            "zone_district": st.session_state.get("comm_ad_zone_district", ""),
+            "structure": st.session_state.get("comm_ad_structure", "철근콘크리트구조"),
             "approval_date": st.session_state.get("comm_ad_approval_date", ""),
             "facility_info": st.session_state.get("comm_ad_facility_info", ""),
             "office_name": st.session_state.get("comm_ad_office_name", "참좋은공인중개사사무소"),

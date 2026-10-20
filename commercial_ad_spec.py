@@ -56,6 +56,9 @@ DEFAULT_COMMERCIAL_SPEC_LEASE = {
     "current_use": "커피전문점 성업중 (원상복구 및 시설협의 가능)",
     "recommended_use": "카페, 음식점, 베이커리, 판매점, 뷰티샵, 사무실 등",
     "building_use": "제1종 근린생활시설 (휴게음식점)",
+    "zone_region": "일반상업지역",
+    "zone_district": "방화지구, 지구단위계획구역",
+    "structure": "철근콘크리트구조",
     "approval_date": "2018년 06월 15일",
     "facility_info": "전기 15kW 승압완료, 도시가스, 상하수도 인입, 천장형 시스템냉난방기",
     
@@ -92,6 +95,9 @@ DEFAULT_COMMERCIAL_SPEC_SALE = {
     "current_use": "1층 프랜차이즈 카페, 2층 병의원, 3층 학원 성업중",
     "recommended_use": "수익형 부동산 투자 및 안정적 월세 임대사업용",
     "building_use": "제1종 및 제2종 근린생활시설",
+    "zone_region": "일반상업지역",
+    "zone_district": "방화지구, 지구단위계획구역",
+    "structure": "철골철근콘크리트구조 (SRC)",
     "approval_date": "2019년 11월 20일",
     "facility_info": "승강기(엘리베이터) 1대, 각 호실 개별 시스템에어컨, 동력전기 완비",
     
@@ -176,8 +182,30 @@ def get_commercial_spec_table_data(data: dict) -> list[dict]:
         {"num": 11, "name": "총주차대수", "val": data.get("parking", "총 20대 (점포 1대 무료)"), "guide": "건물 전체 주차대수 및 해당 점포 무료/유료 조건"},
         {"num": 12, "name": "현재 / 추천 업종", "val": f"• 현재: {data.get('current_use', '공실')}\n• 추천: {data.get('recommended_use', '일반음식점, 카페, 판매점 등')}", "guide": "입점 가능 추천 업종 및 인허가 적합성"},
         {"num": 13, "name": "건축물 용도", "val": data.get("building_use", "제1종 근린생활시설"), "guide": "건축물대장 상 법정 용도 (제1·2종 근린생활시설 등)"},
-        {"num": 14, "name": "사용승인일 (준공일)", "val": data.get("approval_date", ""), "guide": "건축물대장 상 사용승인일 기재 필수"},
-        {"num": 15, "name": "주요 설비 및 시설", "val": data.get("facility_info", "전기용량, 가스, 승강기 유무"), "guide": "계약전력(kW), 도시가스, 덕트, 엘리베이터 등"},
+    ])
+
+    # 14. 용도지역 및 용도지구 (상가 인허가 필수)
+    z_reg = str(data.get("zone_region", "일반상업지역")).strip()
+    z_dist = str(data.get("zone_district", "")).strip()
+    z_val = f"{z_reg} / {z_dist}" if z_dist else (z_reg if z_reg else "해당사항 없음")
+    items.append({
+        "num": 14,
+        "name": "용도지역 · 용도지구",
+        "val": z_val,
+        "guide": "국토계획법상 용도지역 및 지구/구역 (상가 업종 인허가 필수 확인사항)"
+    })
+
+    # 15. 주구조 (건물 구조)
+    items.append({
+        "num": 15,
+        "name": "주구조 (건물 구조)",
+        "val": data.get("structure", "철근콘크리트구조"),
+        "guide": "건축물대장 표제부 상 법정 주구조 (철근콘크리트, 철골조 등)"
+    })
+
+    items.extend([
+        {"num": 16, "name": "사용승인일 (준공일)", "val": data.get("approval_date", ""), "guide": "건축물대장 상 사용승인일 기재 필수"},
+        {"num": 17, "name": "주요 설비 및 시설", "val": data.get("facility_info", "전기용량, 가스, 승강기 유무"), "guide": "계약전력(kW), 도시가스, 덕트, 엘리베이터 등"},
     ])
 
     if data.get("include_office_info", True):
@@ -194,7 +222,7 @@ def get_commercial_spec_table_data(data: dict) -> list[dict]:
             as_info = f"{as_name} ({as_phone})".strip() if as_phone else as_name
             office_lines.append(f"• 담당(소공): {as_info}")
         office_full = "\n".join(office_lines)
-        items.append({"num": 16, "name": "중개사무소 정보", "val": office_full, "guide": "상호, 소재지, 연락처, 등록번호, 대표자 성명 5대 항목 필수"})
+        items.append({"num": 18, "name": "중개사무소 정보", "val": office_full, "guide": "상호, 소재지, 연락처, 등록번호, 대표자 성명 5대 항목 필수"})
 
     return items
 
