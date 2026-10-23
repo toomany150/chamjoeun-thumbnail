@@ -17,7 +17,8 @@ importlib.reload(naver_crawler)
 from thumbnail_generator import (
     render_thumbnail,
     render_commercial_lease_thumbnail,
-    render_commercial_sale_thumbnail
+    render_commercial_sale_thumbnail,
+    render_a4_window_poster
 )
 from property_ad_spec import (
     DEFAULT_SPEC,
@@ -71,6 +72,24 @@ def render_direct_download_button(image_bytes: bytes, file_name: str, button_lab
                   font-size: 15px; box-shadow: 0 4px 12px rgba(244,138,38,0.3); transition: all 0.2s ease-in-out;">
            {button_label}
         </a>
+    </div>
+    """
+
+def render_direct_print_button(image_bytes: bytes, file_name: str, button_label: str = "🖨️ [원클릭 즉시 인쇄] 창문 부착용 A4 바로 출력", bg_color: str = "#1A202C") -> str:
+    """브라우저의 인쇄 대화상자(Ctrl+P)를 즉시 호출하여 A4 용지에 꽉 차게 출력하는 버튼을 생성합니다."""
+    b64_data = base64.b64encode(image_bytes).decode()
+    return f"""
+    <div style="margin: 8px 0 14px 0;">
+        <button onclick="
+            var printWin = window.open('', '_blank');
+            printWin.document.write('<!DOCTYPE html><html><head><title>{file_name}</title><style>@page {{ size: A4 portrait; margin: 0; }} body {{ margin: 0; padding: 0; display: flex; justify-content: center; align-items: center; background: #fff; }} img {{ width: 100%; height: auto; max-width: 100vw; max-height: 100vh; object-fit: contain; }}</style></head><body><img src=\\'data:image/png;base64,{b64_data}\\' onload=\\'setTimeout(function(){{ window.print(); window.close(); }}, 300);\\' /></body></html>');
+            printWin.document.close();
+        " 
+        style="width: 100%; display: block; text-align: center; background-color: {bg_color}; color: #FFFFFF !important; 
+               padding: 15px 20px; border-radius: 9px; font-weight: 800; border: none; cursor: pointer;
+               font-size: 16px; box-shadow: 0 4px 14px rgba(26,32,44,0.35); transition: all 0.2s ease-in-out;">
+           {button_label}
+        </button>
     </div>
     """
 
@@ -904,7 +923,35 @@ with tab_apt_thumb:
                 footer_text=st.session_state.thumb_footer_text
             )
 
-        st.image(thumbnail_img, caption="실시간 완성 미리보기 (1080 x 1080 px)", use_container_width=True)
+        # 🌟 썸네일 & 창문 부착용 A4 포스터 출력 2대 옵션
+        tab_view_thumb, tab_view_a4 = st.tabs([
+            "🖼️ 1. 블로그 썸네일 (1080x1080 정방형)",
+            "🖨️ 2. 중개사무소 창문 부착용 A4 포스터 (210x297mm 인쇄용)"
+        ])
+
+        with tab_view_thumb:
+            st.image(thumbnail_img, caption="블로그 썸네일 실시간 완성 미리보기 (1080 x 1080 px)", use_container_width=True)
+
+        with tab_view_a4:
+            with st.spinner("창문 부착용 300DPI 초고화질 A4 포스터 렌더링 중..."):
+                a4_poster_img = render_a4_window_poster(
+                    thumbnail_img=thumbnail_img,
+                    bg_image=uploaded_bg,
+                    item_no=st.session_state.item_no,
+                    main_title=st.session_state.main_title,
+                    sub_title=st.session_state.sub_title,
+                    feature_text=st.session_state.feature_text,
+                    trade_type=st.session_state.thumb_trade_type,
+                    price_text=st.session_state.thumb_price_text,
+                    spec_lines=spec_lines,
+                    office_name=st.session_state.get("ad_office_name", "참좋은공인중개사사무소"),
+                    office_owner=st.session_state.get("ad_office_owner", "신제환"),
+                    office_phone=st.session_state.get("ad_office_phone", "010-9667-4201"),
+                    office_reg_no=st.session_state.get("ad_office_reg_no", "제 26530-2026-00009 호"),
+                    office_address=st.session_state.get("ad_office_address", "부산광역시 사상구 강선로 9, 1층"),
+                    is_commercial=False
+                )
+            st.image(a4_poster_img, caption="중개사무소 유리창 부착용 A4 브리핑 포스터 (초고화질 300 DPI)", use_container_width=True)
 
     with col_t_right:
         st.markdown("### 🛠️ 썸네일 텍스트 수정")
@@ -939,10 +986,10 @@ with tab_apt_thumb:
             st.text_input(
                 "띠지 문구 (소공/직원 커스텀 문구 가능)",
                 key="thumb_footer_text",
-                placeholder="미입력 시: 참좋은공인중개사사무소 (부산 사상구) ☎ 051-313-2288"
+                placeholder="미입력 시: 참좋은공인중개사사무소 (대표 신제환) ☎ 010-9667-4201"
             )
 
-        # 썸네일 이미지 다운로드
+        # 1. 썸네일 이미지 다운로드 바이트
         img_byte_arr = io.BytesIO()
         thumbnail_img.save(img_byte_arr, format="PNG", quality=98)
         img_bytes = img_byte_arr.getvalue()
@@ -951,20 +998,53 @@ with tab_apt_thumb:
         clean_price = re.sub(r'[^\w\s-]', '', (st.session_state.thumb_price_text or "")).strip().replace(" ", "")
         download_filename = f"부동산썸네일_{clean_title}_{st.session_state.thumb_trade_type}_{clean_price}.png"
 
-        st.download_button(
-            label="📥 1080x1080 썸네일 저장 (기본 다운로드)",
-            data=img_bytes,
-            file_name=download_filename,
-            mime="image/png",
-            key="btn_thumb_download_main",
-            use_container_width=True
-        )
+        # 2. A4 창문 포스터 다운로드 및 인쇄 바이트
+        a4_byte_arr = io.BytesIO()
+        a4_poster_img.save(a4_byte_arr, format="PNG", quality=98)
+        a4_bytes = a4_byte_arr.getvalue()
+        a4_download_filename = f"창문부착용_A4포스터_{clean_title}_{clean_price}.png"
 
-        # 브라우저 네이티브 다이렉트 다운로드 (오류 없는 100% 즉시 저장)
-        st.markdown(render_direct_download_button(img_bytes, download_filename, "💾 [즉시 다운로드] 브라우저 원클릭 파일 저장"), unsafe_allow_html=True)
-        st.caption("📱 스마트폰에서는 위 이미지를 1초간 길게 누르시면 '사진 앱에 저장'도 가능합니다.")
+        st.markdown("<hr style='margin: 15px 0 12px 0;'/>", unsafe_allow_html=True)
+        st.markdown("### 📥 출력 및 저장 옵션")
 
-        st.info("💡 아파트 썸네일을 만드셨다면, 상단의 **'📝 ③ 아파트 중개대상물 표시'** 탭을 클릭하여 네이버 부동산 광고 및 블로그 본문 서식을 바로 확인하세요!")
+        tab_down_thumb, tab_down_a4 = st.tabs([
+            "🖼️ 1. 블로그 썸네일 저장",
+            "🖨️ 2. 창문 부착용 A4 바로 출력/저장"
+        ])
+
+        with tab_down_thumb:
+            st.download_button(
+                label="📥 1080x1080 썸네일 저장 (기본 다운로드)",
+                data=img_bytes,
+                file_name=download_filename,
+                mime="image/png",
+                key="btn_thumb_download_main",
+                use_container_width=True
+            )
+            st.markdown(render_direct_download_button(img_bytes, download_filename, "💾 [즉시 다운로드] 썸네일 원클릭 파일 저장"), unsafe_allow_html=True)
+            st.caption("📱 스마트폰에서는 위 이미지를 1초간 길게 누르시면 '사진 앱에 저장'도 가능합니다.")
+
+        with tab_down_a4:
+            st.markdown(render_direct_print_button(a4_bytes, a4_download_filename, "🖨️ [원클릭 즉시 인쇄] 창문 부착용 A4 바로 출력 (Ctrl+P)", bg_color="#1A202C"), unsafe_allow_html=True)
+            st.download_button(
+                label="📥 300DPI 초고화질 A4 포스터 파일 저장",
+                data=a4_bytes,
+                file_name=a4_download_filename,
+                mime="image/png",
+                key="btn_a4_download_main",
+                use_container_width=True
+            )
+            st.markdown(render_direct_download_button(a4_bytes, a4_download_filename, "💾 [즉시 다운로드] A4 포스터 원클릭 파일 저장", bg_color="#2B6CB0"), unsafe_allow_html=True)
+            st.markdown("""
+            <div style="font-size:12.5px; color:#2D3748; background:#F8FAFC; border:1px solid #CBD5E0; padding:10px 14px; border-radius:8px; margin-top:6px; line-height:1.5;">
+                💡 <b>창문 부착 인쇄 팁:</b><br/>
+                1. 상단의 <b>[🖨️ 원클릭 즉시 인쇄]</b>를 누르시면 프린터 인쇄창이 바로 열립니다.<br/>
+                2. 인쇄 설정에서 용지 방향을 <b>'세로'</b>로 하시고 <b>'용지에 맞춤'</b>을 선택하시면 A4 용지에 여백 없이 칼같이 선명하게 출력됩니다!<br/>
+                3. 출력 후 중개사무소 창문(유리창) 안쪽에 부착하시면 지나가는 고객의 시선을 100% 사로잡습니다.
+            </div>
+            """, unsafe_allow_html=True)
+
+        st.info("💡 아파트 썸네일과 포스터를 만드셨다면, 상단의 **'📝 ③ 아파트 중개대상물 표시'** 탭을 클릭하여 네이버 부동산 광고 및 블로그 본문 서식을 바로 확인하세요!")
 
 
 # ====================================================
@@ -1052,8 +1132,64 @@ with tab_comm_thumb:
                     broker_title=st.session_state.comm_sale_broker
                 )
 
-        caption_title = "실시간 완성 미리보기: 상가 임차 (1080 x 1080 px)" if not is_sale_mode else "실시간 완성 미리보기: 상가 매매 (1080 x 1080 px)"
-        st.image(comm_thumb_img, caption=caption_title, use_container_width=True)
+        # 🌟 상가 썸네일 & 창문 부착용 A4 포스터 출력 2대 옵션
+        tab_comm_view_thumb, tab_comm_view_a4 = st.tabs([
+            "🖼️ 1. 상가 블로그 썸네일 (1080x1080)",
+            "🖨️ 2. 중개사무소 창문 부착용 A4 포스터 (210x297mm)"
+        ])
+
+        with tab_comm_view_thumb:
+            caption_title = "실시간 완성 미리보기: 상가 임차 (1080 x 1080 px)" if not is_sale_mode else "실시간 완성 미리보기: 상가 매매 (1080 x 1080 px)"
+            st.image(comm_thumb_img, caption=caption_title, use_container_width=True)
+
+        with tab_comm_view_a4:
+            # 상가 포스터에 전달할 파라미터 조합
+            if not is_sale_mode:
+                comm_a4_title = st.session_state.comm_lease_main_title or "상가 임대"
+                comm_a4_sub = st.session_state.comm_lease_cp_top or st.session_state.comm_lease_cp_bot or "역세권 특급 상권"
+                comm_a4_feature = st.session_state.comm_lease_top_badge or "추천 매물"
+                comm_a4_trade = "임대"
+                comm_a4_price = st.session_state.comm_lease_spec1.split("|")[-1].strip() if "|" in st.session_state.comm_lease_spec1 else st.session_state.comm_lease_spec1
+                comm_a4_specs = [
+                    st.session_state.comm_lease_spec1,
+                    st.session_state.comm_lease_spec2,
+                    st.session_state.comm_lease_pin_bubble if st.session_state.comm_lease_show_pin else "유동인구 풍부",
+                    "즉시입점 협의가능",
+                    "도로변 가시성 우수"
+                ]
+            else:
+                comm_a4_title = st.session_state.comm_sale_main_sub or "수익형 상가 매매"
+                comm_a4_sub = st.session_state.comm_sale_top_left or "급매 / 고수익률"
+                comm_a4_feature = st.session_state.comm_sale_top_right or "특급 투자처"
+                comm_a4_trade = "매매"
+                comm_a4_price = st.session_state.comm_sale_main_hl or st.session_state.comm_sale_price_spec or "수익률 7.2%"
+                comm_a4_specs = [
+                    st.session_state.comm_sale_price_spec,
+                    st.session_state.comm_sale_main_hl,
+                    "자주식 주차 및 승강기 완비",
+                    "안정적인 임대수익 보장",
+                    "사상 역세권 핵심 상권"
+                ]
+
+            with st.spinner("상가 창문 부착용 300DPI 초고화질 A4 포스터 렌더링 중..."):
+                comm_a4_poster_img = render_a4_window_poster(
+                    thumbnail_img=comm_thumb_img,
+                    bg_image=uploaded_comm_bg,
+                    item_no=st.session_state.get("item_no", ""),
+                    main_title=comm_a4_title,
+                    sub_title=comm_a4_sub,
+                    feature_text=comm_a4_feature,
+                    trade_type=comm_a4_trade,
+                    price_text=comm_a4_price,
+                    spec_lines=comm_a4_specs,
+                    office_name=st.session_state.get("comm_ad_office_name", "참좋은공인중개사사무소"),
+                    office_owner=st.session_state.get("comm_ad_office_owner", "신제환"),
+                    office_phone=st.session_state.get("comm_ad_office_phone", "010-9667-4201"),
+                    office_reg_no=st.session_state.get("comm_ad_office_reg_no", "제 26530-2026-00009 호"),
+                    office_address=st.session_state.get("comm_ad_office_address", "부산광역시 사상구 강선로 9, 1층"),
+                    is_commercial=True
+                )
+            st.image(comm_a4_poster_img, caption="상가 유리창 부착용 A4 브리핑 포스터 (초고화질 300 DPI)", use_container_width=True)
 
     with col_ct_right:
         if not is_sale_mode:
@@ -1105,7 +1241,7 @@ with tab_comm_thumb:
                 with c_of2:
                     st.text_input("소장명 / 직책", key="comm_sale_broker")
 
-        # 다운로드 버튼
+        # 1. 상가 썸네일 다운로드 바이트
         img_byte_arr = io.BytesIO()
         comm_thumb_img.save(img_byte_arr, format="PNG", quality=98)
         img_bytes = img_byte_arr.getvalue()
@@ -1114,19 +1250,53 @@ with tab_comm_thumb:
         comm_clean_title = re.sub(r'[^\w\s-]', '', (st.session_state.comm_lease_main_title if not is_sale_mode else st.session_state.comm_sale_main_sub)).strip().replace(" ", "_")
         comm_filename = f"{mode_tag}_{comm_clean_title}.png"
 
-        st.download_button(
-            label=f"📥 1080x1080 {mode_tag} 썸네일 저장 (기본 다운로드)",
-            data=img_bytes,
-            file_name=comm_filename,
-            mime="image/png",
-            key="btn_comm_thumb_download",
-            use_container_width=True
-        )
+        # 2. 상가 A4 창문 포스터 다운로드 및 인쇄 바이트
+        comm_a4_byte_arr = io.BytesIO()
+        comm_a4_poster_img.save(comm_a4_byte_arr, format="PNG", quality=98)
+        comm_a4_bytes = comm_a4_byte_arr.getvalue()
+        comm_a4_download_filename = f"창문부착용_상가_{mode_tag}_{comm_clean_title}_A4포스터.png"
 
-        st.markdown(render_direct_download_button(img_bytes, comm_filename, "💾 [즉시 다운로드] 브라우저 원클릭 파일 저장", bg_color="#DAA844"), unsafe_allow_html=True)
-        st.caption("📱 스마트폰에서는 위 이미지를 1초간 길게 누르시면 '사진 앱에 저장'도 가능합니다.")
+        st.markdown("<hr style='margin: 15px 0 12px 0;'/>", unsafe_allow_html=True)
+        st.markdown("### 📥 출력 및 저장 옵션")
 
-        st.info("💡 상가 썸네일을 만드셨다면, 상단의 **'🏪 ④ 상가 중개대상물 표시'** 탭을 클릭하여 상가 전용 네이버 광고 체크리스트 및 블로그 서식을 확인하세요!")
+        tab_comm_down_thumb, tab_comm_down_a4 = st.tabs([
+            f"🖼️ 1. {mode_tag} 썸네일 저장",
+            "🖨️ 2. 창문 부착용 A4 바로 출력/저장"
+        ])
+
+        with tab_comm_down_thumb:
+            st.download_button(
+                label=f"📥 1080x1080 {mode_tag} 썸네일 저장 (기본 다운로드)",
+                data=img_bytes,
+                file_name=comm_filename,
+                mime="image/png",
+                key="btn_comm_thumb_download",
+                use_container_width=True
+            )
+            st.markdown(render_direct_download_button(img_bytes, comm_filename, "💾 [즉시 다운로드] 썸네일 원클릭 파일 저장", bg_color="#DAA844"), unsafe_allow_html=True)
+            st.caption("📱 스마트폰에서는 위 이미지를 1초간 길게 누르시면 '사진 앱에 저장'도 가능합니다.")
+
+        with tab_comm_down_a4:
+            st.markdown(render_direct_print_button(comm_a4_bytes, comm_a4_download_filename, "🖨️ [원클릭 즉시 인쇄] 상가 창문용 A4 바로 출력 (Ctrl+P)", bg_color="#B7791F"), unsafe_allow_html=True)
+            st.download_button(
+                label="📥 300DPI 초고화질 A4 포스터 파일 저장",
+                data=comm_a4_bytes,
+                file_name=comm_a4_download_filename,
+                mime="image/png",
+                key="btn_comm_a4_download_main",
+                use_container_width=True
+            )
+            st.markdown(render_direct_download_button(comm_a4_bytes, comm_a4_download_filename, "💾 [즉시 다운로드] A4 포스터 원클릭 파일 저장", bg_color="#2B6CB0"), unsafe_allow_html=True)
+            st.markdown("""
+            <div style="font-size:12.5px; color:#2D3748; background:#F8FAFC; border:1px solid #CBD5E0; padding:10px 14px; border-radius:8px; margin-top:6px; line-height:1.5;">
+                💡 <b>상가 매물 창문 부착 팁:</b><br/>
+                1. 상단의 <b>[🖨️ 원클릭 즉시 인쇄]</b>를 누르시면 프린터 인쇄창이 바로 뜹니다.<br/>
+                2. 용지 방향을 <b>'세로'</b>, 배율을 <b>'용지에 맞춤'</b>으로 선택하시면 A4 용지에 선명하고 꽉 차게 인쇄됩니다.<br/>
+                3. 상가 매물은 골드 톤 디자인으로 유리창에 부착 시 고급스럽고 매물 문의율이 매우 높습니다!
+            </div>
+            """, unsafe_allow_html=True)
+
+        st.info("💡 상가 썸네일과 포스터를 만드셨다면, 상단의 **'🏪 ④ 상가 중개대상물 표시'** 탭을 클릭하여 상가 전용 네이버 광고 체크리스트 및 블로그 서식을 확인하세요!")
 
 
 # ====================================================
@@ -2217,8 +2387,8 @@ with tab_comm_ad:
             "facility_info": st.session_state.get("comm_ad_facility_info", ""),
             "office_name": st.session_state.get("comm_ad_office_name", "참좋은공인중개사사무소"),
             "office_owner": st.session_state.get("comm_ad_office_owner", "신제환"),
-            "office_reg_no": st.session_state.get("comm_ad_office_reg_no", "제 26530-2021-00045 호"),
-            "office_address": st.session_state.get("comm_ad_office_address", "부산광역시 사상구 사상로 200, 1층"),
+            "office_reg_no": st.session_state.get("comm_ad_office_reg_no", "제 26530-2026-00009 호"),
+            "office_address": st.session_state.get("comm_ad_office_address", "부산광역시 사상구 강선로 9, 1층"),
             "office_phone": st.session_state.get("comm_ad_office_phone", "010-9667-4201"),
             "include_office_info": st.session_state.get("comm_ad_include_office_info", True),
             "assistant_name": st.session_state.get("comm_ad_assistant_name", ""),

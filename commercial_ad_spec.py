@@ -65,8 +65,8 @@ DEFAULT_COMMERCIAL_SPEC_LEASE = {
     # 중개사무소 정보
     "office_name": "참좋은공인중개사사무소",
     "office_owner": "신제환",
-    "office_reg_no": "제 26530-2021-00045 호",
-    "office_address": "부산광역시 사상구 사상로 200, 1층",
+    "office_reg_no": "제 26530-2026-00009 호",
+    "office_address": "부산광역시 사상구 강선로 9, 1층",
     "office_phone": "010-9667-4201",
     "include_office_info": True,
     "assistant_name": "",
@@ -104,8 +104,8 @@ DEFAULT_COMMERCIAL_SPEC_SALE = {
     # 중개사무소 정보
     "office_name": "참좋은공인중개사사무소",
     "office_owner": "신제환",
-    "office_reg_no": "제 26530-2021-00045 호",
-    "office_address": "부산광역시 사상구 사상로 200, 1층",
+    "office_reg_no": "제 26530-2026-00009 호",
+    "office_address": "부산광역시 사상구 강선로 9, 1층",
     "office_phone": "010-9667-4201",
     "include_office_info": True,
     "assistant_name": "",
@@ -212,8 +212,8 @@ def get_commercial_spec_table_data(data: dict) -> list[dict]:
         office_lines = [
             f"• 상호: {data.get('office_name', '참좋은공인중개사사무소')}",
             f"• 대표: {data.get('office_owner', '신제환')}",
-            f"• 등록번호: {data.get('office_reg_no', '제 26530-2021-00045 호')}",
-            f"• 소재지: {data.get('office_address', '부산광역시 사상구 사상로 200, 1층')}",
+            f"• 등록번호: {data.get('office_reg_no', '제 26530-2026-00009 호')}",
+            f"• 소재지: {data.get('office_address', '부산광역시 사상구 강선로 9, 1층')}",
             f"• 직통전화: {data.get('office_phone', '010-9667-4201')}"
         ]
         as_name = data.get("assistant_name", "").strip()
@@ -267,7 +267,7 @@ def generate_commercial_blog_html_table(data: dict) -> str:
         office_name = data.get('office_name', '참좋은공인중개사사무소')
         office_owner = data.get('office_owner', '신제환')
         office_phone = data.get('office_phone', '010-9667-4201')
-        office_addr = data.get('office_address', '부산 사상구 사상로 200')
+        office_addr = data.get('office_address', '부산 사상구 강선로 9, 1층')
         as_name = data.get("assistant_name", "").strip()
         as_phone = data.get("assistant_phone", "").strip()
         as_tag = f" | 👤 담당: {as_name} ({as_phone})" if (as_name or as_phone) else ""
@@ -277,7 +277,7 @@ def generate_commercial_blog_html_table(data: dict) -> str:
     </table>
     <div style="background: #181C24; color: #FFFFFF; padding: 14px 20px; font-size: 14px; font-weight: 600; text-align: center; border-top: 1px solid #DAA844;">
         <span style="color: #DAA844; font-weight: 700;">🏢 {office_name}</span> (대표 {office_owner}) ☎ {office_phone}{as_tag}<br/>
-        <span style="font-size: 12px; color: #A0AEC0;">소재지: {office_addr} | 등록번호: {data.get('office_reg_no', '제 26530-2021-00045 호')}</span>
+        <span style="font-size: 12px; color: #A0AEC0;">소재지: {office_addr} | 등록번호: {data.get('office_reg_no', '제 26530-2026-00009 호')}</span>
     </div>
 </div>
 """
@@ -308,8 +308,8 @@ def generate_commercial_clipboard_text(data: dict) -> str:
         lines.append("───────────────────────────────────────────")
         lines.append(f"🏢 {data.get('office_name', '참좋은공인중개사사무소')} (대표: {data.get('office_owner', '신제환')})")
         lines.append(f"📞 직통 문의: {data.get('office_phone', '010-9667-4201')} (황금터잡이 신소장)")
-        lines.append(f"📍 등록번호: {data.get('office_reg_no', '제 26530-2021-00045 호')}")
-        lines.append(f"📍 사무소 소재지: {data.get('office_address', '부산광역시 사상구 사상로 200, 1층')}")
+        lines.append(f"📍 등록번호: {data.get('office_reg_no', '제 26530-2026-00009 호')}")
+        lines.append(f"📍 사무소 소재지: {data.get('office_address', '부산광역시 사상구 강선로 9, 1층')}")
         as_name = data.get("assistant_name", "").strip()
         as_phone = data.get("assistant_phone", "").strip()
         if as_name or as_phone:
@@ -480,8 +480,8 @@ def render_commercial_spec_table_image(data: dict) -> Image.Image:
         draw.text((text_x, cur_y + 22), f"{office_name}  |  대표: {office_owner} (황금터잡이 신소장)", font=font_footer, fill=(255, 255, 255, 255))
 
         office_phone = data.get('office_phone', '010-9667-4201')
-        office_reg_no = data.get('office_reg_no', '제 26530-2021-00045 호')
-        office_addr = data.get('office_address', '부산광역시 사상구 사상로 200, 1층')
+        office_reg_no = data.get('office_reg_no', '제 26530-2026-00009 호')
+        office_addr = data.get('office_address', '부산광역시 사상구 강선로 9, 1층')
 
         footer_line2 = f"☎ 직통 문의: {office_phone}  •  등록번호: {office_reg_no}"
         draw.text((text_x, cur_y + 60), footer_line2, font=font_footer_sub, fill=(225, 230, 235, 255))

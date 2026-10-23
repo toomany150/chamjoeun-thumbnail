@@ -960,3 +960,261 @@ def render_commercial_sale_thumbnail(
 
     return canvas.convert("RGB")
 
+
+# ====================================================
+# 🖨️ 중개사무소 창문 부착용 A4 포스터 (Window Poster) 렌더러
+# 규격: 2480 x 3508 px (A4 정규 300 DPI, 세로형 1:1.414)
+# ====================================================
+def render_a4_window_poster(
+    thumbnail_img=None,
+    bg_image=None,
+    item_no: str = "No. APT001",
+    main_title: str = "사상 중흥S-클래스",
+    sub_title: str = "그랜드센트럴 105동",
+    feature_text: str = "1572세대 대단지 아파트 · 초역세권",
+    trade_type: str = "매매",
+    price_text: str = "6억 2,000만 원",
+    spec_lines: list = None,
+    office_name: str = "참좋은공인중개사사무소",
+    office_owner: str = "신제환",
+    office_phone: str = "010-9667-4201",
+    office_reg_no: str = "제 26530-2026-00009 호",
+    office_address: str = "부산광역시 사상구 강선로 9, 1층",
+    is_commercial: bool = False
+) -> Image.Image:
+    """
+    중개사무소 창문(유리창/외벽)에 부착하여 보행자의 시선을 사로잡는
+    초고화질 A4(2480 x 3508 px, 300 DPI) 매물 브리핑 포스터를 렌더링합니다.
+    """
+    W = 2480
+    H = 3508
+    canvas = Image.new("RGBA", (W, H), (255, 255, 255, 255))
+    draw = ImageDraw.Draw(canvas)
+
+    # 테마 색상 설정
+    if is_commercial:
+        primary_color = (26, 32, 44, 255)      # 딥 다크
+        accent_color = (218, 168, 68, 255)     # 다크 골드
+        banner_bg = (24, 28, 36, 255)
+    else:
+        primary_color = (244, 138, 38, 255)    # 시그니처 오렌지
+        accent_color = (235, 94, 40, 255)      # 딥 오렌지
+        banner_bg = (244, 138, 38, 255)
+
+    # 1. 외곽 더블 테두리 (창문에 부착 시 강력한 주목도 제공)
+    draw.rounded_rectangle([(50, 50), (W - 50, H - 50)], radius=36, outline=primary_color, width=14)
+    draw.rounded_rectangle([(72, 72), (W - 72, H - 72)], radius=24, outline=(226, 232, 240, 255), width=3)
+
+    # 2. 상단 헤더 (로고 & 참좋은 추천 매물 & 물건번호)
+    header_y = 100
+    logo_path = os.path.join(ASSETS_DIR, "logo.png")
+    cur_hx = 110
+    if os.path.exists(logo_path):
+        try:
+            lg = Image.open(logo_path).convert("RGBA")
+            lh = 75
+            lw = int(lg.width * (lh / lg.height))
+            lg_res = lg.resize((lw, lh), Image.Resampling.LANCZOS)
+            canvas.paste(lg_res, (cur_hx, header_y + 10), lg_res)
+            cur_hx += lw + 24
+        except Exception:
+            pass
+
+    font_header_title = get_font("NanumGothicBold.ttf", 52)
+    header_label = "🏢 참좋은공인중개사 추천 매물 브리핑" if not is_commercial else "🏬 참좋은공인중개사 상가 특급 추천 매물"
+    draw.text((cur_hx, header_y + 20), header_label, fill=(30, 41, 59, 255), font=font_header_title)
+
+    # 물건번호 배지 (우측 상단)
+    font_badge = get_font("NanumGothicBold.ttf", 44)
+    item_str = f"매물번호 : {item_no or 'No. 001'}"
+    ib = font_badge.getbbox(item_str)
+    iw = ib[2] - ib[0]
+    badge_x = W - 110 - iw - 48
+    draw.rounded_rectangle([(badge_x, header_y + 12), (W - 110, header_y + 86)], radius=18, fill=(241, 245, 249, 255), outline=(203, 213, 225, 255), width=2)
+    draw.text((badge_x + 24, header_y + 24), item_str, fill=(71, 85, 105, 255), font=font_badge)
+
+    draw.line([(100, header_y + 115), (W - 100, header_y + 115)], fill=(226, 232, 240, 255), width=2)
+
+    # 3. 매물 특징 및 초대형 타이틀 섹션
+    cur_y = header_y + 155
+    if feature_text:
+        feat_clean = f"⭐ {feature_text.strip()}"
+        font_feat = get_font("NanumGothicBold.ttf", 46)
+        fb = font_feat.getbbox(feat_clean)
+        fw = fb[2] - fb[0]
+        feat_box_w = min(fw + 56, W - 220)
+        draw.rounded_rectangle([(110, cur_y), (110 + feat_box_w, cur_y + 76)], radius=20, fill=(255, 247, 237, 255), outline=(254, 215, 170, 255), width=2)
+        draw.text((138, cur_y + 14), feat_clean, fill=(194, 65, 12, 255), font=font_feat)
+        cur_y += 105
+
+    # 초대형 메인 타이틀 (멀리서도 시선 강탈)
+    font_main = get_font("NanumGothicExtraBold.ttf", 120)
+    title_str = (main_title or "추천 부동산 매물").strip()
+    draw.text((110, cur_y), title_str, fill=(15, 23, 42, 255), font=font_main)
+    cur_y += 150
+
+    # 서브 타이틀
+    if sub_title:
+        font_sub = get_font("NanumGothicBold.ttf", 60)
+        draw.text((114, cur_y), sub_title.strip(), fill=(71, 85, 105, 255), font=font_sub)
+        cur_y += 90
+
+    # 4. 초대형 시선강탈 가격 배너 (골드/오렌지 입체 라운드 박스)
+    cur_y += 15
+    banner_h = 240
+    draw.rounded_rectangle([(100, cur_y), (W - 100, cur_y + banner_h)], radius=32, fill=banner_bg)
+
+    # 거래 형태 뱃지 (좌측 화이트 알약)
+    trade_str = (trade_type or "매매").strip()
+    font_trade = get_font("NanumGothicExtraBold.ttf", 68)
+    tb = font_trade.getbbox(trade_str)
+    tw = tb[2] - tb[0]
+    pill_w = max(180, tw + 56)
+    draw.rounded_rectangle([(140, cur_y + 44), (140 + pill_w, cur_y + banner_h - 44)], radius=26, fill=(255, 255, 255, 255))
+    draw.text((140 + (pill_w - tw) // 2 - tb[0], cur_y + 80), trade_str, fill=primary_color, font=font_trade)
+
+    # 초대형 금액 텍스트
+    p_str = (price_text or "상담 환영").strip()
+    font_price = get_font("NanumGothicExtraBold.ttf", 125)
+    draw.text((140 + pill_w + 45, cur_y + 52), p_str, fill=(255, 255, 255, 255), font=font_price)
+
+    # 우측 협의 가능 배지
+    sub_info_txt = "즉시입주 협의가능" if not is_commercial else "성업중 · 즉시입점"
+    font_sub_info = get_font("NanumGothicBold.ttf", 46)
+    sib = font_sub_info.getbbox(sub_info_txt)
+    siw = sib[2] - sib[0]
+    draw.text((W - 145 - siw, cur_y + 95), sub_info_txt, fill=(255, 255, 255, 235), font=font_sub_info)
+
+    cur_y += banner_h + 40
+
+    # 5. 매물 비주얼 영역 (중앙 썸네일 고화질 액자 또는 현장 사진)
+    visual_box_w = W - 200
+    visual_box_h = 1320
+    visual_x = 100
+    visual_y = cur_y
+
+    # 배경 액자 프레임 (그림자 효과)
+    draw.rounded_rectangle([(visual_x - 4, visual_y - 4), (visual_x + visual_box_w + 4, visual_y + visual_box_h + 4)], radius=28, fill=(226, 232, 240, 255))
+    draw.rounded_rectangle([(visual_x, visual_y), (visual_x + visual_box_w, visual_y + visual_box_h)], radius=24, fill=(241, 245, 249, 255))
+
+    # 썸네일 이미지 또는 현장 사진 로드 및 삽입
+    target_photo = None
+    if thumbnail_img is not None:
+        if isinstance(thumbnail_img, Image.Image):
+            target_photo = thumbnail_img.convert("RGBA")
+        elif isinstance(thumbnail_img, (bytes, bytearray)):
+            target_photo = Image.open(io.BytesIO(thumbnail_img)).convert("RGBA")
+    elif bg_image is not None:
+        if isinstance(bg_image, Image.Image):
+            target_photo = bg_image.convert("RGBA")
+        elif isinstance(bg_image, (bytes, bytearray)):
+            target_photo = Image.open(io.BytesIO(bg_image)).convert("RGBA")
+        elif hasattr(bg_image, "read"):
+            bg_image.seek(0)
+            target_photo = Image.open(bg_image).convert("RGBA")
+
+    if target_photo is not None:
+        # 비율 유지하며 액자 중앙에 예쁘게 배치
+        pw, ph = target_photo.size
+        scale = min(visual_box_w / pw, visual_box_h / ph)
+        scaled_w = int(pw * scale)
+        scaled_h = int(ph * scale)
+        resized_photo = target_photo.resize((scaled_w, scaled_h), Image.Resampling.LANCZOS)
+        paste_x = visual_x + (visual_box_w - scaled_w) // 2
+        paste_y = visual_y + (visual_box_h - scaled_h) // 2
+        canvas.paste(resized_photo, (paste_x, paste_y), resized_photo)
+    else:
+        # 사진이 없을 때 안내 박스
+        font_no_img = get_font("NanumGothicBold.ttf", 52)
+        no_img_txt = "📸 현장 실물 사진 및 단지 조감도"
+        nib = font_no_img.getbbox(no_img_txt)
+        draw.text((visual_x + (visual_box_w - (nib[2] - nib[0])) // 2, visual_y + visual_box_h // 2 - 30), no_img_txt, fill=(148, 163, 184, 255), font=font_no_img)
+
+    cur_y += visual_box_h + 40
+
+    # 6. 핵심 6대 스펙 상세 그리드 카드 (3열 x 2행)
+    if not spec_lines or len(spec_lines) < 5:
+        spec_lines = [
+            "25층 / 36층 (로얄층)",
+            "공급 111.42㎡ / 전용 79.85㎡",
+            "방 3 / 욕실 2개",
+            "즉시입주 협의가능",
+            "남동향 (거실 기준)"
+        ]
+
+    # 기본 6대 정보 구성
+    cards_data = [
+        ("🏢 해당층 / 총층", spec_lines[0] if len(spec_lines) > 0 and spec_lines[0] else "고층 / 로얄층"),
+        ("📐 공급 및 전용면적", spec_lines[1] if len(spec_lines) > 1 and spec_lines[1] else "상담 시 즉시 안내"),
+        ("🚪 방수 / 욕실수", spec_lines[2] if len(spec_lines) > 2 and spec_lines[2] else "방 3개 / 욕실 2개"),
+        ("🧭 방향 (채광 우수)", spec_lines[4] if len(spec_lines) > 4 and spec_lines[4] else "남향 위주 배치"),
+        ("📅 입주 가능 시기", spec_lines[3] if len(spec_lines) > 3 and spec_lines[3] else "즉시입주 협의"),
+        ("🚗 주차 및 단지 편의", "총 주차 1,685대 (세대당 1.07대)" if not is_commercial else "자주식 주차 및 승강기 완비")
+    ]
+
+    card_cols = 3
+    card_gap = 26
+    total_card_w = visual_box_w
+    c_w = (total_card_w - (card_cols - 1) * card_gap) // card_cols
+    c_h = 195
+
+    font_c_label = get_font("NanumGothicBold.ttf", 36)
+    font_c_val = get_font("NanumGothicExtraBold.ttf", 46)
+
+    for idx, (lbl, val) in enumerate(cards_data):
+        row = idx // card_cols
+        col = idx % card_cols
+        cx = visual_x + col * (c_w + card_gap)
+        cy = cur_y + row * (c_h + 20)
+
+        # 카드 박스
+        draw.rounded_rectangle([(cx, cy), (cx + c_w, cy + c_h)], radius=20, fill=(248, 250, 252, 255), outline=(226, 232, 240, 255), width=2)
+        # 카드 상단 라벨
+        draw.text((cx + 26, cy + 22), lbl, fill=(100, 116, 139, 255), font=font_c_label)
+        # 카드 중앙 값 (자동 축약)
+        val_clean = val.replace("공급", "").replace("전용", "전용").strip()
+        if len(val_clean) > 18:
+            val_clean = val_clean[:17] + "…"
+        draw.text((cx + 26, cy + 85), val_clean, fill=(15, 23, 42, 255), font=font_c_val)
+
+    cur_y += 2 * (c_h + 20) + 25
+
+    # 7. 하단 신뢰의 중개사무소 브랜딩 & 초대형 연락처 푸터 (다크 네이비 박스)
+    footer_h = 360
+    draw.rounded_rectangle([(100, cur_y), (W - 100, cur_y + footer_h)], radius=28, fill=(15, 23, 42, 255))
+
+    # 상단 사무소 명칭 및 대표자
+    font_f_head = get_font("NanumGothicBold.ttf", 52)
+    o_name = (office_name or "참좋은공인중개사사무소").strip()
+    o_owner = (office_owner or "신제환").strip()
+    draw.text((150, cur_y + 36), f"🏢 {o_name}   |   대표 공인중개사: {o_owner}", fill=(255, 255, 255, 255), font=font_f_head)
+
+    # 등록번호 및 소재지 (신규 등록증 정보)
+    font_f_sub = get_font("NanumGothic.ttf", 36)
+    o_reg = (office_reg_no or "제 26530-2026-00009 호").strip()
+    o_addr = (office_address or "부산광역시 사상구 강선로 9, 1층").strip()
+    f_sub_str = f"📍 등록번호: {o_reg}   •   사무소 소재지: {o_addr}"
+    draw.text((150, cur_y + 104), f_sub_str, fill=(203, 213, 225, 255), font=font_f_sub)
+
+    # 구분 점선
+    draw.line([(150, cur_y + 160), (W - 150, cur_y + 160)], fill=(51, 65, 85, 255), width=2)
+
+    # 초대형 전화번호 (시선 집중!)
+    font_f_phone_lbl = get_font("NanumGothicBold.ttf", 48)
+    draw.text((150, cur_y + 225), "📞 빠른 매물 문의 :", fill=(244, 138, 38, 255), font=font_f_phone_lbl)
+
+    font_f_phone_num = get_font("NanumGothicExtraBold.ttf", 115)
+    phone_clean = (office_phone or "010-9667-4201").strip()
+    draw.text((580, cur_y + 175), phone_clean, fill=(251, 191, 36, 255), font=font_f_phone_num)
+
+    # 우측 슬로건 알약 배지
+    font_slogan = get_font("NanumGothicBold.ttf", 38)
+    slogan_txt = "친절 상담 · 책임 중개 · 매물 접수"
+    sb = font_slogan.getbbox(slogan_txt)
+    sw = sb[2] - sb[0]
+    draw.rounded_rectangle([(W - 150 - sw - 48, cur_y + 215), (W - 150, cur_y + 295)], radius=20, fill=(30, 41, 59, 255), outline=(71, 85, 105, 255), width=2)
+    draw.text((W - 150 - sw - 24, cur_y + 236), slogan_txt, fill=(241, 245, 249, 255), font=font_slogan)
+
+    return canvas.convert("RGB")
+
+
