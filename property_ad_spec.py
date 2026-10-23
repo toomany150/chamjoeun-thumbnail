@@ -43,8 +43,20 @@ def get_font(font_name: str, size: int) -> ImageFont.FreeTypeFont:
                 continue
     return ImageFont.load_default()
 
-# 16개 항목 기본값 세팅 (신소장님 사상 중흥S-클래스 예시 기준)
-DEFAULT_SPEC = {
+# 참좋은공인중개사사무소 고유 정보 (신제환 대표님)
+OFFICE_SPEC = {
+    "office_name": "참좋은공인중개사사무소",
+    "office_owner": "신제환",
+    "office_reg_no": "제 26530-2021-00045 호",
+    "office_address": "부산광역시 사상구 사상로 200, 1층",
+    "office_phone": "010-9667-4201",
+    "include_office_info": True,
+    "assistant_name": "", # 소속공인중개사 성명
+    "assistant_phone": "", # 소속공인중개사 연락처
+}
+
+# 사상 중흥S-클래스 추천 예시 데이터 (원클릭 예시 불러오기용)
+SAMPLE_APT_SPEC = {
     "location": "부산광역시 사상구 덕포동 220 (사상 중흥S-클래스 105동)",
     "area_supply": "111.42",
     "area_exclusive": "79.85",
@@ -64,15 +76,36 @@ DEFAULT_SPEC = {
     "households": "331세대 (총 1,572세대)",
     "building_use": "공동주택 (아파트)",
     "approval_date": "2023년 07월 28일",
-    "office_name": "참좋은공인중개사사무소",
-    "office_owner": "신제환",
-    "office_reg_no": "제 26530-2021-00045 호",
-    "office_address": "부산광역시 사상구 사상로 200, 1층",
-    "office_phone": "010-9667-4201",
-    "include_office_info": True,
-    "assistant_name": "", # 소속공인중개사 성명
-    "assistant_phone": "", # 소속공인중개사 연락처
+    **OFFICE_SPEC
 }
+
+# 신규 매물 등록용 빈 양식 (중개사무소 정보는 유지하고 매물 정보는 초기화)
+BLANK_SPEC = {
+    "location": "",
+    "area_supply": "",
+    "area_exclusive": "",
+    "floor_info": "",
+    "floor_type": "해당층 직접입력",
+    "room_bath": "",
+    "maintenance_fee": "",
+    "maintenance_detail": "",
+    "trade_type": "매매",
+    "price_text": "",
+    "deposit_sub": "- / -",
+    "direction": "",
+    "entrance_type": "계단식",
+    "heating": "개별난방 / 도시가스",
+    "move_in_date": "즉시입주 협의가능",
+    "parking": "",
+    "households": "",
+    "building_use": "공동주택 (아파트)",
+    "approval_date": "",
+    **OFFICE_SPEC
+}
+
+# 하위 호환성 유지
+DEFAULT_SPEC = SAMPLE_APT_SPEC
+
 
 # 네이버 부동산 광고 입력 순서 16개 점검 항목 메타데이터
 SPEC_ITEMS_META = [

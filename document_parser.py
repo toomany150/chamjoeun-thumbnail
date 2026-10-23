@@ -772,3 +772,64 @@ def parse_official_document(file_or_bytes, filename: str = "") -> Tuple[str, Dic
     """
     pages_text = extract_pages_text_from_pdf(file_or_bytes)
     return parse_single_or_multi_document(pages_text)
+
+
+def parse_raw_script_document(raw_text: str) -> Tuple[str, Dict[str, Any]]:
+    """
+    [핵심 스크립트 대장 파서]
+    정부24, 세움터, 일사편리 등에서 마우스로 복사한 대장 텍스트(스크립트)를 단일 입력받아
+    표제부/전유부/일반건축물/토지대장 여부를 지능형으로 자동 감지하여 100% 통합 분석합니다.
+    """
+    if not raw_text or not raw_text.strip():
+        return "빈 텍스트", {}
+
+    text = raw_text.strip()
+    text_condensed = text.replace(" ", "")
+
+    # 1. 집합건축물대장 (표제부와 전유부 동시 포함 또는 둘 다의 특성이 있는 경우)
+    has_title_kw = any(k in text_condensed for k in ["표제부", "총괄표제부", "주차장", "세대수", "총세대수", "대지위치", "허가일", "사용승인일"])
+    has_excl_kw = any(k in text_condensed for k in ["전유부", "전유부분", "공용부분", "호명칭", "전유면적", "호실", "제2501호", "호수"])
+
+    # 만약 전유부 면적 패턴(숫자.숫자 ㎡)이나 호명칭이 있으면서 사용승인일/주차도 있으면 복합 서류
+    if (has_title_kw and has_excl_kw) or ("표제부" in text_condensed and "전유" in text_condensed):
+        t_data = parse_building_register_title(text)
+        e_data = parse_building_register_exclusive(text)
+        merged = merge_building_registers(t_data, e_data)
+        return "집합건축물대장 (표제부+전유부 스크립트 통합 분석)", merged
+
+    # 2. 전유부 단독 스크립트
+    elif "전유" in text_condensed or "전유부분" in text_condensed or "공용부분" in text_condensed:
+        e_data = parse_building_register_exclusive(text)
+        # 혹시 전유부 안에 대지위치나 사용승인일, 건물명이 들어있으면 보강
+        t_data = parse_building_register_title(text)
+        merged = merge_building_registers(t_data, e_data)
+        return "집합건축물대장 (전유부 스크립트)", merged
+
+    # 3. 토지대장
+    elif "토지대장" in text_condensed or "임야대장" in text_condensed or "개별공시지가" in text_condensed:
+        l_data = parse_land_register(text)
+        return "토지대장 스크립트", l_data
+
+    # 4. 토지이용계획
+    elif "토지이용계획" in text_condensed or "용도지역" in text_condensed:
+        p_data = parse_land_use_plan(text)
+        return "토지이용계획확인원 스크립트", p_data
+
+    # 5. 일반건축물대장 또는 표제부
+    else:
+        # 일반건축물대장 또는 표제부 파싱 시도
+        t_data = parse_building_register_title(text)
+        e_data = parse_building_register_exclusive(text)
+        
+        # 전유면적이 잡혔다면 병합
+        if e_data.get("area_exclusive") or e_data.get("current_floor"):
+            merged = merge_building_registers(t_data, e_data)
+            return "건축물대장 스크립트 (통합)", merged
+        elif t_data.get("area_total") or t_data.get("location"):
+            g_data = parse_general_building_register(text)
+            return "일반건축물대장 스크립트", g_data
+        else:
+            # 기본 파싱 결과 병합 반환
+            merged = merge_building_registers(t_data, e_data)
+            return "건축물대장 스크립트", merged
+

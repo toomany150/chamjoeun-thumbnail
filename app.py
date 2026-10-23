@@ -21,6 +21,9 @@ from thumbnail_generator import (
 )
 from property_ad_spec import (
     DEFAULT_SPEC,
+    SAMPLE_APT_SPEC,
+    BLANK_SPEC,
+    OFFICE_SPEC,
     SPEC_ITEMS_META,
     format_area_text,
     get_ordered_spec_table_data,
@@ -42,6 +45,7 @@ from commercial_ad_spec import (
 from document_parser import (
     parse_official_document,
     parse_single_or_multi_document,
+    parse_raw_script_document,
     parse_building_register_title,
     parse_building_register_exclusive,
     merge_building_registers,
@@ -472,10 +476,32 @@ def apply_comm_preset(p_type):
         for k, v in DEFAULT_COMMERCIAL_SPEC_SALE.items():
             st.session_state[f"comm_ad_{k}"] = v
 
-def apply_crawled_or_doc_data(data: dict):
+def clear_property_specs():
+    """중개사무소 정보(참좋은공인중개사 신제환 대표)는 100% 안전하게 유지하고, 매물 정보만 깨끗하게 초기화합니다."""
+    for k, v in BLANK_SPEC.items():
+        if k in OFFICE_SPEC:
+            continue # 신제환 소장님 고유 중개사무소 정보는 유지
+        st.session_state[f"ad_{k}"] = v
+    st.session_state.item_no = "No. 001"
+    st.session_state.main_title = ""
+    st.session_state.sub_title = ""
+    st.session_state.feature_text = ""
+    st.session_state.thumb_trade_type = "매매"
+    st.session_state.thumb_price_text = ""
+    st.session_state.spec_line1 = ""
+    st.session_state.spec_line2 = ""
+    st.session_state.spec_line3 = ""
+    st.session_state.spec_line4 = "즉시입주 협의가능"
+    st.session_state.spec_line5 = ""
+
+def apply_crawled_or_doc_data(data: dict, clean_previous: bool = True):
     """크롤링 데이터 또는 공적서류 분석 데이터를 16대 점검항목 및 썸네일 세션에 일괄 주입합니다."""
     if not data:
         return
+
+    # 신규 매물 등록 시 이전 매물 잔여 데이터(이전 매물 가격, 관리비, 준공일 등)가 섞이지 않도록 초기화
+    if clean_previous:
+        clear_property_specs()
 
     # 1. 16대 점검항목 적용
     if data.get("location"): st.session_state["ad_location"] = str(data["location"])
@@ -635,6 +661,147 @@ with col_h2:
         st.rerun()
 
 # ----------------------------------------------------
+# ⚡ [최상단 전면 배치] 1초 스마트 자동완성 마스터 콘솔
+# (네이버 복사 텍스트 / 대장 스크립트·PDF / 매물번호 크롤링 1초 완성)
+# ----------------------------------------------------
+if st.session_state.get("last_applied_msg"):
+    st.success(st.session_state["last_applied_msg"])
+
+with st.expander("⚡ [원클릭 1초 스마트 자동완성 마스터 콘솔] 네이버 복사 텍스트 / 건축물대장 스크립트 / 매물번호 입력", expanded=True):
+    st.markdown("""
+    <div style="font-size:14px; color:#1A365D; background:#F0F7FF; border:1.5px solid #90CDF4; padding:12px 16px; border-radius:10px; margin-bottom:12px;">
+        🚀 <b>네이버 매물 화면 복사 텍스트</b>나 <b>건축물대장 텍스트(스크립트)</b>를 아래에 붙여넣으시면, 
+        <b>16대 점검항목(중개대상물 표시)</b>과 <b>블로그 썸네일(아파트명, 가격, 5대 스펙)</b>을 0.1초 만에 자동으로 싹 채워드립니다!<br/>
+        <span style="color:#2B6CB0; font-size:12.5px;">🏢 중개사무소 정보(참좋은공인중개사사무소 신제환 대표)는 100% 안전하게 유지되며 매물 정보만 깨끗하게 갱신됩니다.</span>
+    </div>
+    """, unsafe_allow_html=True)
+
+    c_top_b1, c_top_b2, c_top_b3 = st.columns([1.2, 1.2, 1.2])
+    with c_top_b1:
+        if st.button("✨ 새 매물 빈 양식으로 초기화", use_container_width=True, help="중개사무소 정보는 유지하고 모든 매물 항목을 깨끗하게 비웁니다."):
+            clear_property_specs()
+            st.session_state["last_applied_msg"] = "✨ 새 매물을 입력하실 수 있도록 모든 매물 항목이 깨끗하게 초기화되었습니다!"
+            st.rerun()
+    with c_top_b2:
+        if st.button("⚡ 사상 중흥 예시 채우기", use_container_width=True):
+            apply_preset("living")
+            st.session_state["last_applied_msg"] = "📋 사상 중흥S-클래스 추천 예시가 반영되었습니다."
+            st.rerun()
+    with c_top_b3:
+        if st.button("⚡ 센텀 오피스텔 예시 채우기", use_container_width=True):
+            apply_preset("op")
+            st.session_state["last_applied_msg"] = "📋 해운대 센텀스퀘어 오피스텔 예시가 반영되었습니다."
+            st.rerun()
+
+    st.markdown("<div style='height: 8px;'></div>", unsafe_allow_html=True)
+
+    top_tab_clip, top_tab_script, top_tab_num = st.tabs([
+        "📋 네이버 화면 복사 텍스트 붙여넣기 (가장 확실 & 1초 완성! ⭐추천)",
+        "📄 건축물대장 텍스트(스크립트) 붙여넣기 & PDF 업로드",
+        "🔍 네이버 부동산 매물 번호 / URL 크롤링 (실험적)"
+    ])
+
+    # 1. 네이버 화면 복사 텍스트 붙여넣기
+    with top_tab_clip:
+        st.markdown("""
+        <div style="font-size:13px; color:#2B6CB0; background:#EBF8FF; border:1px solid #BEE3F8; padding:8px 12px; border-radius:6px; margin-bottom:8px;">
+            💡 <b>사용 방법:</b> 네이버 부동산 매물 상세 화면에서 마우스로 매물 정보 영역(매물명, 가격, 면적, 층수 등)을 드래그 복사(Ctrl+C)하여 아래에 붙여넣고 버튼을 누르세요!
+        </div>
+        """, unsafe_allow_html=True)
+        top_clip_text = st.text_area(
+            "네이버 매물 상세 복사 텍스트",
+            height=110,
+            placeholder="예:\n사상 중흥S-클래스 105동 매매 6억 2,000만원\n아파트 공급 111.42㎡ / 전용 79.85㎡, 25/36층, 남동향\n관리비 18만원, 방수/욕실수 3/2개...",
+            key="top_input_naver_clip"
+        )
+        if st.button("⚡ 붙여넣은 네이버 텍스트 분석 & 썸네일·점검표 즉시 자동완성", type="primary", use_container_width=True, key="top_btn_parse_clip"):
+            if top_clip_text.strip():
+                parsed_c = parse_naver_clipboard_text(top_clip_text)
+                if parsed_c:
+                    apply_crawled_or_doc_data(parsed_c, clean_previous=True)
+                    st.session_state["last_applied_msg"] = f"🎉 네이버 매물 [{parsed_c.get('main_title', '매물')}] 분석 완료! 썸네일과 16대 점검항목에 즉시 자동 반영되었습니다."
+                    st.rerun()
+                else:
+                    st.warning("붙여넣은 텍스트에서 매물 정보를 식별하지 못했습니다. 내용을 확인해주세요.")
+            else:
+                st.warning("네이버 부동산 매물 상세 텍스트를 먼저 붙여넣어 주세요.")
+
+    # 2. 건축물대장 텍스트(스크립트) 붙여넣기 & PDF
+    with top_tab_script:
+        top_doc_tab1, top_doc_tab2 = st.tabs([
+            "📋 대장 텍스트(스크립트) 통째로 붙여넣기 (정부24/세움터 열람 복사본)",
+            "📁 대장 PDF 파일 업로드"
+        ])
+        with top_doc_tab1:
+            st.markdown("""
+            <div style="font-size:13px; color:#2D3748; background:#F7FAFC; border:1px solid #E2E8F0; padding:8px 12px; border-radius:6px; margin-bottom:8px;">
+                💡 <b>정부24 / 세움터 / 일사편리 100% 지원:</b> 화면에서 열람한 건축물대장(표제부/전유부/일반대장) 텍스트를 마우스로 복사하여 그대로 붙여넣으세요! 표제부와 전유부를 구분할 필요 없이 프로그램이 지능적으로 자동 병합합니다.
+            </div>
+            """, unsafe_allow_html=True)
+            top_script_text = st.text_area(
+                "건축물대장 열람 복사 텍스트 (스크립트)",
+                height=120,
+                placeholder="대지위치: 부산시 사상구 덕포동 220\n건축물명칭: 사상 중흥S-클래스 제105동 제2501호\n층별: 25층\n전유부분 면적: 79.85㎡\n사용승인일: 2023-07-28...",
+                key="top_input_script_doc"
+            )
+            if st.button("🔍 붙여넣은 대장 스크립트 통합 분석 & 즉시 적용", type="primary", use_container_width=True, key="top_btn_parse_script"):
+                if top_script_text.strip():
+                    doc_lbl, parsed_doc = parse_raw_script_document(top_script_text)
+                    if parsed_doc:
+                        apply_crawled_or_doc_data(parsed_doc, clean_previous=True)
+                        st.session_state["last_applied_msg"] = f"🎉 [{doc_lbl}] 분석 완료! 썸네일과 16대 점검항목에 깨끗하게 즉시 반영되었습니다."
+                        st.rerun()
+                    else:
+                        st.warning("붙여넣은 대장 텍스트에서 건축물 정보를 식별하지 못했습니다. 내용을 확인해주세요.")
+                else:
+                    st.warning("건축물대장 텍스트를 먼저 붙여넣어 주세요.")
+
+        with top_doc_tab2:
+            top_uploaded_pdf = st.file_uploader(
+                "건축물대장 (표제부 / 전유부) PDF 파일",
+                type=["pdf"],
+                key="top_pdf_uploader_key"
+            )
+            if top_uploaded_pdf:
+                if st.button("🚀 업로드된 PDF 정밀 분석 & 즉시 적용", type="primary", use_container_width=True, key="top_btn_parse_pdf"):
+                    try:
+                        p_t, p_res, _ = parse_official_document(top_uploaded_pdf, top_uploaded_pdf.name)
+                        if p_res:
+                            apply_crawled_or_doc_data(p_res, clean_previous=True)
+                            st.session_state["last_applied_msg"] = f"🎉 [{p_t}] 분석 완료! 썸네일과 점검표에 즉시 반영되었습니다."
+                            st.rerun()
+                        else:
+                            st.error("PDF 파일에서 텍스트를 추출하지 못했습니다. 보안문서인 경우 앞의 [📋 대장 텍스트 통째로 붙여넣기]를 이용해주세요!")
+                    except Exception as e:
+                        st.error(f"PDF 분석 오류: {e}")
+
+    # 3. 네이버 부동산 매물 번호 / URL 크롤링
+    with top_tab_num:
+        c_top_n1, c_top_n2 = st.columns([2.5, 1])
+        with c_top_n1:
+            top_article_val = st.text_input(
+                "네이버 매물 번호 (숫자) 또는 매물 링크 URL",
+                placeholder="예: 2428591234 또는 https://fin.land.naver.com/articles/2428591234",
+                key="top_input_article_no"
+            )
+        with c_top_n2:
+            st.markdown("<div style='height: 28px;'></div>", unsafe_allow_html=True)
+            top_btn_crawl = st.button("🚀 실시간 크롤링 시도", type="primary", use_container_width=True, key="top_btn_crawl_run")
+
+        if top_btn_crawl:
+            if top_article_val.strip():
+                with st.spinner("네이버 부동산 매물 정보 실시간 조회 중..."):
+                    is_ok, msg, c_data = crawl_naver_article(top_article_val.strip())
+                    if is_ok:
+                        apply_crawled_or_doc_data(c_data, clean_previous=True)
+                        st.session_state["last_applied_msg"] = f"🎉 {msg} 썸네일과 점검표에 즉시 자동 반영되었습니다."
+                        st.rerun()
+                    else:
+                        st.error(f"⚠️ {msg}")
+            else:
+                st.warning("매물 번호 또는 링크 URL을 입력해주세요.")
+
+# ----------------------------------------------------
 # 🌟 메인 2대 탭 구성 (1. 썸네일 생성 / 2. 네이버광고 점검표)
 # ----------------------------------------------------
 tab_apt_thumb, tab_comm_thumb, tab_apt_ad, tab_comm_ad = st.tabs([
@@ -683,14 +850,15 @@ with tab_apt_thumb:
         with col_ly2:
             photo_width_ratio = 0.68
             if layout_mode == "side_wide":
-                photo_width_ratio = st.slider(
+                photo_width_ratio_pct = st.slider(
                     "📷 사진 가로 비중 (와이드 조절)",
-                    min_value=0.50,
-                    max_value=0.76,
-                    value=0.68,
-                    step=0.02,
-                    format="%.0f%%"
+                    min_value=50,
+                    max_value=76,
+                    value=68,
+                    step=2,
+                    format="%d%%"
                 )
+                photo_width_ratio = photo_width_ratio_pct / 100.0
 
         # 사진 업로드
         uploaded_bg = st.file_uploader(
@@ -1179,46 +1347,75 @@ with tab_apt_ad:
 
         # [탭 3] 텍스트 직접 붙여넣기
         with tab_doc_txt:
-            col_txt_t, col_txt_e = st.columns(2)
-            with col_txt_t:
-                st.markdown("<b>🏢 표제부 텍스트</b>", unsafe_allow_html=True)
-                raw_title_txt = st.text_area(
-                    "표제부 열람 텍스트",
-                    height=100,
-                    placeholder="대지위치: 부산시 사상구 덕포동 220\n건축물명칭: 사상 중흥S-클래스\n층수: 지상 36층 / 지하 3층\n세대수: 1,572세대\n주차대수: 1,685대\n사용승인일: 2023-07-28...",
-                    key="txt_raw_title"
+            sub_txt_tab1, sub_txt_tab2 = st.tabs([
+                "📋 대장 전체 텍스트(스크립트) 통째로 붙여넣기 (가장 편리 & ⭐추천)",
+                "🏢 표제부 & 🚪 전유부 2칸 분리 붙여넣기 (선택)"
+            ])
+            with sub_txt_tab1:
+                st.markdown("""
+                <div style="font-size:13px; color:#2D3748; background:#F7FAFC; border:1px solid #CBD5E0; padding:8px 12px; border-radius:6px; margin-bottom:8px;">
+                    💡 <b>1초 자동 분석:</b> 정부24, 세움터, 일사편리에서 열람한 건축물대장 텍스트 전체(표제부/전유부/일반대장)를 마우스로 복사(Ctrl+C)하여 아래에 그대로 붙여넣으세요! 표제부와 전유부를 자동으로 인식하여 병합합니다.
+                </div>
+                """, unsafe_allow_html=True)
+                raw_unified_txt = st.text_area(
+                    "건축물대장 전체 열람 복사 텍스트 (스크립트)",
+                    height=130,
+                    placeholder="대지위치: 부산시 사상구 덕포동 220\n건축물명칭: 사상 중흥S-클래스 제105동 제2501호\n층별: 25층\n전유부분 면적: 79.85㎡\n사용승인일: 2023-07-28...",
+                    key="txt_raw_unified_doc"
                 )
-            with col_txt_e:
-                st.markdown("<b>🚪 전유부 텍스트</b>", unsafe_allow_html=True)
-                raw_excl_txt = st.text_area(
-                    "전유부 열람 텍스트",
-                    height=100,
-                    placeholder="건축물명칭: 제105동 제2501호\n층별: 25층\n전유부분 면적: 79.85㎡\n공용부분(계단/복도): 31.57㎡...",
-                    key="txt_raw_excl"
-                )
+                if st.button("🔍 붙여넣은 대장 텍스트 0.1초 통합 분석 & 즉시 적용", type="primary", key="btn_parse_unified_text", use_container_width=True):
+                    if raw_unified_txt.strip():
+                        u_doc_type, u_doc_res = parse_raw_script_document(raw_unified_txt)
+                        if u_doc_res:
+                            apply_crawled_or_doc_data(u_doc_res, clean_previous=True)
+                            st.session_state["last_applied_msg"] = f"🎉 [{u_doc_type}] 분석 완료! 16대 점검항목과 썸네일에 즉시 자동 반영되었습니다."
+                            st.rerun()
+                        else:
+                            st.warning("붙여넣은 대장 텍스트에서 건축물 정보를 식별하지 못했습니다. 내용을 확인해주세요.")
+                    else:
+                        st.warning("건축물대장 텍스트를 먼저 붙여넣어 주세요.")
 
-            if st.button("🔍 붙여넣은 표제부/전유부 텍스트 분석 및 즉시 적용", type="primary", key="btn_parse_split_text", use_container_width=True):
-                t_parsed = parse_building_register_title(raw_title_txt) if raw_title_txt.strip() else {}
-                e_parsed = parse_building_register_exclusive(raw_excl_txt) if raw_excl_txt.strip() else {}
+            with sub_txt_tab2:
+                col_txt_t, col_txt_e = st.columns(2)
+                with col_txt_t:
+                    st.markdown("<b>🏢 표제부 텍스트</b>", unsafe_allow_html=True)
+                    raw_title_txt = st.text_area(
+                        "표제부 열람 텍스트",
+                        height=100,
+                        placeholder="대지위치: 부산시 사상구 덕포동 220\n건축물명칭: 사상 중흥S-클래스\n층수: 지상 36층 / 지하 3층\n세대수: 1,572세대\n주차대수: 1,685대\n사용승인일: 2023-07-28...",
+                        key="txt_raw_title"
+                    )
+                with col_txt_e:
+                    st.markdown("<b>🚪 전유부 텍스트</b>", unsafe_allow_html=True)
+                    raw_excl_txt = st.text_area(
+                        "전유부 열람 텍스트",
+                        height=100,
+                        placeholder="건축물명칭: 제105동 제2501호\n층별: 25층\n전유부분 면적: 79.85㎡\n공용부분(계단/복도): 31.57㎡...",
+                        key="txt_raw_excl"
+                    )
 
-                doc_parsed_res_txt = None
-                doc_type_txt = ""
-                if t_parsed and e_parsed:
-                    doc_parsed_res_txt = merge_building_registers(t_parsed, e_parsed)
-                    doc_type_txt = "집합건축물대장 (표제부 + 전유부 텍스트 통합완료)"
-                elif t_parsed:
-                    doc_parsed_res_txt = t_parsed
-                    doc_type_txt = "집합건축물대장 (표제부 텍스트)"
-                elif e_parsed:
-                    doc_parsed_res_txt = e_parsed
-                    doc_type_txt = "집합건축물대장 (전유부 텍스트)"
+                if st.button("🔍 분리 입력된 표제부/전유부 텍스트 분석 및 즉시 적용", type="primary", key="btn_parse_split_text", use_container_width=True):
+                    t_parsed = parse_building_register_title(raw_title_txt) if raw_title_txt.strip() else {}
+                    e_parsed = parse_building_register_exclusive(raw_excl_txt) if raw_excl_txt.strip() else {}
 
-                if doc_parsed_res_txt:
-                    apply_crawled_or_doc_data(doc_parsed_res_txt)
-                    st.session_state["last_applied_msg"] = f"🎉 [{doc_type_txt}] 분석 완료! 16대 점검항목과 썸네일에 즉시 자동 반영되었습니다."
-                    st.rerun()
-                else:
-                    st.warning("붙여넣은 텍스트에서 건축물대장 정보를 식별하지 못했습니다. 내용을 확인해주세요.")
+                    doc_parsed_res_txt = None
+                    doc_type_txt = ""
+                    if t_parsed and e_parsed:
+                        doc_parsed_res_txt = merge_building_registers(t_parsed, e_parsed)
+                        doc_type_txt = "집합건축물대장 (표제부 + 전유부 텍스트 통합완료)"
+                    elif t_parsed:
+                        doc_parsed_res_txt = t_parsed
+                        doc_type_txt = "집합건축물대장 (표제부 텍스트)"
+                    elif e_parsed:
+                        doc_parsed_res_txt = e_parsed
+                        doc_type_txt = "집합건축물대장 (전유부 텍스트)"
+
+                    if doc_parsed_res_txt:
+                        apply_crawled_or_doc_data(doc_parsed_res_txt, clean_previous=True)
+                        st.session_state["last_applied_msg"] = f"🎉 [{doc_type_txt}] 분석 완료! 16대 점검항목과 썸네일에 즉시 자동 반영되었습니다."
+                        st.rerun()
+                    else:
+                        st.warning("붙여넣은 텍스트에서 건축물대장 정보를 식별하지 못했습니다. 내용을 확인해주세요.")
 
     # 썸네일 데이터에서 가져오기 및 퀵 컨트롤 버튼
     col_syn1, col_syn2, col_syn3 = st.columns([1, 1, 1])
