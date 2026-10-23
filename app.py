@@ -298,8 +298,9 @@ if not st.session_state.authenticated:
                         st.error("비밀번호가 틀렸습니다. (비밀번호: 4989)")
             
             st.markdown("""
-            <div style="text-align: center; margin-top: 25px; color: #ADB5BD; font-size: 13px;">
-                🔒 참좋은공인중개사사무소 010-9667-4201<br/>
+            <div style="text-align: center; margin-top: 25px; color: #4A5568; font-size: 13px; line-height: 1.5;">
+                🔒 참좋은공인중개사사무소 (대표 신제환 ☎ 010-9667-4201)<br/>
+                📍 부산광역시 사상구 강선로 9, 1층 (등록번호: 제 26530-2026-00009 호)<br/>
                 PC & 스마트폰 모바일 동시 지원
             </div>
             """, unsafe_allow_html=True)
@@ -684,8 +685,8 @@ with col_h1:
         <span style="font-size: 32px;">🏢</span>
         <div>
             <h2 style="margin: 0; font-weight: 800; color: #1E2022; font-size: 24px;">부동산 블로그 썸네일 & 네이버광고 올인원 마스터</h2>
-            <p style="margin: 2px 0 0 0; color: #6C757D; font-size: 14px;">
-                참좋은공인중개사사무소 (대표 신제환 010-9667-4201) | PC & 스마트폰 모바일 연동
+            <p style="margin: 3px 0 0 0; color: #2D3748; font-size: 13.5px; line-height: 1.5;">
+                🏢 <b>참좋은공인중개사사무소</b> (대표: 신제환 ☎ 010-9667-4201) &nbsp;|&nbsp; 📍 <b>소재지:</b> 부산광역시 사상구 강선로 9, 1층 &nbsp;|&nbsp; 📜 <b>등록번호:</b> 제 26530-2026-00009 호
             </p>
         </div>
     </div>
@@ -707,7 +708,7 @@ with st.expander("⚡ [원클릭 1초 스마트 자동완성 마스터 콘솔] �
     <div style="font-size:14px; color:#1A365D; background:#F0F7FF; border:1.5px solid #90CDF4; padding:12px 16px; border-radius:10px; margin-bottom:12px;">
         🚀 <b>네이버 매물 화면 복사 텍스트</b>나 <b>건축물대장 텍스트(스크립트)</b>를 아래에 붙여넣으시면, 
         <b>16대 점검항목(중개대상물 표시)</b>과 <b>블로그 썸네일(아파트명, 가격, 5대 스펙)</b>을 0.1초 만에 자동으로 싹 채워드립니다!<br/>
-        <span style="color:#2B6CB0; font-size:12.5px;">🏢 중개사무소 정보(참좋은공인중개사사무소 신제환 대표)는 100% 안전하게 유지되며 매물 정보만 깨끗하게 갱신됩니다.</span>
+        <span style="color:#2B6CB0; font-size:12.5px;">🏢 중개사무소 정보(참좋은공인중개사사무소 신제환 대표 | 강선로 9 | 제 26530-2026-00009 호)는 100% 안전하게 유지되며 매물 정보만 깨끗하게 갱신됩니다.</span>
     </div>
     """, unsafe_allow_html=True)
 
