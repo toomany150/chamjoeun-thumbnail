@@ -471,6 +471,22 @@ for k, v in DEFAULT_COMMERCIAL_SPEC_SALE.items():
     if f"comm_ad_{k}" not in st.session_state:
         st.session_state[f"comm_ad_{k}"] = v
 
+# 항상 최신 공인중개사 등록증 정보(강선로 9, 2026-00009 호)로 세션 강제 동기화 (기존 세션 유지 시 구정보 덮어쓰기)
+OFFICE_REFRESH_MAP = {
+    "office_name": "참좋은공인중개사사무소",
+    "office_owner": "신제환",
+    "office_reg_no": "제 26530-2026-00009 호",
+    "office_address": "부산광역시 사상구 강선로 9, 1층",
+    "office_phone": "010-9667-4201"
+}
+for ok, ov in OFFICE_REFRESH_MAP.items():
+    cur_val = str(st.session_state.get(f"ad_{ok}", ""))
+    if not cur_val or "2021-00045" in cur_val or "사상로 200" in cur_val:
+        st.session_state[f"ad_{ok}"] = ov
+    cur_comm = str(st.session_state.get(f"comm_ad_{ok}", ""))
+    if not cur_comm or "2021-00045" in cur_comm or "사상로 200" in cur_comm:
+        st.session_state[f"comm_ad_{ok}"] = ov
+
 def apply_comm_preset(p_type):
     if p_type == "lease":
         st.session_state.comm_thumb_mode = "🔑 상가 임차 (월세)"
