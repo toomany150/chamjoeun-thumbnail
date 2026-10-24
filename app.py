@@ -519,11 +519,12 @@ def safe_set_session_state(key: str, val: any):
     except Exception:
         pass
 
-def queue_state_update(action_type: str, data: dict = None, preset: str = None, clean_previous: bool = True, success_msg: str = None, error_msg: str = None):
+def queue_state_update(action_type: str, data: dict = None, preset: str = None, clean_previous: bool = True, success_msg: str = None, error_msg: str = None, target_tab: str = None):
     """
     StreamlitWidgetAlreadyInstantiatedError 원천 차단을 위한 지연 상태 반영 큐.
     Streamlit은 위젯이 렌더링된 후 session_state를 변경하면 즉시 치명적 예외가 발생하므로,
     큐에 작업을 담은 뒤 즉시 rerun()하여 위젯이 생성되기 전 최상단에서 일괄 반영합니다.
+    target_tab을 지정하면 rerun 후에도 사용자가 작업하던 탭이 그대로 유지됩니다.
     """
     st.session_state["_pending_state_action"] = {
         "action": action_type,
@@ -531,7 +532,8 @@ def queue_state_update(action_type: str, data: dict = None, preset: str = None, 
         "preset": preset,
         "clean_previous": clean_previous,
         "success_msg": success_msg,
-        "error_msg": error_msg
+        "error_msg": error_msg,
+        "target_tab": target_tab
     }
     st.rerun()
 
@@ -717,6 +719,9 @@ if "_pending_state_action" in st.session_state and st.session_state["_pending_st
     elif act_type == "preset_comm":
         apply_comm_preset(pending_act["preset"])
 
+    if pending_act.get("target_tab"):
+        st.session_state["target_main_tab"] = pending_act["target_tab"]
+
     if pending_act.get("success_msg"):
         if "comm" in act_type:
             st.session_state["last_comm_applied_msg"] = pending_act["success_msg"]
@@ -868,7 +873,7 @@ with st.expander("⚡ [원클릭 1초 스마트 자동완성 마스터 콘솔] �
                 with st.spinner("네이버 부동산 매물 정보 실시간 조회 중..."):
                     is_ok, msg, c_data = crawl_naver_article(top_article_val.strip())
                     if is_ok:
-                        queue_state_update("apply_apt", data=c_data, clean_previous=True, success_msg=f"🎉 {msg} 썸네일과 점검표에 즉시 자동 반영되었습니다.")
+                        queue_state_update("apply_apt", data=c_data, clean_previous=True, success_msg=f"🎉 {msg} 썸네일과 점검표에 즉시 자동 반영되었습니다.", target_tab="📝 ③ 아파트 중개대상물 표시")
                     else:
                         st.error(f"⚠️ {msg}")
             else:
@@ -877,12 +882,45 @@ with st.expander("⚡ [원클릭 1초 스마트 자동완성 마스터 콘솔] �
 # ----------------------------------------------------
 # 🌟 메인 2대 탭 구성 (1. 썸네일 생성 / 2. 네이버광고 점검표)
 # ----------------------------------------------------
-tab_apt_thumb, tab_comm_thumb, tab_apt_ad, tab_comm_ad = st.tabs([
+MAIN_TAB_LIST = [
     "🏢 ① 아파트 썸네일",
     "🏬 ② 상가 썸네일 (임차·매매)",
     "📝 ③ 아파트 중개대상물 표시",
     "🏪 ④ 상가 중개대상물 표시 (임차·매매)"
-])
+]
+
+target_tab = st.session_state.pop("target_main_tab", None)
+
+if target_tab and target_tab in MAIN_TAB_LIST:
+    try:
+        tab_apt_thumb, tab_comm_thumb, tab_apt_ad, tab_comm_ad = st.tabs(MAIN_TAB_LIST, default=target_tab)
+    except TypeError:
+        tab_apt_thumb, tab_comm_thumb, tab_apt_ad, tab_comm_ad = st.tabs(MAIN_TAB_LIST)
+
+    label_keyword = "③ 아파트 중개대상물" if "③" in target_tab else ("④ 상가 중개대상물" if "④" in target_tab else ("② 상가 썸네일" if "②" in target_tab else "① 아파트 썸네일"))
+    st.components.v1.html(f"""
+    <script>
+    function selectTargetTab() {{
+        try {{
+            var doc = window.parent.document;
+            var allTabs = doc.querySelectorAll('button[data-baseweb="tab"]');
+            for (var i = 0; i < allTabs.length; i++) {{
+                var txt = (allTabs[i].textContent || allTabs[i].innerText || "").trim();
+                if (txt.indexOf("{label_keyword}") !== -1) {{
+                    allTabs[i].click();
+                    return true;
+                }}
+            }}
+        }} catch (e) {{}}
+        return false;
+    }}
+    setTimeout(selectTargetTab, 50);
+    setTimeout(selectTargetTab, 150);
+    setTimeout(selectTargetTab, 350);
+    </script>
+    """, height=0, width=0)
+else:
+    tab_apt_thumb, tab_comm_thumb, tab_apt_ad, tab_comm_ad = st.tabs(MAIN_TAB_LIST)
 
 # ====================================================
 # [ 탭 1 ] 아파트 블로그 썸네일 생성기
@@ -1405,7 +1443,7 @@ with tab_apt_ad:
                 if clip_article_text.strip():
                     parsed_clip = parse_naver_clipboard_text(clip_article_text)
                     if parsed_clip:
-                        queue_state_update("apply_apt", data=parsed_clip, clean_previous=True, success_msg=f"🎉 네이버 매물 [{parsed_clip.get('main_title', '매물')}] 텍스트 분석 완료! 16대 점검항목과 썸네일에 즉시 자동 반영되었습니다.")
+                        queue_state_update("apply_apt", data=parsed_clip, clean_previous=True, success_msg=f"🎉 네이버 매물 [{parsed_clip.get('main_title', '매물')}] 텍스트 분석 완료! 16대 점검항목과 썸네일에 즉시 자동 반영되었습니다.", target_tab="📝 ③ 아파트 중개대상물 표시")
                     else:
                         st.warning("붙여넣은 텍스트에서 매물 정보를 식별하지 못했습니다. 형식을 확인해주세요.")
                 else:
@@ -1429,7 +1467,7 @@ with tab_apt_ad:
                     with st.spinner("네이버 부동산 매물 정보 실시간 조회 중..."):
                         is_ok, msg, c_data = crawl_naver_article(input_article_val.strip())
                         if is_ok:
-                            queue_state_update("apply_apt", data=c_data, clean_previous=True, success_msg=f"🎉 {msg} 16대 점검항목과 썸네일에 즉시 자동 반영되었습니다.")
+                            queue_state_update("apply_apt", data=c_data, clean_previous=True, success_msg=f"🎉 {msg} 16대 점검항목과 썸네일에 즉시 자동 반영되었습니다.", target_tab="📝 ③ 아파트 중개대상물 표시")
                         else:
                             st.error(f"⚠️ {msg}")
                 else:
@@ -1502,7 +1540,7 @@ with tab_apt_ad:
 
                             st.session_state["last_smart_upload_sig"] = upload_sig
                             if doc_parsed_result:
-                                queue_state_update("apply_apt", data=doc_parsed_result, clean_previous=True, success_msg=f"🎉 [{doc_parsed_type}] 분석 완료! 16대 점검항목과 썸네일에 1초 만에 즉시 반영되었습니다.")
+                                queue_state_update("apply_apt", data=doc_parsed_result, clean_previous=True, success_msg=f"🎉 [{doc_parsed_type}] 분석 완료! 16대 점검항목과 썸네일에 1초 만에 즉시 반영되었습니다.", target_tab="📝 ③ 아파트 중개대상물 표시")
                             else:
                                 st.error("⚠️ 업로드하신 PDF 서류에서 텍스트를 읽어오지 못했습니다. 정부24/세움터의 위변조 방지 보안 인쇄(DRM) 전자문서이거나 스캔 이미지일 가능성이 높습니다. 정부24 열람 화면에서 마우스로 텍스트를 복사(Ctrl+C)하여 세 번째 [📋 서류 텍스트 직접 붙여넣기] 탭에 넣어주시면 0.1초 만에 완벽하게 분석됩니다!")
                     except Exception as e:
@@ -1555,7 +1593,7 @@ with tab_apt_ad:
 
                             st.session_state["last_split_upload_sig"] = split_sig
                             if doc_parsed_res_sp:
-                                queue_state_update("apply_apt", data=doc_parsed_res_sp, clean_previous=True, success_msg=f"🎉 [{doc_type_sp}] 분석 완료! 16대 점검항목과 썸네일에 즉시 자동 반영되었습니다.")
+                                queue_state_update("apply_apt", data=doc_parsed_res_sp, clean_previous=True, success_msg=f"🎉 [{doc_type_sp}] 분석 완료! 16대 점검항목과 썸네일에 즉시 자동 반영되었습니다.", target_tab="📝 ③ 아파트 중개대상물 표시")
                             else:
                                 st.error("⚠️ 분리 업로드된 PDF 파일에서 텍스트를 감지하지 못했습니다. 보안(DRM) 문서인 경우 세 번째 [📋 서류 텍스트 직접 붙여넣기] 탭을 이용해주세요!")
                     except Exception as e:
@@ -1583,7 +1621,7 @@ with tab_apt_ad:
                     if raw_unified_txt.strip():
                         u_doc_type, u_doc_res = parse_raw_script_document(raw_unified_txt)
                         if u_doc_res:
-                            queue_state_update("apply_apt", data=u_doc_res, clean_previous=True, success_msg=f"🎉 [{u_doc_type}] 분석 완료! 16대 점검항목과 썸네일에 즉시 자동 반영되었습니다.")
+                            queue_state_update("apply_apt", data=u_doc_res, clean_previous=True, success_msg=f"🎉 [{u_doc_type}] 분석 완료! 16대 점검항목과 썸네일에 즉시 자동 반영되었습니다.", target_tab="📝 ③ 아파트 중개대상물 표시")
                         else:
                             st.warning("붙여넣은 대장 텍스트에서 건축물 정보를 식별하지 못했습니다. 내용을 확인해주세요.")
                     else:
@@ -1625,7 +1663,7 @@ with tab_apt_ad:
                         doc_type_txt = "집합건축물대장 (전유부 텍스트)"
 
                     if doc_parsed_res_txt:
-                        queue_state_update("apply_apt", data=doc_parsed_res_txt, clean_previous=True, success_msg=f"🎉 [{doc_type_txt}] 분석 완료! 16대 점검항목과 썸네일에 즉시 자동 반영되었습니다.")
+                        queue_state_update("apply_apt", data=doc_parsed_res_txt, clean_previous=True, success_msg=f"🎉 [{doc_type_txt}] 분석 완료! 16대 점검항목과 썸네일에 즉시 자동 반영되었습니다.", target_tab="📝 ③ 아파트 중개대상물 표시")
                     else:
                         st.warning("붙여넣은 텍스트에서 건축물대장 정보를 식별하지 못했습니다. 내용을 확인해주세요.")
 
@@ -2035,7 +2073,7 @@ with tab_comm_ad:
                 if comm_clip_article_text.strip():
                     parsed_clip = parse_naver_clipboard_text(comm_clip_article_text)
                     if parsed_clip:
-                        queue_state_update("apply_comm", data=parsed_clip, success_msg=f"🎉 네이버 상가 매물 [{parsed_clip.get('main_title', '상가')}] 텍스트 분석 완료! 상가 18대 점검항목과 썸네일에 즉시 자동 반영되었습니다.")
+                        queue_state_update("apply_comm", data=parsed_clip, success_msg=f"🎉 네이버 상가 매물 [{parsed_clip.get('main_title', '상가')}] 텍스트 분석 완료! 상가 18대 점검항목과 썸네일에 즉시 자동 반영되었습니다.", target_tab="🏪 ④ 상가 중개대상물 표시 (임차·매매)")
                     else:
                         st.warning("붙여넣은 텍스트에서 상가 매물 정보를 식별하지 못했습니다. 형식을 확인해주세요.")
                 else:
@@ -2059,7 +2097,7 @@ with tab_comm_ad:
                     with st.spinner("네이버 부동산 상가 매물 정보 실시간 조회 중..."):
                         is_ok, msg, c_data = crawl_naver_article(comm_input_article_val.strip())
                         if is_ok:
-                            queue_state_update("apply_comm", data=c_data, success_msg=f"🎉 {msg} 상가 18대 점검항목과 썸네일에 즉시 자동 반영되었습니다.")
+                            queue_state_update("apply_comm", data=c_data, success_msg=f"🎉 {msg} 상가 18대 점검항목과 썸네일에 즉시 자동 반영되었습니다.", target_tab="🏪 ④ 상가 중개대상물 표시 (임차·매매)")
                         else:
                             st.error(f"⚠️ {msg}")
                 else:
@@ -2131,7 +2169,7 @@ with tab_comm_ad:
 
                             st.session_state["last_comm_smart_upload_sig"] = upload_sig
                             if doc_parsed_result:
-                                queue_state_update("apply_comm", data=doc_parsed_result, success_msg=f"🎉 [{doc_parsed_type}] 분석 완료! 상가 18대 점검항목과 썸네일에 1초 만에 즉시 반영되었습니다.")
+                                queue_state_update("apply_comm", data=doc_parsed_result, success_msg=f"🎉 [{doc_parsed_type}] 분석 완료! 상가 18대 점검항목과 썸네일에 1초 만에 즉시 반영되었습니다.", target_tab="🏪 ④ 상가 중개대상물 표시 (임차·매매)")
                             else:
                                 st.error("⚠️ 업로드하신 PDF 서류에서 텍스트를 읽어오지 못했습니다. 정부24/세움터의 위변조 방지 보안 전자문서인 경우 세 번째 [📋 서류 텍스트 직접 붙여넣기] 탭에 복사해 넣어주세요!")
                     except Exception as e:
@@ -2170,11 +2208,11 @@ with tab_comm_ad:
 
                             if t_data and e_data:
                                 res_m = merge_building_registers(t_data, e_data)
-                                queue_state_update("apply_comm", data=res_m, success_msg="🎉 표제부와 전유부 2개 서류가 완벽하게 결합되어 상가 항목에 적용되었습니다!")
+                                queue_state_update("apply_comm", data=res_m, success_msg="🎉 표제부와 전유부 2개 서류가 완벽하게 결합되어 상가 항목에 적용되었습니다!", target_tab="🏪 ④ 상가 중개대상물 표시 (임차·매매)")
                             elif t_data:
-                                queue_state_update("apply_comm", data=t_data, success_msg="🎉 표제부 분석 완료! 건물 기본 스펙이 상가 항목에 적용되었습니다.")
+                                queue_state_update("apply_comm", data=t_data, success_msg="🎉 표제부 분석 완료! 건물 기본 스펙이 상가 항목에 적용되었습니다.", target_tab="🏪 ④ 상가 중개대상물 표시 (임차·매매)")
                             elif e_data:
-                                queue_state_update("apply_comm", data=e_data, success_msg="🎉 전유부 분석 완료! 개별 호실 면적이 상가 항목에 적용되었습니다.")
+                                queue_state_update("apply_comm", data=e_data, success_msg="🎉 전유부 분석 완료! 개별 호실 면적이 상가 항목에 적용되었습니다.", target_tab="🏪 ④ 상가 중개대상물 표시 (임차·매매)")
 
                             st.session_state["last_comm_split_upload_sig"] = split_sig
                     except Exception as e:
@@ -2198,7 +2236,7 @@ with tab_comm_ad:
                 if comm_pasted_doc_text.strip():
                     doc_type, parsed_dict, _ = parse_single_or_multi_document([comm_pasted_doc_text])
                     if parsed_dict:
-                        queue_state_update("apply_comm", data=parsed_dict, success_msg=f"🎉 [{doc_type}] 텍스트 분석 완료! 상가 18대 점검항목과 썸네일에 즉시 반영되었습니다.")
+                        queue_state_update("apply_comm", data=parsed_dict, success_msg=f"🎉 [{doc_type}] 텍스트 분석 완료! 상가 18대 점검항목과 썸네일에 즉시 반영되었습니다.", target_tab="🏪 ④ 상가 중개대상물 표시 (임차·매매)")
                     else:
                         st.warning("붙여넣은 텍스트에서 상가 건축물대장 정보를 찾지 못했습니다.")
                 else:
