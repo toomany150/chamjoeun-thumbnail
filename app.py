@@ -116,9 +116,9 @@ st.markdown("""
         border-right: 1px solid #E5E8EB;
     }
     
-    /* 메인 컨테이너 패딩 */
+    /* 메인 컨테이너 패딩: Streamlit 상단 메뉴바(Share 등)에 가려지지 않도록 상단 여백 확보 */
     .block-container {
-        padding-top: 1.2rem;
+        padding-top: 4.0rem !important;
         padding-bottom: 2.5rem;
     }
     
