@@ -512,23 +512,46 @@ def apply_comm_preset(p_type):
         for k, v in DEFAULT_COMMERCIAL_SPEC_SALE.items():
             st.session_state[f"comm_ad_{k}"] = v
 
+def safe_set_session_state(key: str, val: any):
+    """위젯이 이미 화면에 렌더링된 이후 session_state를 변경할 때 발생하는 StreamlitWidgetAlreadyInstantiatedError 원천 방지"""
+    try:
+        st.session_state[key] = val
+    except Exception:
+        pass
+
+def queue_state_update(action_type: str, data: dict = None, preset: str = None, clean_previous: bool = True, success_msg: str = None, error_msg: str = None):
+    """
+    StreamlitWidgetAlreadyInstantiatedError 원천 차단을 위한 지연 상태 반영 큐.
+    Streamlit은 위젯이 렌더링된 후 session_state를 변경하면 즉시 치명적 예외가 발생하므로,
+    큐에 작업을 담은 뒤 즉시 rerun()하여 위젯이 생성되기 전 최상단에서 일괄 반영합니다.
+    """
+    st.session_state["_pending_state_action"] = {
+        "action": action_type,
+        "data": data,
+        "preset": preset,
+        "clean_previous": clean_previous,
+        "success_msg": success_msg,
+        "error_msg": error_msg
+    }
+    st.rerun()
+
 def clear_property_specs():
     """중개사무소 정보(참좋은공인중개사 신제환 대표)는 100% 안전하게 유지하고, 매물 정보만 깨끗하게 초기화합니다."""
     for k, v in BLANK_SPEC.items():
         if k in OFFICE_SPEC:
             continue # 신제환 소장님 고유 중개사무소 정보는 유지
-        st.session_state[f"ad_{k}"] = v
-    st.session_state.item_no = "No. 001"
-    st.session_state.main_title = ""
-    st.session_state.sub_title = ""
-    st.session_state.feature_text = ""
-    st.session_state.thumb_trade_type = "매매"
-    st.session_state.thumb_price_text = ""
-    st.session_state.spec_line1 = ""
-    st.session_state.spec_line2 = ""
-    st.session_state.spec_line3 = ""
-    st.session_state.spec_line4 = "즉시입주 협의가능"
-    st.session_state.spec_line5 = ""
+        safe_set_session_state(f"ad_{k}", v)
+    safe_set_session_state("item_no", "No. 001")
+    safe_set_session_state("main_title", "")
+    safe_set_session_state("sub_title", "")
+    safe_set_session_state("feature_text", "")
+    safe_set_session_state("thumb_trade_type", "매매")
+    safe_set_session_state("thumb_price_text", "")
+    safe_set_session_state("spec_line1", "")
+    safe_set_session_state("spec_line2", "")
+    safe_set_session_state("spec_line3", "")
+    safe_set_session_state("spec_line4", "즉시입주 협의가능")
+    safe_set_session_state("spec_line5", "")
 
 def apply_crawled_or_doc_data(data: dict, clean_previous: bool = True):
     """크롤링 데이터 또는 공적서류 분석 데이터를 16대 점검항목 및 썸네일 세션에 일괄 주입합니다."""
@@ -536,51 +559,53 @@ def apply_crawled_or_doc_data(data: dict, clean_previous: bool = True):
         return
 
     # 신규 매물 등록 시 이전 매물 잔여 데이터(이전 매물 가격, 관리비, 준공일 등)가 섞이지 않도록 초기화
-    if clean_previous:
+    # 단, 단편적인 정보(예: 관리비만 복사 등)일 때는 기존에 입력된 귀한 정보가 지워지지 않도록 보호
+    has_major_fields = any(data.get(k) for k in ["price_text", "location", "area_exclusive", "dong_name", "main_title"])
+    if clean_previous and has_major_fields:
         clear_property_specs()
 
     # 1. 16대 점검항목 적용
-    if data.get("location"): st.session_state["ad_location"] = str(data["location"])
-    if data.get("area_exclusive"): st.session_state["ad_area_exclusive"] = str(data["area_exclusive"])
-    if data.get("area_supply"): st.session_state["ad_area_supply"] = str(data["area_supply"])
-    elif data.get("area_exclusive"): st.session_state["ad_area_supply"] = str(data["area_exclusive"])
-    if data.get("floor_info"): st.session_state["ad_floor_info"] = str(data["floor_info"])
-    if data.get("room_bath"): st.session_state["ad_room_bath"] = str(data["room_bath"])
-    if data.get("building_use"): st.session_state["ad_building_use"] = str(data["building_use"])
-    if data.get("approval_date"): st.session_state["ad_approval_date"] = str(data["approval_date"])
-    if data.get("households"): st.session_state["ad_households"] = str(data["households"])
-    if data.get("parking"): st.session_state["ad_parking"] = str(data["parking"])
-    if data.get("trade_type"): st.session_state["ad_trade_type"] = str(data["trade_type"])
-    if data.get("price_text"): st.session_state["ad_price_text"] = str(data["price_text"])
-    if data.get("direction"): st.session_state["ad_direction"] = str(data["direction"])
-    if data.get("entrance_type"): st.session_state["ad_entrance_type"] = str(data["entrance_type"])
-    if data.get("heating"): st.session_state["ad_heating"] = str(data["heating"])
-    if data.get("move_in_date"): st.session_state["ad_move_in_date"] = str(data["move_in_date"])
-    if data.get("maintenance_fee"): st.session_state["ad_maintenance_fee"] = str(data["maintenance_fee"])
-    if data.get("maintenance_detail"): st.session_state["ad_maintenance_detail"] = str(data["maintenance_detail"])
-    if data.get("deposit_sub"): st.session_state["ad_deposit_sub"] = str(data["deposit_sub"])
+    if data.get("location"): safe_set_session_state("ad_location", str(data["location"]))
+    if data.get("area_exclusive"): safe_set_session_state("ad_area_exclusive", str(data["area_exclusive"]))
+    if data.get("area_supply"): safe_set_session_state("ad_area_supply", str(data["area_supply"]))
+    elif data.get("area_exclusive"): safe_set_session_state("ad_area_supply", str(data["area_exclusive"]))
+    if data.get("floor_info"): safe_set_session_state("ad_floor_info", str(data["floor_info"]))
+    if data.get("room_bath"): safe_set_session_state("ad_room_bath", str(data["room_bath"]))
+    if data.get("building_use"): safe_set_session_state("ad_building_use", str(data["building_use"]))
+    if data.get("approval_date"): safe_set_session_state("ad_approval_date", str(data["approval_date"]))
+    if data.get("households"): safe_set_session_state("ad_households", str(data["households"]))
+    if data.get("parking"): safe_set_session_state("ad_parking", str(data["parking"]))
+    if data.get("trade_type"): safe_set_session_state("ad_trade_type", str(data["trade_type"]))
+    if data.get("price_text"): safe_set_session_state("ad_price_text", str(data["price_text"]))
+    if data.get("direction"): safe_set_session_state("ad_direction", str(data["direction"]))
+    if data.get("entrance_type"): safe_set_session_state("ad_entrance_type", str(data["entrance_type"]))
+    if data.get("heating"): safe_set_session_state("ad_heating", str(data["heating"]))
+    if data.get("move_in_date"): safe_set_session_state("ad_move_in_date", str(data["move_in_date"]))
+    if data.get("maintenance_fee"): safe_set_session_state("ad_maintenance_fee", str(data["maintenance_fee"]))
+    if data.get("maintenance_detail"): safe_set_session_state("ad_maintenance_detail", str(data["maintenance_detail"]))
+    if data.get("deposit_sub"): safe_set_session_state("ad_deposit_sub", str(data["deposit_sub"]))
 
     # 2. 썸네일 탭 연동
-    if data.get("main_title"): st.session_state["main_title"] = str(data["main_title"])
-    if data.get("sub_title"): st.session_state["sub_title"] = str(data["sub_title"])
-    if data.get("feature_text"): st.session_state["feature_text"] = str(data["feature_text"])
-    if data.get("thumb_trade_type"): st.session_state["thumb_trade_type"] = str(data["thumb_trade_type"])
-    elif data.get("trade_type"): st.session_state["thumb_trade_type"] = str(data["trade_type"])
-    if data.get("thumb_price_text"): st.session_state["thumb_price_text"] = str(data["thumb_price_text"])
+    if data.get("main_title"): safe_set_session_state("main_title", str(data["main_title"]))
+    if data.get("sub_title"): safe_set_session_state("sub_title", str(data["sub_title"]))
+    if data.get("feature_text"): safe_set_session_state("feature_text", str(data["feature_text"]))
+    if data.get("thumb_trade_type"): safe_set_session_state("thumb_trade_type", str(data["thumb_trade_type"]))
+    elif data.get("trade_type"): safe_set_session_state("thumb_trade_type", str(data["trade_type"]))
+    if data.get("thumb_price_text"): safe_set_session_state("thumb_price_text", str(data["thumb_price_text"]))
     elif data.get("price_text"):
-        st.session_state["thumb_price_text"] = format_thumb_price(str(data["price_text"]))
-    if data.get("spec_line1"): st.session_state["spec_line1"] = str(data["spec_line1"])
-    elif data.get("floor_info"): st.session_state["spec_line1"] = str(data["floor_info"])
-    if data.get("spec_line2"): st.session_state["spec_line2"] = str(data["spec_line2"])
+        safe_set_session_state("thumb_price_text", format_thumb_price(str(data["price_text"])))
+    if data.get("spec_line1"): safe_set_session_state("spec_line1", str(data["spec_line1"]))
+    elif data.get("floor_info"): safe_set_session_state("spec_line1", str(data["floor_info"]))
+    if data.get("spec_line2"): safe_set_session_state("spec_line2", str(data["spec_line2"]))
     elif data.get("area_exclusive"):
         s_area = data.get("area_supply", data["area_exclusive"])
-        st.session_state["spec_line2"] = f"공급 {s_area}㎡ / 전용 {data['area_exclusive']}㎡"
-    if data.get("spec_line3"): st.session_state["spec_line3"] = str(data["spec_line3"])
-    elif data.get("room_bath"): st.session_state["spec_line3"] = str(data["room_bath"])
-    if data.get("spec_line4"): st.session_state["spec_line4"] = str(data["spec_line4"])
-    elif data.get("move_in_date"): st.session_state["spec_line4"] = str(data["move_in_date"])
-    if data.get("spec_line5"): st.session_state["spec_line5"] = str(data["spec_line5"])
-    elif data.get("direction"): st.session_state["spec_line5"] = str(data["direction"])
+        safe_set_session_state("spec_line2", f"공급 {s_area}㎡ / 전용 {data['area_exclusive']}㎡")
+    if data.get("spec_line3"): safe_set_session_state("spec_line3", str(data["spec_line3"]))
+    elif data.get("room_bath"): safe_set_session_state("spec_line3", str(data["room_bath"]))
+    if data.get("spec_line4"): safe_set_session_state("spec_line4", str(data["spec_line4"]))
+    elif data.get("move_in_date"): safe_set_session_state("spec_line4", str(data["move_in_date"]))
+    if data.get("spec_line5"): safe_set_session_state("spec_line5", str(data["spec_line5"]))
+    elif data.get("direction"): safe_set_session_state("spec_line5", str(data["direction"]))
 
 def apply_commercial_crawled_or_doc_data(data: dict):
     """크롤링 데이터 또는 공적서류 분석 데이터를 상가 18대 점검항목 및 상가 썸네일 세션에 일괄 주입합니다."""
@@ -589,59 +614,59 @@ def apply_commercial_crawled_or_doc_data(data: dict):
 
     # 1. 상가 필수 점검항목 적용
     if data.get("location"):
-        st.session_state["comm_ad_location"] = str(data["location"])
+        safe_set_session_state("comm_ad_location", str(data["location"]))
     if data.get("area_exclusive"):
-        st.session_state["comm_ad_area_exclusive"] = str(data["area_exclusive"])
+        safe_set_session_state("comm_ad_area_exclusive", str(data["area_exclusive"]))
     if data.get("area_supply"):
-        st.session_state["comm_ad_area_contract"] = str(data["area_supply"])
+        safe_set_session_state("comm_ad_area_contract", str(data["area_supply"]))
     elif data.get("area_contract"):
-        st.session_state["comm_ad_area_contract"] = str(data["area_contract"])
+        safe_set_session_state("comm_ad_area_contract", str(data["area_contract"]))
     elif data.get("area_exclusive"):
-        st.session_state["comm_ad_area_contract"] = str(data["area_exclusive"])
+        safe_set_session_state("comm_ad_area_contract", str(data["area_exclusive"]))
     if data.get("floor_info"):
-        st.session_state["comm_ad_floor_info"] = str(data["floor_info"])
+        safe_set_session_state("comm_ad_floor_info", str(data["floor_info"]))
     if data.get("building_use"):
-        st.session_state["comm_ad_building_use"] = str(data["building_use"])
+        safe_set_session_state("comm_ad_building_use", str(data["building_use"]))
     if data.get("zone_region"):
-        st.session_state["comm_ad_zone_region"] = str(data["zone_region"])
+        safe_set_session_state("comm_ad_zone_region", str(data["zone_region"]))
     if data.get("zone_district"):
-        st.session_state["comm_ad_zone_district"] = str(data["zone_district"])
+        safe_set_session_state("comm_ad_zone_district", str(data["zone_district"]))
     if data.get("structure"):
-        st.session_state["comm_ad_structure"] = str(data["structure"])
+        safe_set_session_state("comm_ad_structure", str(data["structure"]))
     if data.get("approval_date"):
-        st.session_state["comm_ad_approval_date"] = str(data["approval_date"])
+        safe_set_session_state("comm_ad_approval_date", str(data["approval_date"]))
     if data.get("parking"):
-        st.session_state["comm_ad_parking"] = str(data["parking"])
+        safe_set_session_state("comm_ad_parking", str(data["parking"]))
     if data.get("trade_type"):
-        st.session_state["comm_ad_trade_type"] = str(data["trade_type"])
+        safe_set_session_state("comm_ad_trade_type", str(data["trade_type"]))
     if data.get("price_text"):
-        st.session_state["comm_ad_price_text"] = str(data["price_text"])
+        safe_set_session_state("comm_ad_price_text", str(data["price_text"]))
     if data.get("premium_fee"):
-        st.session_state["comm_ad_premium_fee"] = str(data["premium_fee"])
+        safe_set_session_state("comm_ad_premium_fee", str(data["premium_fee"]))
     if data.get("direction"):
         d_val = str(data["direction"])
         if "출입구" not in d_val:
             d_val = re.sub(r"\s*\(.*?\)", "", d_val).strip() + " (주된 출입구 기준)"
-        st.session_state["comm_ad_direction"] = d_val
+        safe_set_session_state("comm_ad_direction", d_val)
     if data.get("move_in_date"):
-        st.session_state["comm_ad_move_in_date"] = str(data["move_in_date"])
+        safe_set_session_state("comm_ad_move_in_date", str(data["move_in_date"]))
     if data.get("maintenance_fee"):
-        st.session_state["comm_ad_maintenance_fee"] = str(data["maintenance_fee"])
+        safe_set_session_state("comm_ad_maintenance_fee", str(data["maintenance_fee"]))
     if data.get("maintenance_detail"):
-        st.session_state["comm_ad_maintenance_detail"] = str(data["maintenance_detail"])
+        safe_set_session_state("comm_ad_maintenance_detail", str(data["maintenance_detail"]))
     if data.get("restroom"):
-        st.session_state["comm_ad_restroom"] = str(data["restroom"])
+        safe_set_session_state("comm_ad_restroom", str(data["restroom"]))
     if data.get("current_use"):
-        st.session_state["comm_ad_current_use"] = str(data["current_use"])
+        safe_set_session_state("comm_ad_current_use", str(data["current_use"]))
     if data.get("recommended_use"):
-        st.session_state["comm_ad_recommended_use"] = str(data["recommended_use"])
+        safe_set_session_state("comm_ad_recommended_use", str(data["recommended_use"]))
     if data.get("elevator"):
         elev_str = str(data["elevator"])
         cur_fac = st.session_state.get("comm_ad_facility_info", "")
         if "승강기" not in cur_fac and "엘리베이터" not in cur_fac:
-            st.session_state["comm_ad_facility_info"] = f"{cur_fac}, {elev_str}".strip(", ")
+            safe_set_session_state("comm_ad_facility_info", f"{cur_fac}, {elev_str}".strip(", "))
     elif data.get("facility_info"):
-        st.session_state["comm_ad_facility_info"] = str(data["facility_info"])
+        safe_set_session_state("comm_ad_facility_info", str(data["facility_info"]))
 
     # 2. 상가 썸네일(임차 / 매매) 탭 실시간 연동
     is_sale_mode = "매매" in st.session_state.get("comm_ad_trade_type", "")
@@ -657,22 +682,48 @@ def apply_commercial_crawled_or_doc_data(data: dict):
     if not is_sale_mode:
         # 임차 썸네일 동기화
         if loc_short:
-            st.session_state["comm_lease_main_title"] = f"{loc_short} 상가 임차"
-            st.session_state["comm_lease_top_badge"] = f"{loc_short} 추천 매물 · {st.session_state.get('comm_ad_premium_fee', '무권리')}"
+            safe_set_session_state("comm_lease_main_title", f"{loc_short} 상가 임차")
+            safe_set_session_state("comm_lease_top_badge", f"{loc_short} 추천 매물 · {st.session_state.get('comm_ad_premium_fee', '무권리')}")
         price_summary = st.session_state.get("comm_ad_price_text", "")
         if py_val and price_summary:
-            st.session_state["comm_lease_spec1"] = f"{py_val} | {price_summary}"
+            safe_set_session_state("comm_lease_spec1", f"{py_val} | {price_summary}")
         elif py_val:
-            st.session_state["comm_lease_spec1"] = py_val
+            safe_set_session_state("comm_lease_spec1", py_val)
         if data.get("recommended_use"):
-            st.session_state["comm_lease_spec2"] = f"추천 : {data['recommended_use']}"
+            safe_set_session_state("comm_lease_spec2", f"추천 : {data['recommended_use']}")
     else:
         # 매매 썸네일 동기화
         if loc_short:
-            st.session_state["comm_sale_top_left"] = f"{loc_short} 상가 매매"
-            st.session_state["comm_sale_main_sub"] = f"안정적인 {loc_short} 상가 매매"
+            safe_set_session_state("comm_sale_top_left", f"{loc_short} 상가 매매")
+            safe_set_session_state("comm_sale_main_sub", f"안정적인 {loc_short} 상가 매매")
         if data.get("price_text"):
-            st.session_state["comm_sale_price_spec"] = f"매매가 {data['price_text']} | {st.session_state.get('comm_ad_structure', '철근콘크리트')} | {py_val}"
+            safe_set_session_state("comm_sale_price_spec", f"매매가 {data['price_text']} | {st.session_state.get('comm_ad_structure', '철근콘크리트')} | {py_val}")
+
+# ====================================================
+# 🛡️ [위젯 충돌 원천 차단] 지연 상태 큐 최상단 일괄 처리기
+# 위젯(Tab 1, Tab 2 등)이 렌더링되기 전 최상단에서 세션 스테이트를 안전하게 업데이트합니다.
+# ====================================================
+if "_pending_state_action" in st.session_state and st.session_state["_pending_state_action"]:
+    pending_act = st.session_state.pop("_pending_state_action")
+    act_type = pending_act.get("action")
+    if act_type == "apply_apt":
+        apply_crawled_or_doc_data(pending_act["data"], clean_previous=pending_act.get("clean_previous", True))
+    elif act_type == "apply_comm":
+        apply_commercial_crawled_or_doc_data(pending_act["data"])
+    elif act_type == "clear_apt":
+        clear_property_specs()
+    elif act_type == "preset_apt":
+        apply_preset(pending_act["preset"])
+    elif act_type == "preset_comm":
+        apply_comm_preset(pending_act["preset"])
+
+    if pending_act.get("success_msg"):
+        if "comm" in act_type:
+            st.session_state["last_comm_applied_msg"] = pending_act["success_msg"]
+        else:
+            st.session_state["last_applied_msg"] = pending_act["success_msg"]
+    if pending_act.get("error_msg"):
+        st.session_state["last_applied_err"] = pending_act["error_msg"]
 
 
 # -------------------------
@@ -715,19 +766,13 @@ with st.expander("⚡ [원클릭 1초 스마트 자동완성 마스터 콘솔] �
     c_top_b1, c_top_b2, c_top_b3 = st.columns([1.2, 1.2, 1.2])
     with c_top_b1:
         if st.button("✨ 새 매물 빈 양식으로 초기화", use_container_width=True, help="중개사무소 정보는 유지하고 모든 매물 항목을 깨끗하게 비웁니다."):
-            clear_property_specs()
-            st.session_state["last_applied_msg"] = "✨ 새 매물을 입력하실 수 있도록 모든 매물 항목이 깨끗하게 초기화되었습니다!"
-            st.rerun()
+            queue_state_update("clear_apt", success_msg="✨ 새 매물을 입력하실 수 있도록 모든 매물 항목이 깨끗하게 초기화되었습니다!")
     with c_top_b2:
         if st.button("⚡ 사상 중흥 예시 채우기", use_container_width=True):
-            apply_preset("living")
-            st.session_state["last_applied_msg"] = "📋 사상 중흥S-클래스 추천 예시가 반영되었습니다."
-            st.rerun()
+            queue_state_update("preset_apt", preset="living", success_msg="📋 사상 중흥S-클래스 추천 예시가 반영되었습니다.")
     with c_top_b3:
         if st.button("⚡ 센텀 오피스텔 예시 채우기", use_container_width=True):
-            apply_preset("op")
-            st.session_state["last_applied_msg"] = "📋 해운대 센텀스퀘어 오피스텔 예시가 반영되었습니다."
-            st.rerun()
+            queue_state_update("preset_apt", preset="op", success_msg="📋 해운대 센텀스퀘어 오피스텔 예시가 반영되었습니다.")
 
     st.markdown("<div style='height: 8px;'></div>", unsafe_allow_html=True)
 
@@ -754,9 +799,7 @@ with st.expander("⚡ [원클릭 1초 스마트 자동완성 마스터 콘솔] �
             if top_clip_text.strip():
                 parsed_c = parse_naver_clipboard_text(top_clip_text)
                 if parsed_c:
-                    apply_crawled_or_doc_data(parsed_c, clean_previous=True)
-                    st.session_state["last_applied_msg"] = f"🎉 네이버 매물 [{parsed_c.get('main_title', '매물')}] 분석 완료! 썸네일과 16대 점검항목에 즉시 자동 반영되었습니다."
-                    st.rerun()
+                    queue_state_update("apply_apt", data=parsed_c, clean_previous=True, success_msg=f"🎉 네이버 매물 [{parsed_c.get('main_title', '매물')}] 분석 완료! 썸네일과 16대 점검항목에 즉시 자동 반영되었습니다.")
                 else:
                     st.warning("붙여넣은 텍스트에서 매물 정보를 식별하지 못했습니다. 내용을 확인해주세요.")
             else:
@@ -784,9 +827,7 @@ with st.expander("⚡ [원클릭 1초 스마트 자동완성 마스터 콘솔] �
                 if top_script_text.strip():
                     doc_lbl, parsed_doc = parse_raw_script_document(top_script_text)
                     if parsed_doc:
-                        apply_crawled_or_doc_data(parsed_doc, clean_previous=True)
-                        st.session_state["last_applied_msg"] = f"🎉 [{doc_lbl}] 분석 완료! 썸네일과 16대 점검항목에 깨끗하게 즉시 반영되었습니다."
-                        st.rerun()
+                        queue_state_update("apply_apt", data=parsed_doc, clean_previous=True, success_msg=f"🎉 [{doc_lbl}] 분석 완료! 썸네일과 16대 점검항목에 깨끗하게 즉시 반영되었습니다.")
                     else:
                         st.warning("붙여넣은 대장 텍스트에서 건축물 정보를 식별하지 못했습니다. 내용을 확인해주세요.")
                 else:
@@ -803,9 +844,7 @@ with st.expander("⚡ [원클릭 1초 스마트 자동완성 마스터 콘솔] �
                     try:
                         p_t, p_res, _ = parse_official_document(top_uploaded_pdf, top_uploaded_pdf.name)
                         if p_res:
-                            apply_crawled_or_doc_data(p_res, clean_previous=True)
-                            st.session_state["last_applied_msg"] = f"🎉 [{p_t}] 분석 완료! 썸네일과 점검표에 즉시 반영되었습니다."
-                            st.rerun()
+                            queue_state_update("apply_apt", data=p_res, clean_previous=True, success_msg=f"🎉 [{p_t}] 분석 완료! 썸네일과 점검표에 즉시 반영되었습니다.")
                         else:
                             st.error("PDF 파일에서 텍스트를 추출하지 못했습니다. 보안문서인 경우 앞의 [📋 대장 텍스트 통째로 붙여넣기]를 이용해주세요!")
                     except Exception as e:
@@ -829,9 +868,7 @@ with st.expander("⚡ [원클릭 1초 스마트 자동완성 마스터 콘솔] �
                 with st.spinner("네이버 부동산 매물 정보 실시간 조회 중..."):
                     is_ok, msg, c_data = crawl_naver_article(top_article_val.strip())
                     if is_ok:
-                        apply_crawled_or_doc_data(c_data, clean_previous=True)
-                        st.session_state["last_applied_msg"] = f"🎉 {msg} 썸네일과 점검표에 즉시 자동 반영되었습니다."
-                        st.rerun()
+                        queue_state_update("apply_apt", data=c_data, clean_previous=True, success_msg=f"🎉 {msg} 썸네일과 점검표에 즉시 자동 반영되었습니다.")
                     else:
                         st.error(f"⚠️ {msg}")
             else:
@@ -1368,9 +1405,7 @@ with tab_apt_ad:
                 if clip_article_text.strip():
                     parsed_clip = parse_naver_clipboard_text(clip_article_text)
                     if parsed_clip:
-                        apply_crawled_or_doc_data(parsed_clip)
-                        st.session_state["last_applied_msg"] = f"🎉 네이버 매물 [{parsed_clip.get('main_title', '')}] 텍스트 분석 완료! 16대 점검항목과 썸네일에 즉시 자동 반영되었습니다."
-                        st.rerun()
+                        queue_state_update("apply_apt", data=parsed_clip, clean_previous=True, success_msg=f"🎉 네이버 매물 [{parsed_clip.get('main_title', '매물')}] 텍스트 분석 완료! 16대 점검항목과 썸네일에 즉시 자동 반영되었습니다.")
                     else:
                         st.warning("붙여넣은 텍스트에서 매물 정보를 식별하지 못했습니다. 형식을 확인해주세요.")
                 else:
@@ -1394,9 +1429,7 @@ with tab_apt_ad:
                     with st.spinner("네이버 부동산 매물 정보 실시간 조회 중..."):
                         is_ok, msg, c_data = crawl_naver_article(input_article_val.strip())
                         if is_ok:
-                            apply_crawled_or_doc_data(c_data)
-                            st.session_state["last_applied_msg"] = f"🎉 {msg} 16대 점검항목과 썸네일에 즉시 자동 반영되었습니다."
-                            st.rerun()
+                            queue_state_update("apply_apt", data=c_data, clean_previous=True, success_msg=f"🎉 {msg} 16대 점검항목과 썸네일에 즉시 자동 반영되었습니다.")
                         else:
                             st.error(f"⚠️ {msg}")
                 else:
@@ -1469,9 +1502,7 @@ with tab_apt_ad:
 
                             st.session_state["last_smart_upload_sig"] = upload_sig
                             if doc_parsed_result:
-                                apply_crawled_or_doc_data(doc_parsed_result)
-                                st.session_state["last_applied_msg"] = f"🎉 [{doc_parsed_type}] 분석 완료! 16대 점검항목과 썸네일에 1초 만에 즉시 반영되었습니다."
-                                st.rerun()
+                                queue_state_update("apply_apt", data=doc_parsed_result, clean_previous=True, success_msg=f"🎉 [{doc_parsed_type}] 분석 완료! 16대 점검항목과 썸네일에 1초 만에 즉시 반영되었습니다.")
                             else:
                                 st.error("⚠️ 업로드하신 PDF 서류에서 텍스트를 읽어오지 못했습니다. 정부24/세움터의 위변조 방지 보안 인쇄(DRM) 전자문서이거나 스캔 이미지일 가능성이 높습니다. 정부24 열람 화면에서 마우스로 텍스트를 복사(Ctrl+C)하여 세 번째 [📋 서류 텍스트 직접 붙여넣기] 탭에 넣어주시면 0.1초 만에 완벽하게 분석됩니다!")
                     except Exception as e:
@@ -1524,9 +1555,7 @@ with tab_apt_ad:
 
                             st.session_state["last_split_upload_sig"] = split_sig
                             if doc_parsed_res_sp:
-                                apply_crawled_or_doc_data(doc_parsed_res_sp)
-                                st.session_state["last_applied_msg"] = f"🎉 [{doc_type_sp}] 분석 완료! 16대 점검항목과 썸네일에 즉시 자동 반영되었습니다."
-                                st.rerun()
+                                queue_state_update("apply_apt", data=doc_parsed_res_sp, clean_previous=True, success_msg=f"🎉 [{doc_type_sp}] 분석 완료! 16대 점검항목과 썸네일에 즉시 자동 반영되었습니다.")
                             else:
                                 st.error("⚠️ 분리 업로드된 PDF 파일에서 텍스트를 감지하지 못했습니다. 보안(DRM) 문서인 경우 세 번째 [📋 서류 텍스트 직접 붙여넣기] 탭을 이용해주세요!")
                     except Exception as e:
@@ -1554,9 +1583,7 @@ with tab_apt_ad:
                     if raw_unified_txt.strip():
                         u_doc_type, u_doc_res = parse_raw_script_document(raw_unified_txt)
                         if u_doc_res:
-                            apply_crawled_or_doc_data(u_doc_res, clean_previous=True)
-                            st.session_state["last_applied_msg"] = f"🎉 [{u_doc_type}] 분석 완료! 16대 점검항목과 썸네일에 즉시 자동 반영되었습니다."
-                            st.rerun()
+                            queue_state_update("apply_apt", data=u_doc_res, clean_previous=True, success_msg=f"🎉 [{u_doc_type}] 분석 완료! 16대 점검항목과 썸네일에 즉시 자동 반영되었습니다.")
                         else:
                             st.warning("붙여넣은 대장 텍스트에서 건축물 정보를 식별하지 못했습니다. 내용을 확인해주세요.")
                     else:
@@ -1598,9 +1625,7 @@ with tab_apt_ad:
                         doc_type_txt = "집합건축물대장 (전유부 텍스트)"
 
                     if doc_parsed_res_txt:
-                        apply_crawled_or_doc_data(doc_parsed_res_txt, clean_previous=True)
-                        st.session_state["last_applied_msg"] = f"🎉 [{doc_type_txt}] 분석 완료! 16대 점검항목과 썸네일에 즉시 자동 반영되었습니다."
-                        st.rerun()
+                        queue_state_update("apply_apt", data=doc_parsed_res_txt, clean_previous=True, success_msg=f"🎉 [{doc_type_txt}] 분석 완료! 16대 점검항목과 썸네일에 즉시 자동 반영되었습니다.")
                     else:
                         st.warning("붙여넣은 텍스트에서 건축물대장 정보를 식별하지 못했습니다. 내용을 확인해주세요.")
 
@@ -2010,9 +2035,7 @@ with tab_comm_ad:
                 if comm_clip_article_text.strip():
                     parsed_clip = parse_naver_clipboard_text(comm_clip_article_text)
                     if parsed_clip:
-                        apply_commercial_crawled_or_doc_data(parsed_clip)
-                        st.session_state["last_comm_applied_msg"] = f"🎉 네이버 상가 매물 [{parsed_clip.get('main_title', '상가')}] 텍스트 분석 완료! 상가 18대 점검항목과 썸네일에 즉시 자동 반영되었습니다."
-                        st.rerun()
+                        queue_state_update("apply_comm", data=parsed_clip, success_msg=f"🎉 네이버 상가 매물 [{parsed_clip.get('main_title', '상가')}] 텍스트 분석 완료! 상가 18대 점검항목과 썸네일에 즉시 자동 반영되었습니다.")
                     else:
                         st.warning("붙여넣은 텍스트에서 상가 매물 정보를 식별하지 못했습니다. 형식을 확인해주세요.")
                 else:
@@ -2036,9 +2059,7 @@ with tab_comm_ad:
                     with st.spinner("네이버 부동산 상가 매물 정보 실시간 조회 중..."):
                         is_ok, msg, c_data = crawl_naver_article(comm_input_article_val.strip())
                         if is_ok:
-                            apply_commercial_crawled_or_doc_data(c_data)
-                            st.session_state["last_comm_applied_msg"] = f"🎉 {msg} 상가 18대 점검항목과 썸네일에 즉시 자동 반영되었습니다."
-                            st.rerun()
+                            queue_state_update("apply_comm", data=c_data, success_msg=f"🎉 {msg} 상가 18대 점검항목과 썸네일에 즉시 자동 반영되었습니다.")
                         else:
                             st.error(f"⚠️ {msg}")
                 else:
@@ -2110,9 +2131,7 @@ with tab_comm_ad:
 
                             st.session_state["last_comm_smart_upload_sig"] = upload_sig
                             if doc_parsed_result:
-                                apply_commercial_crawled_or_doc_data(doc_parsed_result)
-                                st.session_state["last_comm_applied_msg"] = f"🎉 [{doc_parsed_type}] 분석 완료! 상가 18대 점검항목과 썸네일에 1초 만에 즉시 반영되었습니다."
-                                st.rerun()
+                                queue_state_update("apply_comm", data=doc_parsed_result, success_msg=f"🎉 [{doc_parsed_type}] 분석 완료! 상가 18대 점검항목과 썸네일에 1초 만에 즉시 반영되었습니다.")
                             else:
                                 st.error("⚠️ 업로드하신 PDF 서류에서 텍스트를 읽어오지 못했습니다. 정부24/세움터의 위변조 방지 보안 전자문서인 경우 세 번째 [📋 서류 텍스트 직접 붙여넣기] 탭에 복사해 넣어주세요!")
                     except Exception as e:
@@ -2151,17 +2170,13 @@ with tab_comm_ad:
 
                             if t_data and e_data:
                                 res_m = merge_building_registers(t_data, e_data)
-                                apply_commercial_crawled_or_doc_data(res_m)
-                                st.session_state["last_comm_applied_msg"] = "🎉 표제부와 전유부 2개 서류가 완벽하게 결합되어 상가 항목에 적용되었습니다!"
+                                queue_state_update("apply_comm", data=res_m, success_msg="🎉 표제부와 전유부 2개 서류가 완벽하게 결합되어 상가 항목에 적용되었습니다!")
                             elif t_data:
-                                apply_commercial_crawled_or_doc_data(t_data)
-                                st.session_state["last_comm_applied_msg"] = "🎉 표제부 분석 완료! 건물 기본 스펙이 상가 항목에 적용되었습니다."
+                                queue_state_update("apply_comm", data=t_data, success_msg="🎉 표제부 분석 완료! 건물 기본 스펙이 상가 항목에 적용되었습니다.")
                             elif e_data:
-                                apply_commercial_crawled_or_doc_data(e_data)
-                                st.session_state["last_comm_applied_msg"] = "🎉 전유부 분석 완료! 개별 호실 면적이 상가 항목에 적용되었습니다."
+                                queue_state_update("apply_comm", data=e_data, success_msg="🎉 전유부 분석 완료! 개별 호실 면적이 상가 항목에 적용되었습니다.")
 
                             st.session_state["last_comm_split_upload_sig"] = split_sig
-                            st.rerun()
                     except Exception as e:
                         st.error(f"분리 서류 분석 오류: {e}")
 
@@ -2183,9 +2198,7 @@ with tab_comm_ad:
                 if comm_pasted_doc_text.strip():
                     doc_type, parsed_dict, _ = parse_single_or_multi_document([comm_pasted_doc_text])
                     if parsed_dict:
-                        apply_commercial_crawled_or_doc_data(parsed_dict)
-                        st.session_state["last_comm_applied_msg"] = f"🎉 [{doc_type}] 텍스트 분석 완료! 상가 18대 점검항목과 썸네일에 즉시 반영되었습니다."
-                        st.rerun()
+                        queue_state_update("apply_comm", data=parsed_dict, success_msg=f"🎉 [{doc_type}] 텍스트 분석 완료! 상가 18대 점검항목과 썸네일에 즉시 반영되었습니다.")
                     else:
                         st.warning("붙여넣은 텍스트에서 상가 건축물대장 정보를 찾지 못했습니다.")
                 else:

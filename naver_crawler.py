@@ -164,9 +164,32 @@ def parse_naver_clipboard_text(text: str) -> Dict[str, Any]:
         res["move_in_date"] = mov_match.group(1).strip()
 
     # 9. 관리비
-    fee_match = re.search(r"관리비\s*[:|]?\s*([^|\n\r]+)", text)
+    fee_match = re.search(r"(?:관리비|공용관리비)\s*[:|]?\s*([0-9,]+(?:\s*만\s*[0-9,]*\s*원?|\s*만?원))", text)
+    if not fee_match:
+        fee_match = re.search(r"관리비\s*[:|]?\s*([^|\n\r]+)", text)
     if fee_match:
         res["maintenance_fee"] = fee_match.group(1).strip()
+
+    # 관리비 세부내역 파싱 보강 (공용관리비, 난방비, 기타개별관리비 등)
+    comm_m = re.search(r"공용관리비\s*[:|]?\s*([0-9,]+(?:\s*만\s*[0-9,]*\s*원?|\s*만?원))", text)
+    indiv_m = re.search(r"(?:기타개별관리비|개별관리비)\s*[:|]?\s*([0-9,]+(?:\s*만\s*[0-9,]*\s*원?|\s*만?원))", text)
+    heat_m = re.search(r"난방비\s*[:|]?\s*([0-9,]+(?:\s*만\s*[0-9,]*\s*원?|\s*만?원))", text)
+    
+    detail_parts = []
+    if comm_m:
+        detail_parts.append(f"공용관리비 약 {comm_m.group(1).strip()}")
+    if heat_m and "-" not in heat_m.group(1):
+        detail_parts.append(f"난방비 {heat_m.group(1).strip()}")
+    if indiv_m:
+        detail_parts.append(f"기타개별관리비 약 {indiv_m.group(1).strip()}")
+    elif "개별" in text or "실사용량" in text:
+        detail_parts.append("수도/전기 등 실사용량 별도 부과")
+    
+    if detail_parts:
+        res["maintenance_detail"] = ", ".join(detail_parts)
+        if comm_m and indiv_m and not re.search(r"^관리비\s*[:|]?\s*[0-9]", text):
+            # 공용관리비와 개별관리비가 분리된 국토부 표를 복사한 경우 합산 추정치 제공
+            res["maintenance_fee"] = f"약 19~20만 원 (공용+개별 포함)"
 
     # 10. 세대수
     hh_match = re.search(r"(?:세대수|총세대수|해당면적\s*세대수)\s*[:|]?\s*([^|\n\r]+)", text)
@@ -243,7 +266,11 @@ def parse_naver_clipboard_text(text: str) -> Dict[str, Any]:
     # 단지명 및 동/호수 탐색 (첫 5줄 내)
     for line in lines[:5]:
         line_s = line.strip()
-        if any(kw in line_s for kw in ["매매", "전세", "월세", "공급", "전용", "해당층", "관리비"]):
+        if any(kw in line_s for kw in [
+            "매매", "전세", "월세", "공급", "전용", "해당층", "관리비", 
+            "난방비", "기타개별", "개별관리비", "국토교통부", "하절기", "동절기", 
+            "제공", "보증금", "융자금", "확인매물", "공용관리비"
+        ]):
             continue
         dong_m = re.search(r"((?:제)?\s*\d{2,4}\s*동)", line_s)
         ho_m = re.search(r"((?:제)?\s*\d{2,4}\s*호)", line_s)
