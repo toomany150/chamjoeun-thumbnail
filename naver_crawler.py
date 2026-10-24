@@ -6,6 +6,7 @@
 - 16대 점검항목 및 썸네일 생성기 데이터 자동 변환
 """
 
+import os
 import re
 import json
 import urllib.parse
@@ -326,15 +327,61 @@ def parse_naver_clipboard_text(text: str) -> Dict[str, Any]:
     return res
 
 
+def get_naver_proxy_config() -> Tuple[Optional[str], str]:
+    """
+    환경변수(NAVER_PROXY_URL) 또는 Streamlit Secrets에서 ivy 프록시 서버 설정을 읽어옵니다.
+    설정 예시:
+      NAVER_PROXY_URL = "http://내_ivy_서버IP:8000"
+      NAVER_PROXY_KEY = "chamjoeun"
+    """
+    proxy_url = os.environ.get("NAVER_PROXY_URL", "").strip()
+    proxy_key = os.environ.get("NAVER_PROXY_KEY", "chamjoeun").strip()
+
+    try:
+        import streamlit as st
+        if hasattr(st, "secrets"):
+            if not proxy_url and "NAVER_PROXY_URL" in st.secrets:
+                proxy_url = str(st.secrets["NAVER_PROXY_URL"]).strip()
+            if "NAVER_PROXY_KEY" in st.secrets:
+                proxy_key = str(st.secrets["NAVER_PROXY_KEY"]).strip()
+    except Exception:
+        pass
+
+    return (proxy_url if proxy_url else None), proxy_key
+
+
 def crawl_naver_article(article_input: str) -> Tuple[bool, str, Dict[str, Any]]:
     """
     [핵심 크롤러 함수]
     네이버 매물 번호 또는 URL을 받아 네이버 부동산 실시간 상세 정보를 크롤링합니다.
+    - ivy 프록시 설정이 있을 경우: 프록시 서버(국내 IP)를 경유하여 방화벽을 우회합니다.
+    - 로컬 PC 환경일 경우: 직접 네이버 엔드포인트를 호출합니다.
     - 반환: (성공여부: bool, 안내메시지: str, 추출데이터: dict)
     """
     article_no = extract_article_number(article_input)
     if not article_no:
         return False, "유효한 네이버 부동산 매물 번호(8~12자리 숫자) 또는 매물 링크를 찾을 수 없습니다.", {}
+
+    # ----------------------------------------------------
+    # 전략 0: ivy 서버 프록시 (Streamlit Cloud 방화벽 우회)
+    # ----------------------------------------------------
+    proxy_url, proxy_key = get_naver_proxy_config()
+    if proxy_url:
+        try:
+            p_res = requests.get(
+                f"{proxy_url.rstrip('/')}/crawl",
+                params={"article": article_no, "key": proxy_key},
+                timeout=8
+            )
+            if p_res.status_code == 200:
+                p_json = p_res.json()
+                if p_json.get("success") and p_json.get("data"):
+                    return True, p_json.get("message", f"네이버 매물 [{article_no}] 크롤링 성공 (아이비 서버 경유)"), p_json.get("data")
+            elif p_res.status_code == 403:
+                return False, "아이비 프록시 인증 실패: Streamlit Secrets의 NAVER_PROXY_KEY가 일치하지 않습니다.", {}
+        except Exception as pe:
+            # 프록시 호출 실패 시 로컬 직접 시도로 폴백
+            pass
 
     res_data = {}
     error_reasons = []
