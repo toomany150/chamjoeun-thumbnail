@@ -68,11 +68,12 @@ def format_korean_price(price_int: int) -> str:
 
 
 def format_thumb_price(price_text: str) -> str:
-    """'6억 2,000만 원' 형태를 썸네일용 '6억2천' 또는 '2억4천' 형태로 축약합니다."""
+    """'6억 8,000 원' 형태를 썸네일용 '6억8천' 또는 '2억4천' 형태로 축약합니다."""
     if not price_text:
         return ""
     txt = price_text.replace(" ", "").replace(",", "").replace("원", "")
-    # 6억2000만 -> 6억2천
+    txt = re.sub(r"(\d+)000(?:만)?$", r"\1천", txt)
+    txt = re.sub(r"(\d+)00(?:만)?$", r"\1백", txt)
     txt = re.sub(r"000만", "천", txt)
     txt = re.sub(r"00만", "백", txt)
     return txt
@@ -411,6 +412,95 @@ def crawl_naver_article(article_input: str) -> Tuple[bool, str, Dict[str, Any]]:
                 parsed_desc = parse_naver_clipboard_text(desc_text)
                 res_data.update({k: v for k, v in parsed_desc.items() if v})
 
+            # [핵심] SSR DataList __term / __definition 정밀 파싱
+            pairs = re.findall(r'__term">(.*?)</div>\s*<div[^>]*__definition">(.*?)</div>', html, re.DOTALL)
+            data_map = {}
+            for k, v in pairs:
+                clean_k = re.sub(r'<[^>]+>', '', k).replace("도움말 보기", "").strip()
+                clean_v = re.sub(r'<[^>]+>', ' ', v).strip()
+                clean_v = ' '.join(clean_v.split())
+                if clean_k not in data_map:
+                    data_map[clean_k] = clean_v
+
+            # 가격
+            if "매매가" in data_map and not res_data.get("price_text"):
+                res_data["price_text"] = data_map["매매가"]
+                res_data["trade_type"] = "매매"
+            elif "전세가" in data_map and not res_data.get("price_text"):
+                res_data["price_text"] = data_map["전세가"]
+                res_data["trade_type"] = "전세"
+            elif "보증금/월세" in data_map and not res_data.get("price_text"):
+                res_data["price_text"] = data_map["보증금/월세"]
+                res_data["trade_type"] = "월세"
+
+            # 공급 / 전용면적
+            if "공급면적" in data_map:
+                m_sup = re.search(r'([\d.]+)\s*㎡', data_map["공급면적"])
+                if m_sup:
+                    res_data["area_supply"] = m_sup.group(1)
+            if "전용면적" in data_map:
+                m_exc = re.search(r'([\d.]+)\s*㎡', data_map["전용면적"])
+                if m_exc:
+                    res_data["area_exclusive"] = m_exc.group(1)
+
+            # 층수
+            if "해당층/총층" in data_map:
+                raw_floor = data_map["해당층/총층"]
+                m_fl = re.search(r'([저중고\d]+)(?:\s*\([^)]*\))?\s*/\s*(\d+층)', raw_floor)
+                if m_fl:
+                    res_data["floor_info"] = f"{m_fl.group(1)}/{m_fl.group(2)}"
+                else:
+                    res_data["floor_info"] = raw_floor.replace(" ", "")
+
+            # 방수/욕실수
+            if "방수/욕실수" in data_map:
+                m_rb = re.search(r'(\d+)\s*/\s*(\d+)', data_map["방수/욕실수"])
+                if m_rb:
+                    res_data["room_bath"] = f"방 {m_rb.group(1)} / 욕실 {m_rb.group(2)}개"
+                else:
+                    res_data["room_bath"] = data_map["방수/욕실수"]
+
+            # 향
+            if "향" in data_map:
+                raw_dir = data_map["향"].replace("(거실 기준)", "").replace("거실 기준", "").strip()
+                res_data["direction"] = f"{raw_dir} (거실 기준)" if raw_dir else data_map["향"]
+
+            # 위치 / 소재지
+            if "위치" in data_map:
+                loc = data_map["위치"]
+                if res_data.get("main_title") and res_data["main_title"] not in loc:
+                    res_data["location"] = f"{loc} ({res_data['main_title']})"
+                else:
+                    res_data["location"] = loc
+
+            # 건축물용도
+            if "건축물용도" in data_map:
+                res_data["building_use"] = data_map["건축물용도"]
+
+            # 사용승인일
+            if "사용승인일" in data_map:
+                m_date = re.search(r'(\d{4}[.-]\d{2}[.-]\d{2})', data_map["사용승인일"])
+                if m_date:
+                    res_data["approval_date"] = m_date.group(1).replace(".", "-")
+                else:
+                    res_data["approval_date"] = data_map["사용승인일"]
+
+            # 세대수
+            if "세대수" in data_map:
+                res_data["households"] = data_map["세대수"]
+
+            # 주차
+            if "주차" in data_map:
+                res_data["parking"] = data_map["주차"]
+
+            # 입주가능일
+            if "입주가능일" in data_map:
+                res_data["move_in_date"] = data_map["입주가능일"]
+
+            # 관리비
+            if "관리비" in data_map:
+                res_data["maintenance_fee"] = data_map["관리비"]
+
             # Next.js 스트리밍 텍스트에서 매물 정보 JSON 덩어리 탐색
             # self.__next_f.push(...)
             chunks = re.findall(r'self\.__next_f\.push\(\[(?:0|1),\s*"(.*?)"\]\)', html, re.DOTALL)
@@ -520,7 +610,7 @@ def crawl_naver_article(article_input: str) -> Tuple[bool, str, Dict[str, Any]]:
         if res_data.get("floor_info"):
             res_data["spec_line1"] = res_data["floor_info"]
         if res_data.get("area_exclusive"):
-            res_data["spec_line2"] = f"공급 {res_data.get('area_supply', res['area_exclusive'])}㎡ / 전용 {res_data['area_exclusive']}㎡"
+            res_data["spec_line2"] = f"공급 {res_data.get('area_supply', res_data['area_exclusive'])}㎡ / 전용 {res_data['area_exclusive']}㎡"
         if res_data.get("room_bath"):
             res_data["spec_line3"] = res_data["room_bath"]
         if res_data.get("move_in_date"):
