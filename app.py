@@ -588,6 +588,9 @@ def apply_crawled_or_doc_data(data: dict, clean_previous: bool = True):
     if data.get("deposit_sub"): safe_set_session_state("ad_deposit_sub", str(data["deposit_sub"]))
 
     # 2. 썸네일 탭 연동
+    if data.get("item_no"): safe_set_session_state("item_no", str(data["item_no"]))
+    elif data.get("article_no"): safe_set_session_state("item_no", str(data["article_no"]))
+    elif data.get("atclNo"): safe_set_session_state("item_no", str(data["atclNo"]))
     if data.get("main_title"): safe_set_session_state("main_title", str(data["main_title"]))
     if data.get("sub_title"): safe_set_session_state("sub_title", str(data["sub_title"]))
     if data.get("feature_text"): safe_set_session_state("feature_text", str(data["feature_text"]))
@@ -1027,7 +1030,7 @@ with tab_apt_thumb:
         with tab_view_a4:
             with st.spinner("창문 부착용 300DPI 초고화질 A4 포스터 렌더링 중..."):
                 a4_poster_img = render_a4_window_poster(
-                    thumbnail_img=thumbnail_img,
+                    thumbnail_img=None,
                     bg_image=uploaded_bg,
                     item_no=st.session_state.item_no,
                     main_title=st.session_state.main_title,
@@ -1041,7 +1044,10 @@ with tab_apt_thumb:
                     office_phone=st.session_state.get("ad_office_phone", "010-9667-4201"),
                     office_reg_no=st.session_state.get("ad_office_reg_no", "제 26530-2026-00009 호"),
                     office_address=st.session_state.get("ad_office_address", "부산광역시 사상구 강선로 9, 1층"),
-                    is_commercial=False
+                    is_commercial=False,
+                    bg_offset_x=bg_offset_x,
+                    bg_offset_y=bg_offset_y,
+                    bg_zoom=bg_zoom
                 )
             st.image(a4_poster_img, caption="중개사무소 유리창 부착용 A4 브리핑 포스터 (초고화질 300 DPI)", use_container_width=True)
 
@@ -1265,7 +1271,7 @@ with tab_comm_thumb:
 
             with st.spinner("상가 창문 부착용 300DPI 초고화질 A4 포스터 렌더링 중..."):
                 comm_a4_poster_img = render_a4_window_poster(
-                    thumbnail_img=comm_thumb_img,
+                    thumbnail_img=None,
                     bg_image=uploaded_comm_bg,
                     item_no=st.session_state.get("item_no", ""),
                     main_title=comm_a4_title,
@@ -1284,6 +1290,7 @@ with tab_comm_thumb:
             st.image(comm_a4_poster_img, caption="상가 유리창 부착용 A4 브리핑 포스터 (초고화질 300 DPI)", use_container_width=True)
 
     with col_ct_right:
+        st.text_input("🏷️ 물건 번호 (매물번호)", key="item_no")
         if not is_sale_mode:
             st.markdown("### 🛠️ 상가 임차 텍스트 수정")
             st.text_input("🏷️ 상단 캡슐 뱃지 문구", key="comm_lease_top_badge")
