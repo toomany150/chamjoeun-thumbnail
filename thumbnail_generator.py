@@ -1014,123 +1014,159 @@ def render_a4_window_poster(
     draw.rounded_rectangle([(50, 50), (W - 50, H - 50)], radius=36, outline=primary_color, width=14)
     draw.rounded_rectangle([(72, 72), (W - 72, H - 72)], radius=24, outline=(226, 232, 240, 255), width=3)
 
-    # 2. 상단 헤더 (로고 & 참좋은 추천 매물 & 물건번호)
-    header_y = 100
-    logo_path = os.path.join(ASSETS_DIR, "logo.png")
-    cur_hx = 110
-    if os.path.exists(logo_path):
-        try:
-            lg = Image.open(logo_path).convert("RGBA")
-            lh = 75
-            lw = int(lg.width * (lh / lg.height))
-            lg_res = lg.resize((lw, lh), Image.Resampling.LANCZOS)
-            canvas.paste(lg_res, (cur_hx, header_y + 10), lg_res)
-            cur_hx += lw + 24
-        except Exception:
-            pass
+    # 2. 상단 시작 위치 설정 (추천 매물 브리핑 문구, 매물번호, 서브타이틀 삭제)
+    cur_y = 110
 
-    font_header_title = get_font("NanumGothicBold.ttf", 52)
-    header_label = "참좋은공인중개사 추천 매물 브리핑" if not is_commercial else "참좋은공인중개사 상가 특급 추천 매물"
-    draw.text((cur_hx, header_y + 20), header_label, fill=(30, 41, 59, 255), font=font_header_title)
-
-    # 물건번호 배지 (우측 상단) - 썸네일에서 작성한 매물번호 연동
-    font_badge = get_font("NanumGothicBold.ttf", 46)
-    clean_item = (item_no or "No. 001").strip()
-    item_str = f"매물번호 : {clean_item}"
-    ib = font_badge.getbbox(item_str)
-    iw = ib[2] - ib[0]
-    badge_x = W - 110 - iw - 48
-    draw.rounded_rectangle([(badge_x, header_y + 10), (W - 110, header_y + 88)], radius=18, fill=(241, 245, 249, 255), outline=(203, 213, 225, 255), width=2)
-    draw.text((badge_x + 24, header_y + 23), item_str, fill=(71, 85, 105, 255), font=font_badge)
-
-    draw.line([(100, header_y + 115), (W - 100, header_y + 115)], fill=(226, 232, 240, 255), width=2)
-
-    # 3. 매물 특징 및 초대형 타이틀 섹션 (메인/서브타이틀 1.4배 확대 및 밀착 배치)
-    cur_y = header_y + 145
-    if feature_text:
+    # 매물 특징 배지 (있을 경우 중앙 배치)
+    if feature_text and feature_text.strip():
         feat_clean = f"★ {feature_text.strip()}"
-        font_feat = get_font("NanumGothicBold.ttf", 46)
+        font_feat = get_font("NanumGothicBold.ttf", 52)
         fb = font_feat.getbbox(feat_clean)
         fw = fb[2] - fb[0]
-        feat_box_w = min(fw + 56, W - 220)
-        draw.rounded_rectangle([(110, cur_y), (110 + feat_box_w, cur_y + 76)], radius=20, fill=(255, 247, 237, 255), outline=(254, 215, 170, 255), width=2)
-        draw.text((138, cur_y + 14), feat_clean, fill=(194, 65, 12, 255), font=font_feat)
-        cur_y += 95
+        fh = fb[3] - fb[1]
+        feat_box_w = min(fw + 64, W - 220)
+        feat_x = (W - feat_box_w) // 2
+        draw.rounded_rectangle([(feat_x, cur_y), (feat_x + feat_box_w, cur_y + 80)], radius=22, fill=(255, 247, 237, 255), outline=(254, 215, 170, 255), width=2)
+        draw.text((feat_x + (feat_box_w - fw) // 2 - fb[0], cur_y + (80 - fh) // 2 - fb[1]), feat_clean, fill=(194, 65, 12, 255), font=font_feat)
+        cur_y += 105
+    else:
+        cur_y += 20
 
-    # 1.4배 초대형 메인 타이틀 (기존 120 * 1.4 = 168)
-    main_size = 168
+    # 3. 초대형 메인 타이틀 (중앙 정렬 & 210px 초대형 확대)
+    main_size = 210
     title_str = (main_title or "추천 부동산 매물").strip()
     font_main = get_font("NanumGothicExtraBold.ttf", main_size)
     mtb = font_main.getbbox(title_str)
     mtw = mtb[2] - mtb[0]
     max_title_w = W - 220
-    while mtw > max_title_w and main_size > 100:
+    while mtw > max_title_w and main_size > 110:
         main_size -= 6
         font_main = get_font("NanumGothicExtraBold.ttf", main_size)
         mtb = font_main.getbbox(title_str)
         mtw = mtb[2] - mtb[0]
 
-    draw.text((110, cur_y), title_str, fill=(15, 23, 42, 255), font=font_main)
-    cur_y += main_size + 15  # 여백을 바짝 붙여서 배치
+    title_x = (W - mtw) // 2
+    draw.text((title_x, cur_y), title_str, fill=(15, 23, 42, 255), font=font_main)
+    cur_y += (mtb[3] - mtb[1]) + 40
 
-    # 1.4배 서브 타이틀 (기존 60 * 1.4 = 84) - 메인타이틀과 붙여서 배치
-    if sub_title and sub_title.strip():
-        sub_size = 84
-        font_sub = get_font("NanumGothicBold.ttf", sub_size)
-        stb = font_sub.getbbox(sub_title.strip())
-        stw = stb[2] - stb[0]
-        while stw > max_title_w and sub_size > 50:
-            sub_size -= 4
-            font_sub = get_font("NanumGothicBold.ttf", sub_size)
-            stb = font_sub.getbbox(sub_title.strip())
-            stw = stb[2] - stb[0]
+    # 4. 초대형 시선강탈 거래형태 & 금액 & 입주가능시기 배너 (중앙 정렬)
+    banner_h = 420
+    draw.rounded_rectangle([(100, cur_y), (W - 100, cur_y + banner_h)], radius=34, fill=banner_bg)
 
-        draw.text((114, cur_y), sub_title.strip(), fill=(71, 85, 105, 255), font=font_sub)
-        cur_y += sub_size + 20
-
-    # 4. 초대형 시선강탈 가격 및 입주시기 배너
-    cur_y += 10
-    banner_h = 245
-    draw.rounded_rectangle([(100, cur_y), (W - 100, cur_y + banner_h)], radius=32, fill=banner_bg)
-
-    # 거래 형태 뱃지 (좌측 화이트 알약)
+    # 4-1. 상단: 거래형태 & 금액 (메인타이틀과 동일한 초대형 크기로 중앙 배치)
     trade_str = (trade_type or "매매").strip()
-    font_trade = get_font("NanumGothicExtraBold.ttf", 72)
+    p_str = (price_text or "상담 환영").strip()
+
+    trade_font_size = 140
+    price_font_size = 160
+
+    font_trade = get_font("NanumGothicExtraBold.ttf", trade_font_size)
+    font_price = get_font("NanumGothicExtraBold.ttf", price_font_size)
+
     tb = font_trade.getbbox(trade_str)
     tw = tb[2] - tb[0]
-    pill_w = max(190, tw + 56)
-    draw.rounded_rectangle([(140, cur_y + 42), (140 + pill_w, cur_y + banner_h - 42)], radius=26, fill=(255, 255, 255, 255))
-    draw.text((140 + (pill_w - tw) // 2 - tb[0], cur_y + 82), trade_str, fill=primary_color, font=font_trade)
+    th = tb[3] - tb[1]
 
-    # 초대형 금액 텍스트
-    p_str = (price_text or "상담 환영").strip()
-    font_price = get_font("NanumGothicExtraBold.ttf", 130)
-    draw.text((140 + pill_w + 45, cur_y + 48), p_str, fill=(255, 255, 255, 255), font=font_price)
+    pb = font_price.getbbox(p_str)
+    pw = pb[2] - pb[0]
+    ph = pb[3] - pb[1]
 
-    # 우측 4행 입주시기 정보 (서브타이틀 크기인 84px 수준으로 대폭 확대)
-    move_in_txt = ""
+    gap_trade_price = 45
+    pill_pad_x = 36
+    pill_w = tw + pill_pad_x * 2
+    pill_h = th + 40
+
+    total_top_w = pill_w + gap_trade_price + pw
+    max_top_w = W - 280
+
+    while total_top_w > max_top_w and price_font_size > 100:
+        trade_font_size -= 6
+        price_font_size -= 6
+        font_trade = get_font("NanumGothicExtraBold.ttf", trade_font_size)
+        font_price = get_font("NanumGothicExtraBold.ttf", price_font_size)
+        tb = font_trade.getbbox(trade_str)
+        tw = tb[2] - tb[0]
+        th = tb[3] - tb[1]
+        pb = font_price.getbbox(p_str)
+        pw = pb[2] - pb[0]
+        ph = pb[3] - pb[1]
+        pill_w = tw + pill_pad_x * 2
+        pill_h = th + 36
+        total_top_w = pill_w + gap_trade_price + pw
+
+    start_top_x = (W - total_top_w) // 2
+    top_row_y = cur_y + 36
+
+    # 거래 형태 화이트 알약 배지
+    draw.rounded_rectangle(
+        [(start_top_x, top_row_y), (start_top_x + pill_w, top_row_y + pill_h)],
+        radius=26,
+        fill=(255, 255, 255, 255)
+    )
+    draw.text(
+        (start_top_x + (pill_w - tw) // 2 - tb[0], top_row_y + (pill_h - th) // 2 - tb[1]),
+        trade_str,
+        fill=primary_color,
+        font=font_trade
+    )
+
+    # 금액 텍스트
+    price_x = start_top_x + pill_w + gap_trade_price
+    price_y = top_row_y + (pill_h - ph) // 2 - pb[1]
+    draw.text((price_x, price_y), p_str, fill=(255, 255, 255, 255), font=font_price)
+
+    # 4-2. 하단: 입주가능시기 ('입주가능시기 : ' 라벨 명시 & 초대형 중앙 배치)
+    raw_move_in = ""
     if spec_lines and len(spec_lines) > 3 and spec_lines[3] and str(spec_lines[3]).strip():
-        move_in_txt = str(spec_lines[3]).strip()
+        raw_move_in = str(spec_lines[3]).strip()
     else:
-        move_in_txt = "즉시입주 협의가능" if not is_commercial else "성업중 · 즉시입점"
+        raw_move_in = "즉시입주 협의가능" if not is_commercial else "성업중 · 즉시입점"
 
-    mi_size = 84
+    # 중복 접두어 정비 후 표준 라벨 생성
+    clean_mi = raw_move_in.replace("입주가능시기", "").replace("입주시기", "").replace("입주가능일", "").replace(":", "").strip()
+    if clean_mi:
+        move_in_txt = f"입주가능시기 : {clean_mi}"
+    else:
+        move_in_txt = "입주가능시기 : 즉시입주 협의"
+
+    mi_size = 92
     font_move_in = get_font("NanumGothicBold.ttf", mi_size)
     mib = font_move_in.getbbox(move_in_txt)
     miw = mib[2] - mib[0]
-    while miw > 850 and mi_size > 48:
+    mih = mib[3] - mib[1]
+    max_mi_w = W - 320
+    while miw > max_mi_w and mi_size > 54:
         mi_size -= 4
         font_move_in = get_font("NanumGothicBold.ttf", mi_size)
         mib = font_move_in.getbbox(move_in_txt)
         miw = mib[2] - mib[0]
+        mih = mib[3] - mib[1]
 
-    draw.text((W - 145 - miw, cur_y + (banner_h - (mib[3] - mib[1])) // 2 - mib[1]), move_in_txt, fill=(255, 255, 255, 245), font=font_move_in)
+    # 입주가능시기 전용 캡슐 바 (배너 하단에 반투명 오버레이로 중앙 배치)
+    mi_box_w = min(miw + 90, W - 260)
+    mi_box_h = 105
+    mi_box_x = (W - mi_box_w) // 2
+    mi_box_y = cur_y + banner_h - mi_box_h - 32
+
+    draw.rounded_rectangle(
+        [(mi_box_x, mi_box_y), (mi_box_x + mi_box_w, mi_box_y + mi_box_h)],
+        radius=26,
+        fill=(0, 0, 0, 55),
+        outline=(255, 255, 255, 80),
+        width=2
+    )
+    draw.text(
+        (mi_box_x + (mi_box_w - miw) // 2 - mib[0], mi_box_y + (mi_box_h - mih) // 2 - mib[1]),
+        move_in_txt,
+        fill=(255, 255, 255, 255),
+        font=font_move_in
+    )
 
     cur_y += banner_h + 35
 
-    # 5. 매물 비주얼 영역 (중복 세부정보 삭제, 순수 실물 사진을 최대 크기로 꽉 채움)
+    # 5. 매물 비주얼 영역 (사진 크기 적절히 축소하여 상단 타이틀/배너 공간 확보)
     visual_box_w = W - 200
-    visual_box_h = 1380
+    visual_box_h = 1180
     visual_x = 100
     visual_y = cur_y
 
