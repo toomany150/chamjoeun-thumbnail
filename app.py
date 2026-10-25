@@ -417,6 +417,8 @@ def apply_preset(p_type):
 # 3. 상가 썸네일 관련 상태 (임차 & 매매)
 if "comm_thumb_mode" not in st.session_state:
     st.session_state.comm_thumb_mode = "🔑 상가 임차 (월세)"
+if "comm_item_no" not in st.session_state:
+    st.session_state.comm_item_no = "No. COMM-01"
 
 # 임차 썸네일 세션 상태
 if "comm_lease_top_badge" not in st.session_state:
@@ -1273,7 +1275,7 @@ with tab_comm_thumb:
                 comm_a4_poster_img = render_a4_window_poster(
                     thumbnail_img=None,
                     bg_image=uploaded_comm_bg,
-                    item_no=st.session_state.get("item_no", ""),
+                    item_no=st.session_state.get("comm_item_no", "No. COMM-01"),
                     main_title=comm_a4_title,
                     sub_title=comm_a4_sub,
                     feature_text=comm_a4_feature,
@@ -1290,7 +1292,7 @@ with tab_comm_thumb:
             st.image(comm_a4_poster_img, caption="상가 유리창 부착용 A4 브리핑 포스터 (초고화질 300 DPI)", use_container_width=True)
 
     with col_ct_right:
-        st.text_input("🏷️ 물건 번호 (매물번호)", key="item_no")
+        st.text_input("🏷️ 물건 번호 (매물번호)", key="comm_item_no")
         if not is_sale_mode:
             st.markdown("### 🛠️ 상가 임차 텍스트 수정")
             st.text_input("🏷️ 상단 캡슐 뱃지 문구", key="comm_lease_top_badge")
