@@ -1087,9 +1087,6 @@ def render_a4_window_poster(
     draw.rounded_rectangle([(72, 72), (W - 72, H - 72)], radius=24, outline=(226, 232, 240, 255), width=3)
 
     # 2. 상단 시작 위치 설정 & 우측 상단 매물번호 뱃지
-    cur_y = 110
-
-    # 2-1. 우측 상단 매물번호 뱃지 (요구사항 5번 반영)
     clean_item = (item_no or "").strip()
     if clean_item:
         font_item = get_font("NanumGothicExtraBold.ttf", 46)
@@ -1105,23 +1102,9 @@ def render_a4_window_poster(
         draw.rounded_rectangle([(ib_x, ib_y), (ib_x + ib_w, ib_y + ib_h)], radius=20, fill=(248, 250, 252, 255), outline=primary_color, width=3)
         draw.text((ib_x + ib_pad_x - itb[0], ib_y + (ib_h - ith) // 2 - itb[1]), item_text, fill=primary_color, font=font_item)
 
-    # 매물 특징 배지 (있을 경우 중앙 배치)
-    if feature_text and feature_text.strip():
-        feat_clean = f"★ {feature_text.strip()}"
-        font_feat = get_font("NanumGothicBold.ttf", 52)
-        fb = font_feat.getbbox(feat_clean)
-        fw = fb[2] - fb[0]
-        fh = fb[3] - fb[1]
-        feat_box_w = min(fw + 64, W - 220)
-        feat_x = (W - feat_box_w) // 2
-        draw.rounded_rectangle([(feat_x, cur_y), (feat_x + feat_box_w, cur_y + 80)], radius=22, fill=(255, 247, 237, 255), outline=(254, 215, 170, 255), width=2)
-        draw.text((feat_x + (feat_box_w - fw) // 2 - fb[0], cur_y + (80 - fh) // 2 - fb[1]), feat_clean, fill=(194, 65, 12, 255), font=font_feat)
-        cur_y += 105
-    else:
-        cur_y += 20
-
-    # 3. 초대형 메인 타이틀 (중앙 정렬 & 210px 초대형 확대)
-    main_size = 210
+    # 3. 초대형 메인 타이틀 (상단 특징 문구가 아래로 이동하여 상단 중앙에 시원하게 단독 배치)
+    cur_y = 175
+    main_size = 205
     title_str = (main_title or "추천 부동산 매물").strip()
     font_main = get_font("NanumGothicExtraBold.ttf", main_size)
     mtb = font_main.getbbox(title_str)
@@ -1135,10 +1118,10 @@ def render_a4_window_poster(
 
     title_x = (W - mtw) // 2
     draw.text((title_x, cur_y), title_str, fill=(15, 23, 42, 255), font=font_main)
-    cur_y += (mtb[3] - mtb[1]) + 40
+    cur_y += (mtb[3] - mtb[1]) + 35
 
     # 4. 초대형 시선강탈 거래형태 & 금액 & 입주가능시기 배너 (중앙 정렬)
-    banner_h = 420
+    banner_h = 410
     draw.rounded_rectangle([(100, cur_y), (W - 100, cur_y + banner_h)], radius=34, fill=banner_bg)
 
     # 4-1. 상단: 거래형태 & 금액 (메인타이틀과 동일한 초대형 크기로 중앙 배치)
@@ -1232,9 +1215,9 @@ def render_a4_window_poster(
 
     # 입주가능시기 전용 캡슐 바 (배너 하단에 반투명 오버레이로 중앙 배치)
     mi_box_w = min(miw + 90, W - 260)
-    mi_box_h = 105
+    mi_box_h = 100
     mi_box_x = (W - mi_box_w) // 2
-    mi_box_y = cur_y + banner_h - mi_box_h - 32
+    mi_box_y = cur_y + banner_h - mi_box_h - 30
 
     draw.rounded_rectangle(
         [(mi_box_x, mi_box_y), (mi_box_x + mi_box_w, mi_box_y + mi_box_h)],
@@ -1250,11 +1233,11 @@ def render_a4_window_poster(
         font=font_move_in
     )
 
-    cur_y += banner_h + 35
+    cur_y += banner_h + 30
 
-    # 5. 매물 비주얼 영역 (사진 크기 적절히 축소하여 상단 타이틀/배너 공간 확보)
+    # 5. 매물 실물 사진 비주얼 영역 (중복 세부정보 없이 순수 실물 사진 고화질 노출)
     visual_box_w = W - 200
-    visual_box_h = 1180
+    visual_box_h = 1140
     visual_x = 100
     visual_y = cur_y
 
@@ -1263,7 +1246,6 @@ def render_a4_window_poster(
     draw.rounded_rectangle([(visual_x, visual_y), (visual_x + visual_box_w, visual_y + visual_box_h)], radius=24, fill=(241, 245, 249, 255))
 
     target_photo = None
-    # bg_image(순수 실물 사진)를 최우선으로 사용하여 썸네일 세부정보 중복 제거
     if bg_image is not None:
         if isinstance(bg_image, Image.Image):
             target_photo = bg_image.convert("RGBA")
@@ -1285,7 +1267,6 @@ def render_a4_window_poster(
             pass
 
         pw, ph = target_photo.size
-        # 액자 영역에 시원하게 꽉 채우기 (Cover 모드)
         scale = max(visual_box_w / pw, visual_box_h / ph)
         if bg_zoom and bg_zoom != 1.0:
             scale *= bg_zoom
@@ -1311,9 +1292,9 @@ def render_a4_window_poster(
         nib = font_no_img.getbbox(no_img_txt)
         draw.text((visual_x + (visual_box_w - (nib[2] - nib[0])) // 2, visual_y + visual_box_h // 2 - 30), no_img_txt, fill=(148, 163, 184, 255), font=font_no_img)
 
-    cur_y += visual_box_h + 30
+    cur_y += visual_box_h + 26
 
-    # 6. 핵심 6대 스펙 상세 그리드 카드 (2열 x 3행 = 3줄/3칸 구성으로 글자 잘림 방지 & 가독성 극대화)
+    # 6. 핵심 6대 스펙 상세 그리드 카드 (2열 x 3행 = 3줄/3칸, 첨부 2번째 파일과 100% 동일한 기본틀 유지)
     if not spec_lines or len(spec_lines) < 5:
         spec_lines = [
             "25층 / 36층 (로얄층)",
@@ -1337,7 +1318,7 @@ def render_a4_window_poster(
     card_gap_y = 16
     total_card_w = visual_box_w
     c_w = (total_card_w - (card_cols - 1) * card_gap_x) // card_cols
-    c_h = 190
+    c_h = 185
 
     font_c_label = get_font("NanumGothicBold.ttf", 40)
 
@@ -1365,7 +1346,64 @@ def render_a4_window_poster(
             vb = font_c_val.getbbox(val_clean)
             vw = vb[2] - vb[0]
 
-        draw.text((cx + 32, cy + 86), val_clean, fill=(15, 23, 42, 255), font=font_c_val)
+        draw.text((cx + 32, cy + 84), val_clean, fill=(15, 23, 42, 255), font=font_c_val)
+
+    # 6대 스펙 카드 종료 위치 계산
+    cur_y += 3 * (c_h + card_gap_y) + 8
+
+    # 6-2. ⭐ 매물 핵심 특징 배너 (사용자 요청: 첨부한 2번째 파일인 6대 스펙 카드 바로 밑에 12자 내외 강조 배너 배치)
+    feat_clean = (feature_text or "").strip()
+    if feat_clean:
+        if not (feat_clean.startswith("★") or feat_clean.startswith("✦") or feat_clean.startswith("✔")):
+            feat_display = f"★ {feat_clean} ★"
+        else:
+            feat_display = feat_clean
+    else:
+        feat_display = "★ 초역세권 대단지 프리미엄 추천 매물 ★"
+
+    feat_box_w = visual_box_w
+    feat_box_h = 140
+    feat_x = visual_x
+    feat_y = cur_y
+
+    if is_commercial:
+        f_bg_color = (26, 32, 44, 255)
+        f_outline = accent_color
+        f_txt_color = (245, 208, 115, 255)
+    else:
+        f_bg_color = (255, 247, 237, 255)
+        f_outline = primary_color
+        f_txt_color = (194, 65, 12, 255)
+
+    draw.rounded_rectangle(
+        [(feat_x, feat_y), (feat_x + feat_box_w, feat_y + feat_box_h)],
+        radius=26,
+        fill=f_bg_color,
+        outline=f_outline,
+        width=3
+    )
+
+    # 12자 내외 문구에 최적화된 68px 초대형 폰트 (자동 축소 루프로 1줄 완벽 중앙 정렬)
+    feat_f_size = 68
+    font_feat_banner = get_font("NanumGothicExtraBold.ttf", feat_f_size)
+    ftb = font_feat_banner.getbbox(feat_display)
+    ftw = ftb[2] - ftb[0]
+    fth = ftb[3] - ftb[1]
+    max_ftw = feat_box_w - 90
+
+    while ftw > max_ftw and feat_f_size > 40:
+        feat_f_size -= 2
+        font_feat_banner = get_font("NanumGothicExtraBold.ttf", feat_f_size)
+        ftb = font_feat_banner.getbbox(feat_display)
+        ftw = ftb[2] - ftb[0]
+        fth = ftb[3] - ftb[1]
+
+    draw.text(
+        (feat_x + (feat_box_w - ftw) // 2 - ftb[0], feat_y + (feat_box_h - fth) // 2 - ftb[1]),
+        feat_display,
+        fill=f_txt_color,
+        font=font_feat_banner
+    )
 
     # 7. 하단 중개사무소 정보 (최대 하단 테두리 바로 위로 고정)
     footer_h = 350
@@ -1402,7 +1440,7 @@ def render_a4_window_poster(
     ast_clean = (assistant_phone or "").strip()
     if ast_clean:
         # 담당자(소공/직원) 직통 연락처 강조 뱃지
-        ast_display_txt = f"📱 담당자 : {ast_clean}"
+        ast_display_txt = f"담당자 직통 : {ast_clean}"
         font_ast = get_font("NanumGothicExtraBold.ttf", 52)
         ab = font_ast.getbbox(ast_display_txt)
         aw = ab[2] - ab[0]
