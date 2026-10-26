@@ -176,9 +176,17 @@ def crawl_naver_core(article_no: str) -> Tuple[bool, str, Dict[str, Any]]:
             if "입주가능일" in data_map:
                 res_data["move_in_date"] = data_map["입주가능일"]
 
-            # 관리비
-            if "관리비" in data_map:
-                res_data["maintenance_fee"] = data_map["관리비"]
+            # 관리비 & 세부내역 추출
+            try:
+                from naver_crawler import extract_maintenance_fee_and_detail
+                fee_p, detail_p = extract_maintenance_fee_and_detail(data_map=data_map, text_content=html)
+                if fee_p:
+                    res_data["maintenance_fee"] = fee_p
+                if detail_p:
+                    res_data["maintenance_detail"] = detail_p
+            except Exception:
+                if "관리비" in data_map:
+                    res_data["maintenance_fee"] = data_map["관리비"]
 
             # 3. Next.js 스트리밍 내부 검색 (추가 보강)
             chunks = re.findall(r'self\.__next_f\.push\(\[(?:0|1),\s*"(.*?)"\]\)', html, re.DOTALL)

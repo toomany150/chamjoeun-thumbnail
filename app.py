@@ -71,7 +71,8 @@ from naver_crawler import (
     crawl_naver_article,
     parse_naver_clipboard_text,
     extract_article_number,
-    format_thumb_price
+    format_thumb_price,
+    extract_maintenance_fee_and_detail
 )
 
 def render_direct_download_button(image_bytes: bytes, file_name: str, button_label: str, bg_color: str = "#F48A26") -> str:
@@ -161,6 +162,71 @@ def render_copy_button(text_to_copy: str, button_label: str, btn_id: str = "") -
         </button>
     </div>
     """
+
+def render_download_save_controller(
+    file_bytes: bytes,
+    default_filename: str,
+    label_download: str,
+    key_prefix: str,
+    is_poster: bool = False,
+    print_bytes: bytes = None,
+    print_label: str = "🖨️ [원클릭 즉시 인쇄] 창문 부착용 A4 바로 출력 (Ctrl+P)",
+    print_bg: str = "#1A202C"
+):
+    """
+    1) 포스터인 경우 원클릭 즉시 인쇄 버튼 제공
+    2) 사용자가 직접 PC 내 저장 폴더 경로를 지정하여 즉시 저장
+    3) 기본 브라우저 1080x1080 썸네일 / 300DPI 포스터 다운로드 버튼 제공
+    """
+    if "custom_download_path" not in st.session_state:
+        st.session_state.custom_download_path = os.path.join(os.path.expanduser("~"), "Desktop")
+
+    cur_path = st.session_state.custom_download_path
+
+    # 인쇄 버튼 (창문부착용 옵션 전용)
+    if is_poster and print_bytes:
+        st.markdown(render_direct_print_button(print_bytes, default_filename, print_label, bg_color=print_bg), unsafe_allow_html=True)
+        st.markdown("<div style='height: 4px;'></div>", unsafe_allow_html=True)
+
+    # 기본 다운로드 버튼 (요구사항 3번 & 4번: 기본 다운로드 옵션)
+    st.download_button(
+        label=label_download,
+        data=file_bytes,
+        file_name=default_filename,
+        mime="image/png",
+        key=f"{key_prefix}_btn_std_down",
+        use_container_width=True
+    )
+
+    # 다운로드 받을 경로 지정 및 로컬 직접 저장 (요구사항 3번 & 4번)
+    with st.expander("📁 다운로드 받을 경로(폴더) 지정 및 PC 직접 저장", expanded=False):
+        c_p1, c_p2 = st.columns([2.8, 1.2])
+        with c_p1:
+            dest_dir = st.text_input(
+                "저장 대상 폴더 경로",
+                value=cur_path,
+                key=f"{key_prefix}_input_path",
+                help="원하시는 PC 폴더 경로(예: D:\\매물사진, C:\\Users\\...\\Desktop 등)를 직접 입력하세요."
+            )
+        with c_p2:
+            st.markdown("<div style='height: 28px;'></div>", unsafe_allow_html=True)
+            if st.button("🖥️ 바탕화면으로", key=f"{key_prefix}_btn_desktop_set", use_container_width=True):
+                desktop_p = os.path.join(os.path.expanduser("~"), "Desktop")
+                st.session_state.custom_download_path = desktop_p
+                st.session_state[f"{key_prefix}_input_path"] = desktop_p
+                st.rerun()
+
+        target_dir = (dest_dir or cur_path).strip()
+        if st.button(f"💾 지정한 폴더로 파일 즉시 저장 ({default_filename})", type="secondary", key=f"{key_prefix}_btn_direct_save", use_container_width=True):
+            try:
+                os.makedirs(target_dir, exist_ok=True)
+                out_path = os.path.join(target_dir, default_filename)
+                with open(out_path, "wb") as f:
+                    f.write(file_bytes)
+                st.session_state.custom_download_path = target_dir
+                st.success(f"🎉 파일이 지정 경로에 성공적으로 저장되었습니다!\n\n📍 **저장 위치:** `{out_path}`")
+            except Exception as e:
+                st.error(f"⚠️ 저장 오류: {e}")
 
 def render_design_and_layout_controls(key_prefix: str, default_design_name: str = "🍊 참좋은 시그니처 오렌지 (기본)"):
     """
@@ -375,6 +441,43 @@ st.markdown("""
         background-color: #FFFFFF !important;
         color: #F48A26 !important;
         box-shadow: 0 4px 12px rgba(0,0,0,0.08) !important;
+    }
+
+    /* 🌟 최상위 3대 메인 탭 (썸네일 / 창문부착용A4 / 중개대상물표시) 24px 볼드 스타일링 */
+    div:has(> #main-top-tabs-anchor) + div[data-testid="stTabs"] > [data-baseweb="tab-list"],
+    .main-top-tabs-container [data-baseweb="tab-list"] {
+        gap: 14px !important;
+        background-color: #E2E8F0 !important;
+        padding: 8px 12px !important;
+        border-radius: 14px !important;
+        margin-bottom: 24px !important;
+    }
+    div:has(> #main-top-tabs-anchor) + div[data-testid="stTabs"] > [data-baseweb="tab-list"] [data-baseweb="tab"],
+    .main-top-tabs-container [data-baseweb="tab-list"] [data-baseweb="tab"] {
+        height: 56px !important;
+        padding: 0 28px !important;
+        border-radius: 10px !important;
+    }
+    div:has(> #main-top-tabs-anchor) + div[data-testid="stTabs"] > [data-baseweb="tab-list"] [data-baseweb="tab"] p,
+    div:has(> #main-top-tabs-anchor) + div[data-testid="stTabs"] > [data-baseweb="tab-list"] [data-baseweb="tab"] span,
+    .main-top-tabs-container [data-baseweb="tab-list"] [data-baseweb="tab"] p,
+    .main-top-tabs-container [data-baseweb="tab-list"] [data-baseweb="tab"] span {
+        font-size: 24px !important;
+        font-weight: 800 !important;
+        line-height: 1.2 !important;
+        color: #1E2022 !important;
+        letter-spacing: -0.5px !important;
+    }
+    div:has(> #main-top-tabs-anchor) + div[data-testid="stTabs"] > [data-baseweb="tab-list"] [aria-selected="true"],
+    .main-top-tabs-container [data-baseweb="tab-list"] [aria-selected="true"] {
+        background-color: #FFFFFF !important;
+        box-shadow: 0 4px 14px rgba(0,0,0,0.12) !important;
+    }
+    div:has(> #main-top-tabs-anchor) + div[data-testid="stTabs"] > [data-baseweb="tab-list"] [aria-selected="true"] p,
+    div:has(> #main-top-tabs-anchor) + div[data-testid="stTabs"] > [data-baseweb="tab-list"] [aria-selected="true"] span,
+    .main-top-tabs-container [data-baseweb="tab-list"] [aria-selected="true"] p,
+    .main-top-tabs-container [data-baseweb="tab-list"] [aria-selected="true"] span {
+        color: #F48A26 !important;
     }
 
     /* 배지 스타일 */
@@ -815,6 +918,11 @@ def apply_comm_preset(p_type):
         for k, v in DEFAULT_COMMERCIAL_SPEC_SALE.items():
             st.session_state[f"comm_ad_{k}"] = v
 
+if "comm_lease_main_title" not in st.session_state:
+    apply_comm_preset("lease")
+if "comm_sale_main_sub" not in st.session_state:
+    apply_comm_preset("sale")
+
 def safe_set_session_state(key: str, val: any):
     """위젯이 이미 화면에 렌더링된 이후 session_state를 변경할 때 발생하는 StreamlitWidgetAlreadyInstantiatedError 원천 방지"""
     try:
@@ -887,7 +995,12 @@ def apply_crawled_or_doc_data(data: dict, clean_previous: bool = True):
     if data.get("heating"): safe_set_session_state("ad_heating", str(data["heating"]))
     if data.get("move_in_date"): safe_set_session_state("ad_move_in_date", str(data["move_in_date"]))
     if data.get("maintenance_fee"): safe_set_session_state("ad_maintenance_fee", str(data["maintenance_fee"]))
-    if data.get("maintenance_detail"): safe_set_session_state("ad_maintenance_detail", str(data["maintenance_detail"]))
+    if data.get("maintenance_detail"):
+        safe_set_session_state("ad_maintenance_detail", str(data["maintenance_detail"]))
+    elif data.get("maintenance_fee"):
+        _, auto_d = extract_maintenance_fee_and_detail(raw_fee=str(data["maintenance_fee"]))
+        if auto_d:
+            safe_set_session_state("ad_maintenance_detail", auto_d)
     if data.get("deposit_sub"): safe_set_session_state("ad_deposit_sub", str(data["deposit_sub"]))
 
     # 2. 썸네일 탭 연동
@@ -962,6 +1075,10 @@ def apply_commercial_crawled_or_doc_data(data: dict):
         safe_set_session_state("comm_ad_maintenance_fee", str(data["maintenance_fee"]))
     if data.get("maintenance_detail"):
         safe_set_session_state("comm_ad_maintenance_detail", str(data["maintenance_detail"]))
+    elif data.get("maintenance_fee"):
+        _, auto_cd = extract_maintenance_fee_and_detail(raw_fee=str(data["maintenance_fee"]))
+        if auto_cd:
+            safe_set_session_state("comm_ad_maintenance_detail", auto_cd)
     if data.get("restroom"):
         safe_set_session_state("comm_ad_restroom", str(data["restroom"]))
     if data.get("current_use"):
@@ -1073,67 +1190,11 @@ def render_smart_autocomplete_console(target_prop_type="apt"):
         </div>
         """, unsafe_allow_html=True)
 
-        top_tab_clip, top_tab_script, top_tab_num = st.tabs([
+        top_tab_num, top_tab_clip, top_tab_script = st.tabs([
+            "🔍 네이버 매물번호 / URL 크롤링",
             "📋 네이버 화면 복사 텍스트 붙여넣기 (가장 확실 & 추천)",
-            "📄 건축물대장 텍스트(스크립트) & PDF 업로드",
-            "🔍 네이버 매물 번호 / URL 크롤링 (실험적)"
+            "📄 건축물대장 텍스트(스크립트) & PDF 업로드"
         ])
-
-        with top_tab_clip:
-            top_clip_text = st.text_area(
-                "네이버 매물 상세 복사 텍스트",
-                height=110,
-                placeholder="예:\n사상 중흥S-클래스 105동 매매 6억 2,000만원\n아파트 공급 111.42㎡ / 전용 79.85㎡, 25/36층, 남동향\n관리비 18만원...",
-                key="top_input_naver_clip"
-            )
-            if st.button("⚡ 붙여넣은 텍스트 0.1초 분석 & 점검표 즉시 자동완성", type="primary", use_container_width=True, key="top_btn_parse_clip"):
-                if top_clip_text.strip():
-                    parsed_c = parse_naver_clipboard_text(top_clip_text)
-                    if parsed_c:
-                        queue_state_update("apply_apt", data=parsed_c, clean_previous=True, success_msg=f"🎉 매물 [{parsed_c.get('main_title', '매물')}] 분석 완료! 점검항목과 썸네일에 즉시 자동 반영되었습니다.")
-                    else:
-                        st.warning("붙여넣은 텍스트에서 매물 정보를 식별하지 못했습니다. 내용을 확인해주세요.")
-                else:
-                    st.warning("네이버 매물 텍스트를 먼저 붙여넣어 주세요.")
-
-        with top_tab_script:
-            top_doc_tab1, top_doc_tab2 = st.tabs([
-                "📋 대장 텍스트 통째로 붙여넣기 (정부24/세움터)",
-                "📁 대장 PDF 파일 업로드"
-            ])
-        with top_doc_tab1:
-            top_script_text = st.text_area(
-                "건축물대장 열람 복사 텍스트 (스크립트)",
-                height=120,
-                placeholder="대지위치: 부산시 사상구 덕포동 220\n건축물명칭: 사상 중흥S-클래스 제105동 제2501호\n층별: 25층\n전유부분 면적: 79.85㎡...",
-                key="top_input_script_doc"
-            )
-            if st.button("🔍 붙여넣은 대장 스크립트 분석 & 즉시 적용", type="primary", use_container_width=True, key="top_btn_parse_script"):
-                if top_script_text.strip():
-                    doc_lbl, parsed_doc = parse_raw_script_document(top_script_text)
-                    if parsed_doc:
-                        queue_state_update("apply_apt", data=parsed_doc, clean_previous=True, success_msg=f"🎉 [{doc_lbl}] 분석 완료! 점검표와 썸네일에 즉시 반영되었습니다.")
-                    else:
-                        st.warning("대장 텍스트에서 건축물 정보를 식별하지 못했습니다.")
-                else:
-                    st.warning("대장 텍스트를 먼저 붙여넣어 주세요.")
-
-        with top_doc_tab2:
-            top_uploaded_pdf = st.file_uploader(
-                "건축물대장 PDF 파일",
-                type=["pdf"],
-                key="top_pdf_uploader_key"
-            )
-            if top_uploaded_pdf:
-                if st.button("🚀 업로드된 PDF 정밀 분석 & 즉시 적용", type="primary", use_container_width=True, key="top_btn_parse_pdf"):
-                    try:
-                        p_t, p_res, _ = parse_official_document(top_uploaded_pdf, top_uploaded_pdf.name)
-                        if p_res:
-                            queue_state_update("apply_apt", data=p_res, clean_previous=True, success_msg=f"🎉 [{p_t}] 분석 완료! 즉시 반영되었습니다.")
-                        else:
-                            st.error("PDF 파일에서 텍스트를 추출하지 못했습니다.")
-                    except Exception as e:
-                        st.error(f"PDF 분석 오류: {e}")
 
         with top_tab_num:
             c_top_n1, c_top_n2 = st.columns([2.5, 1])
@@ -1157,6 +1218,62 @@ def render_smart_autocomplete_console(target_prop_type="apt"):
                             st.error(f"⚠️ {msg}")
                 else:
                     st.warning("매물 번호 또는 링크 URL을 입력해주세요.")
+
+        with top_tab_clip:
+            top_clip_text = st.text_area(
+                "네이버 매물 상세 복사 텍스트",
+                height=110,
+                placeholder="예:\n사상 중흥S-클래스 105동 매매 6억 2,000만원\n아파트 공급 111.42㎡ / 전용 79.85㎡, 25/36층, 남동향\n관리비 18만원...",
+                key="top_input_naver_clip"
+            )
+            if st.button("⚡ 붙여넣은 텍스트 0.1초 분석 & 점검표 즉시 자동완성", type="primary", use_container_width=True, key="top_btn_parse_clip"):
+                if top_clip_text.strip():
+                    parsed_c = parse_naver_clipboard_text(top_clip_text)
+                    if parsed_c:
+                        queue_state_update("apply_apt", data=parsed_c, clean_previous=True, success_msg=f"🎉 매물 [{parsed_c.get('main_title', '매물')}] 분석 완료! 점검항목과 썸네일에 즉시 자동 반영되었습니다.")
+                    else:
+                        st.warning("붙여넣은 텍스트에서 매물 정보를 식별하지 못했습니다. 내용을 확인해주세요.")
+                else:
+                    st.warning("네이버 매물 텍스트를 먼저 붙여넣어 주세요.")
+
+        with top_tab_script:
+            top_doc_tab1, top_doc_tab2 = st.tabs([
+                "📋 대장 텍스트 통째로 붙여넣기 (정부24/세움터)",
+                "📁 대장 PDF 파일 업로드"
+            ])
+            with top_doc_tab1:
+                top_script_text = st.text_area(
+                    "건축물대장 열람 복사 텍스트 (스크립트)",
+                    height=120,
+                    placeholder="대지위치: 부산시 사상구 덕포동 220\n건축물명칭: 사상 중흥S-클래스 제105동 제2501호\n층별: 25층\n전유부분 면적: 79.85㎡...",
+                    key="top_input_script_doc"
+                )
+                if st.button("🔍 붙여넣은 대장 스크립트 분석 & 즉시 적용", type="primary", use_container_width=True, key="top_btn_parse_script"):
+                    if top_script_text.strip():
+                        doc_lbl, parsed_doc = parse_raw_script_document(top_script_text)
+                        if parsed_doc:
+                            queue_state_update("apply_apt", data=parsed_doc, clean_previous=True, success_msg=f"🎉 [{doc_lbl}] 분석 완료! 점검표와 썸네일에 즉시 반영되었습니다.")
+                        else:
+                            st.warning("대장 텍스트에서 건축물 정보를 식별하지 못했습니다.")
+                    else:
+                        st.warning("대장 텍스트를 먼저 붙여넣어 주세요.")
+
+            with top_doc_tab2:
+                top_uploaded_pdf = st.file_uploader(
+                    "건축물대장 PDF 파일",
+                    type=["pdf"],
+                    key="top_pdf_uploader_key"
+                )
+                if top_uploaded_pdf:
+                    if st.button("🚀 업로드된 PDF 정밀 분석 & 즉시 적용", type="primary", use_container_width=True, key="top_btn_parse_pdf"):
+                        try:
+                            p_t, p_res, _ = parse_official_document(top_uploaded_pdf, top_uploaded_pdf.name)
+                            if p_res:
+                                queue_state_update("apply_apt", data=p_res, clean_previous=True, success_msg=f"🎉 [{p_t}] 분석 완료! 즉시 반영되었습니다.")
+                            else:
+                                st.error("PDF 파일에서 텍스트를 추출하지 못했습니다.")
+                        except Exception as e:
+                            st.error(f"PDF 분석 오류: {e}")
 
 # ----------------------------------------------------
 # 🌟 요구사항 4번: 최상위 2대 메인 탭 (■ "썸네일" / ■ "중개대상물표시")
@@ -1219,19 +1336,6 @@ def render_tab_apt_thumb():
     col_t_left, col_t_right = st.columns([1.25, 0.75])
     
     with col_t_left:
-        # 빠른 프리셋
-        col_pr1, col_pr2, col_pr3 = st.columns([1, 1, 1])
-        with col_pr1:
-            if st.button("⚡ 사상 중흥 아파트 예시", use_container_width=True):
-                apply_preset("living")
-                st.rerun()
-        with col_pr2:
-            if st.button("⚡ 센텀 오피스텔 예시", use_container_width=True):
-                apply_preset("op")
-                st.rerun()
-        with col_pr3:
-            st.caption("👈 버튼을 누르면 추천 예시가 즉시 채워집니다.")
-
         # 요구사항 1번: 레이아웃 모드를 우측으로 이동하고 좌측에 디자인 모드 배치 (영구 저장 지원)
         selected_design, layout_mode, photo_width_ratio = render_design_and_layout_controls("apt_thumb", default_design_name="🍊 참좋은 시그니처 오렌지 (기본)")
 
@@ -1241,6 +1345,10 @@ def render_tab_apt_thumb():
             type=["jpg", "jpeg", "png", "webp"],
             key="thumb_file_uploader"
         )
+        if uploaded_bg:
+            st.session_state["saved_apt_uploaded_bg"] = uploaded_bg
+        else:
+            uploaded_bg = st.session_state.get("saved_apt_uploaded_bg")
 
         with st.expander("🔍 사진 위치 / 확대 미세 조정", expanded=False):
             c_z1, c_z2, c_z3 = st.columns(3)
@@ -1286,7 +1394,7 @@ def render_tab_apt_thumb():
         # 🌟 썸네일 & 창문 부착용 A4 포스터 출력 2대 옵션
         tab_view_thumb, tab_view_a4 = st.tabs([
             "🖼️ 1. 블로그 썸네일 (1080x1080 정방형)",
-            "🖨️ 2. 중개사무소 창문 부착용 A4 포스터 (210x297mm 인쇄용)"
+            "🖨️ 2. 중개사무소 창문 부착용 A4 포스터"
         ])
 
         with tab_view_thumb:
@@ -1396,28 +1504,22 @@ def render_tab_apt_thumb():
         ])
 
         with tab_down_thumb:
-            st.download_button(
-                label="📥 1080x1080 썸네일 저장 (기본 다운로드)",
-                data=img_bytes,
-                file_name=download_filename,
-                mime="image/png",
-                key="btn_thumb_download_main",
-                use_container_width=True
+            render_download_save_controller(
+                file_bytes=img_bytes,
+                default_filename=download_filename,
+                label_download="📥 1080x1080 썸네일 저장 (기본 다운로드)",
+                key_prefix="apt_thumb_down"
             )
-            st.markdown(render_direct_download_button(img_bytes, download_filename, "💾 [즉시 다운로드] 썸네일 원클릭 파일 저장"), unsafe_allow_html=True)
-            st.caption("📱 스마트폰에서는 위 이미지를 1초간 길게 누르시면 '사진 앱에 저장'도 가능합니다.")
 
         with tab_down_a4:
-            st.markdown(render_direct_print_button(a4_bytes, a4_download_filename, "🖨️ [원클릭 즉시 인쇄] 창문 부착용 A4 바로 출력 (Ctrl+P)", bg_color="#1A202C"), unsafe_allow_html=True)
-            st.download_button(
-                label="📥 300DPI 초고화질 A4 포스터 파일 저장",
-                data=a4_bytes,
-                file_name=a4_download_filename,
-                mime="image/png",
-                key="btn_a4_download_main",
-                use_container_width=True
+            render_download_save_controller(
+                file_bytes=a4_bytes,
+                default_filename=a4_download_filename,
+                label_download="📥 300DPI 초고화질 A4 포스터 파일 저장",
+                key_prefix="apt_a4_down",
+                is_poster=True,
+                print_bytes=a4_bytes
             )
-            st.markdown(render_direct_download_button(a4_bytes, a4_download_filename, "💾 [즉시 다운로드] A4 포스터 원클릭 파일 저장", bg_color="#2B6CB0"), unsafe_allow_html=True)
             st.markdown("""
             <div style="font-size:12.5px; color:#2D3748; background:#F8FAFC; border:1px solid #CBD5E0; padding:10px 14px; border-radius:8px; margin-top:6px; line-height:1.5;">
                 💡 <b>창문 부착 인쇄 팁:</b><br/>
@@ -1506,6 +1608,10 @@ def render_tab_house_thumb():
             type=["jpg", "jpeg", "png", "webp"],
             key="house_thumb_uploader"
         )
+        if uploaded_house_bg:
+            st.session_state["saved_house_uploaded_bg"] = uploaded_house_bg
+        else:
+            uploaded_house_bg = st.session_state.get("saved_house_uploaded_bg")
 
         with st.expander("🔍 사진 위치 / 확대 미세 조정", expanded=False):
             h_z1, h_z2, h_z3 = st.columns(3)
@@ -1550,7 +1656,7 @@ def render_tab_house_thumb():
 
         tab_h_view_thumb, tab_h_view_a4 = st.tabs([
             "🖼️ 1. 주택 블로그 썸네일 (1080x1080)",
-            "🖨️ 2. 중개사무소 창문 부착용 A4 포스터 (210x297mm)"
+            "🖨️ 2. 중개사무소 창문 부착용 A4 포스터"
         ])
 
         with tab_h_view_thumb:
@@ -1636,12 +1742,21 @@ def render_tab_house_thumb():
 
         t_h_down, t_h_a4 = st.tabs(["🖼️ 1. 주택 썸네일 저장", "🖨️ 2. 창문 포스터 즉시 출력/저장"])
         with t_h_down:
-            st.download_button("📥 1080x1080 썸네일 저장 (기본)", data=h_thumb_bytes, file_name=h_down_name, mime="image/png", key="btn_h_thumb_down", use_container_width=True)
-            st.markdown(render_direct_download_button(h_thumb_bytes, h_down_name, "💾 [즉시 다운로드] 주택 썸네일 파일 저장"), unsafe_allow_html=True)
+            render_download_save_controller(
+                file_bytes=h_thumb_bytes,
+                default_filename=h_down_name,
+                label_download="📥 1080x1080 썸네일 저장 (기본 다운로드)",
+                key_prefix="house_thumb_down"
+            )
         with t_h_a4:
-            st.markdown(render_direct_print_button(h_a4_bytes, h_a4_name, "🖨️ [원클릭 즉시 인쇄] 창문 부착용 A4 바로 출력 (Ctrl+P)", bg_color="#1A202C"), unsafe_allow_html=True)
-            st.download_button("📥 300DPI A4 포스터 파일 저장", data=h_a4_bytes, file_name=h_a4_name, mime="image/png", key="btn_h_a4_down", use_container_width=True)
-            st.markdown(render_direct_download_button(h_a4_bytes, h_a4_name, "💾 [즉시 다운로드] A4 포스터 원클릭 저장", bg_color="#2B6CB0"), unsafe_allow_html=True)
+            render_download_save_controller(
+                file_bytes=h_a4_bytes,
+                default_filename=h_a4_name,
+                label_download="📥 300DPI 초고화질 A4 포스터 파일 저장",
+                key_prefix="house_a4_down",
+                is_poster=True,
+                print_bytes=h_a4_bytes
+            )
 
 
 # ====================================================
@@ -1686,6 +1801,10 @@ def render_tab_comm_thumb():
             type=["jpg", "jpeg", "png", "webp"],
             key="comm_bg_uploader_key"
         )
+        if uploaded_comm_bg:
+            st.session_state["saved_comm_uploaded_bg"] = uploaded_comm_bg
+        else:
+            uploaded_comm_bg = st.session_state.get("saved_comm_uploaded_bg")
 
         with st.expander("🔍 사진 위치 / 확대 미세 조정", expanded=False):
             cz1, cz2, cz3 = st.columns(3)
@@ -1736,7 +1855,7 @@ def render_tab_comm_thumb():
         # 🌟 상가 썸네일 & 창문 부착용 A4 포스터 출력 2대 옵션
         tab_comm_view_thumb, tab_comm_view_a4 = st.tabs([
             "🖼️ 1. 상가 블로그 썸네일 (1080x1080)",
-            "🖨️ 2. 중개사무소 창문 부착용 A4 포스터 (210x297mm)"
+            "🖨️ 2. 중개사무소 창문 부착용 A4 포스터"
         ])
 
         with tab_comm_view_thumb:
@@ -1871,28 +1990,24 @@ def render_tab_comm_thumb():
         ])
 
         with tab_comm_down_thumb:
-            st.download_button(
-                label=f"📥 1080x1080 {mode_tag} 썸네일 저장 (기본 다운로드)",
-                data=img_bytes,
-                file_name=comm_filename,
-                mime="image/png",
-                key="btn_comm_thumb_download",
-                use_container_width=True
+            render_download_save_controller(
+                file_bytes=img_bytes,
+                default_filename=comm_filename,
+                label_download=f"📥 1080x1080 {mode_tag} 썸네일 저장 (기본 다운로드)",
+                key_prefix="comm_thumb_down"
             )
-            st.markdown(render_direct_download_button(img_bytes, comm_filename, "💾 [즉시 다운로드] 썸네일 원클릭 파일 저장", bg_color="#DAA844"), unsafe_allow_html=True)
-            st.caption("📱 스마트폰에서는 위 이미지를 1초간 길게 누르시면 '사진 앱에 저장'도 가능합니다.")
 
         with tab_comm_down_a4:
-            st.markdown(render_direct_print_button(comm_a4_bytes, comm_a4_download_filename, "🖨️ [원클릭 즉시 인쇄] 상가 창문용 A4 바로 출력 (Ctrl+P)", bg_color="#B7791F"), unsafe_allow_html=True)
-            st.download_button(
-                label="📥 300DPI 초고화질 A4 포스터 파일 저장",
-                data=comm_a4_bytes,
-                file_name=comm_a4_download_filename,
-                mime="image/png",
-                key="btn_comm_a4_download_main",
-                use_container_width=True
+            render_download_save_controller(
+                file_bytes=comm_a4_bytes,
+                default_filename=comm_a4_download_filename,
+                label_download="📥 300DPI 초고화질 A4 포스터 파일 저장",
+                key_prefix="comm_a4_down",
+                is_poster=True,
+                print_bytes=comm_a4_bytes,
+                print_label="🖨️ [원클릭 즉시 인쇄] 상가 창문용 A4 바로 출력 (Ctrl+P)",
+                print_bg="#B7791F"
             )
-            st.markdown(render_direct_download_button(comm_a4_bytes, comm_a4_download_filename, "💾 [즉시 다운로드] A4 포스터 원클릭 파일 저장", bg_color="#2B6CB0"), unsafe_allow_html=True)
             st.markdown("""
             <div style="font-size:12.5px; color:#2D3748; background:#F8FAFC; border:1px solid #CBD5E0; padding:10px 14px; border-radius:8px; margin-top:6px; line-height:1.5;">
                 💡 <b>상가 매물 창문 부착 팁:</b><br/>
@@ -1984,6 +2099,10 @@ def render_tab_factory_thumb():
             type=["jpg", "jpeg", "png", "webp"],
             key="factory_thumb_uploader"
         )
+        if uploaded_factory_bg:
+            st.session_state["saved_factory_uploaded_bg"] = uploaded_factory_bg
+        else:
+            uploaded_factory_bg = st.session_state.get("saved_factory_uploaded_bg")
 
         with st.expander("🔍 사진 위치 / 확대 미세 조정", expanded=False):
             f_z1, f_z2, f_z3 = st.columns(3)
@@ -2028,7 +2147,7 @@ def render_tab_factory_thumb():
 
         tab_f_view_thumb, tab_f_view_a4 = st.tabs([
             "🖼️ 1. 공장 블로그 썸네일 (1080x1080)",
-            "🖨️ 2. 중개사무소 창문 부착용 A4 포스터 (210x297mm)"
+            "🖨️ 2. 중개사무소 창문 부착용 A4 포스터"
         ])
 
         with tab_f_view_thumb:
@@ -2114,19 +2233,483 @@ def render_tab_factory_thumb():
 
         t_f_down, t_f_a4 = st.tabs(["🖼️ 1. 공장 썸네일 저장", "🖨️ 2. 창문 포스터 즉시 출력/저장"])
         with t_f_down:
-            st.download_button("📥 1080x1080 썸네일 저장 (기본)", data=f_thumb_bytes, file_name=f_down_name, mime="image/png", key="btn_f_thumb_down", use_container_width=True)
-            st.markdown(render_direct_download_button(f_thumb_bytes, f_down_name, "💾 [즉시 다운로드] 공장 썸네일 파일 저장"), unsafe_allow_html=True)
+            render_download_save_controller(
+                file_bytes=f_thumb_bytes,
+                default_filename=f_down_name,
+                label_download="📥 1080x1080 썸네일 저장 (기본 다운로드)",
+                key_prefix="factory_thumb_down"
+            )
         with t_f_a4:
-            st.markdown(render_direct_print_button(f_a4_bytes, f_a4_name, "🖨️ [원클릭 즉시 인쇄] 창문 부착용 A4 바로 출력 (Ctrl+P)", bg_color="#1A202C"), unsafe_allow_html=True)
-            st.download_button("📥 300DPI A4 포스터 파일 저장", data=f_a4_bytes, file_name=f_a4_name, mime="image/png", key="btn_f_a4_down", use_container_width=True)
-            st.markdown(render_direct_download_button(f_a4_bytes, f_a4_name, "💾 [즉시 다운로드] A4 포스터 원클릭 저장", bg_color="#2B6CB0"), unsafe_allow_html=True)
+            render_download_save_controller(
+                file_bytes=f_a4_bytes,
+                default_filename=f_a4_name,
+                label_download="📥 300DPI 초고화질 A4 포스터 파일 저장",
+                key_prefix="factory_a4_down",
+                is_poster=True,
+                print_bytes=f_a4_bytes
+            )
+
+
+# ====================================================
+# [ 탭 1-2 ] 창문부착용 A4 포스터 전용 렌더러 (아파트, 주택, 상가, 공장)
+# ====================================================
+def render_tab_apt_poster():
+    st.markdown("""
+    <div style="background-color: #F8F9FB; border-left: 4px solid #F48A26; padding: 12px 18px; border-radius: 6px; margin-bottom: 20px;">
+        <span style="font-size: 15px; font-weight: 700; color: #1E2022;">
+            🖨️ 아파트 중개사무소 창문 부착용 A4 브리핑 포스터 (초고화질 300 DPI)
+        </span><br/>
+        <span style="font-size: 13px; color: #6C757D;">
+            중개사무소 유리창에 부착 시 지나가는 고객의 시선을 사로잡는 인쇄용 브리핑 포스터입니다. 원클릭 즉시 인쇄(Ctrl+P) 또는 300DPI 초고화질 저장이 지원됩니다.
+        </span>
+    </div>
+    """, unsafe_allow_html=True)
+
+    col_l, col_r = st.columns([1.2, 1.1])
+    
+    uploaded_bg = st.session_state.get("saved_apt_uploaded_bg")
+    spec_lines = [
+        st.session_state.spec_line1,
+        st.session_state.spec_line2,
+        st.session_state.spec_line3,
+        st.session_state.spec_line4,
+        st.session_state.spec_line5
+    ]
+    all_designs = load_all_designs()
+    selected_design = all_designs[0] if all_designs else {
+        "primary_color": "#F48A26",
+        "accent_color": "#EB5E28",
+        "card_bg": "#FFFFFF"
+    }
+    cur_dname = st.session_state.get("apt_thumb_design_selector")
+    if cur_dname:
+        selected_design = get_design_by_name(cur_dname)
+
+    with col_l:
+        with st.spinner("창문 부착용 300DPI 초고화질 A4 포스터 렌더링 중..."):
+            a4_poster_img = render_a4_window_poster(
+                bg_image=uploaded_bg,
+                item_no=st.session_state.item_no,
+                main_title=st.session_state.main_title,
+                sub_title=st.session_state.sub_title,
+                feature_text=st.session_state.feature_text,
+                trade_type=st.session_state.thumb_trade_type,
+                price_text=st.session_state.thumb_price_text,
+                spec_lines=spec_lines,
+                office_name=st.session_state.get("ad_office_name", "참좋은공인중개사사무소"),
+                office_owner=st.session_state.get("ad_office_owner", "신제환"),
+                office_phone=st.session_state.get("ad_office_phone", "010-9667-4201"),
+                office_reg_no=st.session_state.get("ad_office_reg_no", "제 26530-2026-00009 호"),
+                office_address=st.session_state.get("ad_office_address", "부산광역시 사상구 강선로 9, 1층"),
+                is_commercial=False,
+                office_tel=st.session_state.get("office_tel_input", "051-911-8249"),
+                assistant_phone=st.session_state.get("assistant_phone_input", ""),
+                primary_color_override=selected_design.get("primary_color", "#F48A26"),
+                accent_color_override=selected_design.get("accent_color", "#EB5E28")
+            )
+        st.image(a4_poster_img, caption="아파트 창문 부착용 A4 포스터 (초고화질 300 DPI)", use_container_width=True)
+        
+        st.markdown("""
+        <div style="font-size:13px; color:#2D3748; background:#F8FAFC; border:1px solid #E2E8F0; padding:12px 14px; border-radius:8px; margin-top:12px; line-height:1.6;">
+            💡 <b>창문 부착 인쇄 팁:</b><br/>
+            1. 우측 <b>[원클릭 즉시 인쇄]</b>를 누르시면 프린터 인쇄창(Ctrl+P)이 즉시 호출됩니다.<br/>
+            2. 인쇄 대화상자에서 용지 방향을 <b>'세로'</b>로 하시고 <b>'용지에 맞춤'</b>을 체크하시면 A4 용지에 여백 없이 선명히 인쇄됩니다!<br/>
+            3. 인쇄 후 유리창 안쪽에 부착하시면 지나가는 고객의 시선을 100% 사로잡습니다.
+        </div>
+        """, unsafe_allow_html=True)
+
+    with col_r:
+        clean_title = re.sub(r'[\\/*?:"<>|]', "", st.session_state.main_title).strip()
+        clean_price = re.sub(r'[\\/*?:"<>|]', "", st.session_state.thumb_price_text).strip()
+        a4_filename = f"창문부착용_아파트포스터_{clean_title}_{clean_price}.png"
+        
+        a4_io = io.BytesIO()
+        a4_poster_img.save(a4_io, format="PNG", quality=98)
+        a4_bytes = a4_io.getvalue()
+
+        st.markdown("### 🖨️ 포스터 출력 및 파일 저장")
+        render_download_save_controller(
+            file_bytes=a4_bytes,
+            default_filename=a4_filename,
+            label_download="📥 300DPI 초고화질 A4 포스터 파일 저장",
+            key_prefix="poster_page_apt",
+            is_poster=True,
+            print_bytes=a4_bytes
+        )
+
+        with st.expander("🛠️ 포스터 주요 문구 및 중개사무소 정보 간편 수정", expanded=False):
+            st.text_input("🏷️ 물건 번호", key="poster_apt_item_no", value=st.session_state.item_no)
+            st.text_input("🏢 메인 타이틀 (아파트명)", key="poster_apt_main_title", value=st.session_state.main_title)
+            st.text_input("📍 서브 타이틀 (동/단지명)", key="poster_apt_sub_title", value=st.session_state.sub_title)
+            st.text_input("✨ 매물 핵심 특징", key="poster_apt_feature", value=st.session_state.feature_text)
+            
+            cp1, cp2 = st.columns(2)
+            with cp1:
+                st.selectbox("거래 형태", ["매매", "전세", "월세", "분양", "급매"], key="poster_apt_trade_type", index=0 if st.session_state.thumb_trade_type not in ["매매", "전세", "월세", "분양", "급매"] else ["매매", "전세", "월세", "분양", "급매"].index(st.session_state.thumb_trade_type))
+            with cp2:
+                st.text_input("금액", key="poster_apt_price", value=st.session_state.thumb_price_text)
+
+            if st.button("🔄 포스터 수정 내용 썸네일과 동기화 적용", key="btn_sync_poster_apt", use_container_width=True):
+                st.session_state.item_no = st.session_state.poster_apt_item_no
+                st.session_state.main_title = st.session_state.poster_apt_main_title
+                st.session_state.sub_title = st.session_state.poster_apt_sub_title
+                st.session_state.feature_text = st.session_state.poster_apt_feature
+                st.session_state.thumb_trade_type = st.session_state.poster_apt_trade_type
+                st.session_state.thumb_price_text = st.session_state.poster_apt_price
+                st.success("포스터 문구가 동기화되었습니다!")
+                st.rerun()
+
+
+def render_tab_house_poster():
+    st.markdown("""
+    <div style="background-color: #F8F9FB; border-left: 4px solid #38A169; padding: 12px 18px; border-radius: 6px; margin-bottom: 20px;">
+        <span style="font-size: 15px; font-weight: 700; color: #1E2022;">
+            🖨️ 주택 / 빌라 / 원룸 중개사무소 창문 부착용 A4 포스터 (초고화질 300 DPI)
+        </span><br/>
+        <span style="font-size: 13px; color: #6C757D;">
+            중개사무소 유리창에 부착 시 지나가는 고객의 시선을 사로잡는 인쇄용 브리핑 포스터입니다. 원클릭 즉시 인쇄(Ctrl+P) 또는 300DPI 초고화질 저장이 지원됩니다.
+        </span>
+    </div>
+    """, unsafe_allow_html=True)
+
+    col_l, col_r = st.columns([1.2, 1.1])
+    
+    uploaded_house_bg = st.session_state.get("saved_house_uploaded_bg")
+    house_specs = [
+        st.session_state.house_spec1,
+        st.session_state.house_spec2,
+        st.session_state.house_spec3,
+        st.session_state.house_spec4,
+        st.session_state.house_spec5
+    ]
+    all_designs = load_all_designs()
+    selected_design = all_designs[0] if all_designs else {
+        "primary_color": "#38A169",
+        "accent_color": "#276749",
+        "card_bg": "#FFFFFF"
+    }
+    cur_dname = st.session_state.get("house_thumb_design_selector")
+    if cur_dname:
+        selected_design = get_design_by_name(cur_dname)
+
+    with col_l:
+        with st.spinner("창문 부착용 300DPI 초고화질 A4 포스터 렌더링 중..."):
+            house_a4_img = render_a4_window_poster(
+                bg_image=uploaded_house_bg,
+                item_no=st.session_state.house_item_no,
+                main_title=st.session_state.house_main_title,
+                sub_title=st.session_state.house_sub_title,
+                feature_text=st.session_state.house_feature_text,
+                trade_type=st.session_state.house_trade_type,
+                price_text=st.session_state.house_price_text,
+                spec_lines=house_specs,
+                office_name=st.session_state.get("ad_office_name", "참좋은공인중개사사무소"),
+                office_owner=st.session_state.get("ad_office_owner", "신제환"),
+                office_phone=st.session_state.get("ad_office_phone", "010-9667-4201"),
+                office_reg_no=st.session_state.get("ad_office_reg_no", "제 26530-2026-00009 호"),
+                office_address=st.session_state.get("ad_office_address", "부산광역시 사상구 강선로 9, 1층"),
+                is_commercial=False,
+                office_tel=st.session_state.get("house_office_tel", "051-911-8249"),
+                assistant_phone=st.session_state.get("house_assistant_phone", ""),
+                primary_color_override=selected_design.get("primary_color", "#38A169"),
+                accent_color_override=selected_design.get("accent_color", "#276749")
+            )
+        st.image(house_a4_img, caption="주택 창문 부착용 A4 포스터 (초고화질 300 DPI)", use_container_width=True)
+
+        st.markdown("""
+        <div style="font-size:13px; color:#2D3748; background:#F8FAFC; border:1px solid #E2E8F0; padding:12px 14px; border-radius:8px; margin-top:12px; line-height:1.6;">
+            💡 <b>창문 부착 인쇄 팁:</b><br/>
+            1. 우측 <b>[원클릭 즉시 인쇄]</b>를 누르시면 프린터 인쇄창(Ctrl+P)이 즉시 호출됩니다.<br/>
+            2. 인쇄 대화상자에서 용지 방향을 <b>'세로'</b>로 하시고 <b>'용지에 맞춤'</b>을 체크하시면 A4 용지에 여백 없이 선명히 인쇄됩니다!<br/>
+            3. 인쇄 후 유리창 안쪽에 부착하시면 지나가는 고객의 시선을 100% 사로잡습니다.
+        </div>
+        """, unsafe_allow_html=True)
+
+    with col_r:
+        clean_title = re.sub(r'[\\/*?:"<>|]', "", st.session_state.house_main_title).strip()
+        clean_price = re.sub(r'[\\/*?:"<>|]', "", st.session_state.house_price_text).strip()
+        house_a4_name = f"창문부착용_주택포스터_{clean_title}_{clean_price}.png"
+
+        h_a4_io = io.BytesIO()
+        house_a4_img.save(h_a4_io, format="PNG", quality=98)
+        house_a4_bytes = h_a4_io.getvalue()
+
+        st.markdown("### 🖨️ 포스터 출력 및 파일 저장")
+        render_download_save_controller(
+            file_bytes=house_a4_bytes,
+            default_filename=house_a4_name,
+            label_download="📥 300DPI 초고화질 A4 포스터 파일 저장",
+            key_prefix="poster_page_house",
+            is_poster=True,
+            print_bytes=house_a4_bytes
+        )
+
+        with st.expander("🛠️ 포스터 주요 문구 및 중개사무소 정보 간편 수정", expanded=False):
+            st.text_input("🏷️ 물건 번호", key="poster_house_item_no", value=st.session_state.house_item_no)
+            st.text_input("🏡 메인 타이틀 (주택명)", key="poster_house_main_title", value=st.session_state.house_main_title)
+            st.text_input("📍 서브 타이틀 (동/층/구조)", key="poster_house_sub_title", value=st.session_state.house_sub_title)
+            st.text_input("✨ 매물 핵심 특징", key="poster_house_feature", value=st.session_state.house_feature_text)
+            
+            cp1, cp2 = st.columns(2)
+            with cp1:
+                st.selectbox("거래 형태", ["매매", "전세", "월세", "분양", "단기"], key="poster_house_trade_type", index=0 if st.session_state.house_trade_type not in ["매매", "전세", "월세", "분양", "단기"] else ["매매", "전세", "월세", "분양", "단기"].index(st.session_state.house_trade_type))
+            with cp2:
+                st.text_input("금액", key="poster_house_price", value=st.session_state.house_price_text)
+
+            if st.button("🔄 포스터 수정 내용 썸네일과 동기화 적용", key="btn_sync_poster_house", use_container_width=True):
+                st.session_state.house_item_no = st.session_state.poster_house_item_no
+                st.session_state.house_main_title = st.session_state.poster_house_main_title
+                st.session_state.house_sub_title = st.session_state.poster_house_sub_title
+                st.session_state.house_feature_text = st.session_state.poster_house_feature
+                st.session_state.house_trade_type = st.session_state.poster_house_trade_type
+                st.session_state.house_price_text = st.session_state.poster_house_price
+                st.success("주택 포스터 문구가 동기화되었습니다!")
+                st.rerun()
+
+
+def render_tab_comm_poster():
+    st.markdown("""
+    <div style="background-color: #181C24; border-left: 4px solid #DAA844; padding: 12px 18px; border-radius: 6px; margin-bottom: 20px; color: #FFFFFF;">
+        <span style="font-size: 15px; font-weight: 700; color: #DAA844;">
+            🖨️ 상가 / 점포 / 빌딩 창문 부착용 A4 포스터 (초고화질 300 DPI)
+        </span><br/>
+        <span style="font-size: 13px; color: #CBD5E0;">
+            임차 상가 및 매매 상가 전용 브리핑 포스터입니다. 원클릭 즉시 인쇄(Ctrl+P) 또는 300DPI 초고화질 저장이 지원됩니다.
+        </span>
+    </div>
+    """, unsafe_allow_html=True)
+
+    col_l, col_r = st.columns([1.2, 1.1])
+    
+    uploaded_comm_bg = st.session_state.get("saved_comm_uploaded_bg")
+    is_comm_sale = "매매" in st.session_state.get("comm_thumb_mode", "임대차")
+    
+    if not is_comm_sale:
+        comm_a4_title = st.session_state.get("comm_lease_main_title", "코너 상가 임차")
+        comm_a4_sub = st.session_state.get("comm_lease_cp_top", "유동인구 1등! 대로변 1층")
+        comm_a4_feature = st.session_state.get("comm_lease_top_badge", "사상역 초역세권 · 무권리 추천매물")
+        comm_a4_trade = "임대"
+        comm_spec1 = st.session_state.get("comm_lease_spec1", "전용 25평 | 보증금 3,000만 / 월 180만")
+        comm_a4_price = comm_spec1.split("|")[-1].strip() if "|" in comm_spec1 else comm_spec1
+        comm_a4_specs = [
+            comm_spec1,
+            st.session_state.get("comm_lease_spec2", "추천 : 카페 · 음식점 · 판매점"),
+            st.session_state.get("comm_lease_pin_bubble", "목 좋은 자리!"),
+            "즉시입점 협의가능",
+            "도로변 가시성 우수"
+        ]
+    else:
+        comm_a4_title = st.session_state.get("comm_sale_main_sub", "안정적인 알짜 상가 매매")
+        comm_a4_sub = st.session_state.get("comm_sale_top_left", "사상 핵심상권 매매")
+        comm_a4_feature = st.session_state.get("comm_sale_top_right", "우량 임차인 성업중")
+        comm_a4_trade = "매매"
+        comm_a4_price = st.session_state.get("comm_sale_main_hl", "확정 수익률 6.8%")
+        comm_a4_specs = [
+            st.session_state.get("comm_sale_price_spec", "매매가 15억 | 보증금 8천 / 월수익 650만"),
+            comm_a4_price,
+            "자주식 주차 및 승강기 완비",
+            "안정적인 임대수익 보장",
+            "사상 역세권 핵심 상권"
+        ]
+
+    all_designs = load_all_designs()
+    selected_comm_design = all_designs[0] if all_designs else {
+        "primary_color": "#DAA844",
+        "accent_color": "#B8860B",
+        "card_bg": "#181C24"
+    }
+    cur_dname = st.session_state.get("comm_thumb_design_selector")
+    if cur_dname:
+        selected_comm_design = get_design_by_name(cur_dname)
+
+    with col_l:
+        with st.spinner("상가 창문 부착용 300DPI 초고화질 A4 포스터 렌더링 중..."):
+            comm_a4_poster_img = render_a4_window_poster(
+                bg_image=uploaded_comm_bg,
+                item_no=st.session_state.get("comm_item_no", "No. COMM-01"),
+                main_title=comm_a4_title,
+                sub_title=comm_a4_sub,
+                feature_text=comm_a4_feature,
+                trade_type=comm_a4_trade,
+                price_text=comm_a4_price,
+                spec_lines=comm_a4_specs,
+                office_name=st.session_state.get("comm_ad_office_name", "참좋은공인중개사사무소"),
+                office_owner=st.session_state.get("comm_ad_office_owner", "신제환"),
+                office_phone=st.session_state.get("comm_ad_office_phone", "010-9667-4201"),
+                office_reg_no=st.session_state.get("comm_ad_office_reg_no", "제 26530-2026-00009 호"),
+                office_address=st.session_state.get("comm_ad_office_address", "부산광역시 사상구 강선로 9, 1층"),
+                is_commercial=True,
+                office_tel=st.session_state.get("comm_office_tel_input", "051-911-8249"),
+                assistant_phone=st.session_state.get("comm_assistant_phone_input", ""),
+                primary_color_override=selected_comm_design.get("primary_color", "#DAA844"),
+                accent_color_override=selected_comm_design.get("accent_color", "#B8860B")
+            )
+        st.image(comm_a4_poster_img, caption="상가 유리창 부착용 A4 브리핑 포스터 (초고화질 300 DPI)", use_container_width=True)
+
+        st.markdown("""
+        <div style="font-size:13px; color:#2D3748; background:#F8FAFC; border:1px solid #E2E8F0; padding:12px 14px; border-radius:8px; margin-top:12px; line-height:1.6;">
+            💡 <b>창문 부착 인쇄 팁:</b><br/>
+            1. 우측 <b>[원클릭 즉시 인쇄]</b>를 누르시면 프린터 인쇄창(Ctrl+P)이 즉시 호출됩니다.<br/>
+            2. 인쇄 대화상자에서 용지 방향을 <b>'세로'</b>로 하시고 <b>'용지에 맞춤'</b>을 체크하시면 A4 용지에 여백 없이 선명히 인쇄됩니다!<br/>
+            3. 인쇄 후 유리창 안쪽에 부착하시면 지나가는 고객의 시선을 100% 사로잡습니다.
+        </div>
+        """, unsafe_allow_html=True)
+
+    with col_r:
+        clean_comm_title = re.sub(r'[\\/*?:"<>|]', "", comm_a4_title).strip()
+        clean_comm_price = re.sub(r'[\\/*?:"<>|]', "", comm_a4_price).strip()
+        comm_a4_name = f"창문부착용_상가포스터_{clean_comm_title}_{clean_comm_price}.png"
+
+        c_a4_io = io.BytesIO()
+        comm_a4_poster_img.save(c_a4_io, format="PNG", quality=98)
+        comm_a4_bytes = c_a4_io.getvalue()
+
+        st.markdown("### 🖨️ 포스터 출력 및 파일 저장")
+        render_download_save_controller(
+            file_bytes=comm_a4_bytes,
+            default_filename=comm_a4_name,
+            label_download="📥 300DPI 초고화질 A4 포스터 파일 저장",
+            key_prefix="poster_page_comm",
+            is_poster=True,
+            print_bytes=comm_a4_bytes
+        )
+
+        with st.expander("🛠️ 상가 포스터 주요 문구 간편 수정", expanded=False):
+            if not is_comm_sale:
+                st.text_input("🏢 상가 메인 타이틀", key="poster_comm_l_title", value=st.session_state.get("comm_lease_main_title", "코너 상가 임차"))
+                st.text_input("📍 상단 강조 카피", key="poster_comm_l_sub", value=st.session_state.get("comm_lease_cp_top", "유동인구 1등! 대로변 1층"))
+                st.text_input("✨ 캡슐 뱃지 문구", key="poster_comm_l_feat", value=st.session_state.get("comm_lease_top_badge", "사상역 초역세권 · 무권리 추천매물"))
+                st.text_input("💰 1행 스펙 (보증금/월세)", key="poster_comm_l_price", value=st.session_state.get("comm_lease_spec1", "전용 25평 | 보증금 3,000만 / 월 180만"))
+                if st.button("🔄 임대 상가 포스터 수정 동기화", key="btn_sync_poster_comm_l", use_container_width=True):
+                    st.session_state.comm_lease_main_title = st.session_state.poster_comm_l_title
+                    st.session_state.comm_lease_cp_top = st.session_state.poster_comm_l_sub
+                    st.session_state.comm_lease_top_badge = st.session_state.poster_comm_l_feat
+                    st.session_state.comm_lease_spec1 = st.session_state.poster_comm_l_price
+                    st.success("상가 문구가 동기화되었습니다!")
+                    st.rerun()
+            else:
+                st.text_input("🏢 매매 상가 메인 타이틀", key="poster_comm_s_title", value=st.session_state.get("comm_sale_main_sub", "안정적인 알짜 상가 매매"))
+                st.text_input("📍 상단 좌측 뱃지", key="poster_comm_s_sub", value=st.session_state.get("comm_sale_top_left", "사상 핵심상권 매매"))
+                st.text_input("💰 메인 강조 문구 (수익률)", key="poster_comm_s_price", value=st.session_state.get("comm_sale_main_hl", "확정 수익률 6.8%"))
+                if st.button("🔄 매매 상가 포스터 수정 동기화", key="btn_sync_poster_comm_s", use_container_width=True):
+                    st.session_state.comm_sale_main_sub = st.session_state.poster_comm_s_title
+                    st.session_state.comm_sale_top_left = st.session_state.poster_comm_s_sub
+                    st.session_state.comm_sale_main_hl = st.session_state.poster_comm_s_price
+                    st.success("상가 문구가 동기화되었습니다!")
+                    st.rerun()
+
+
+def render_tab_factory_poster():
+    st.markdown("""
+    <div style="background-color: #F8F9FB; border-left: 4px solid #3182CE; padding: 12px 18px; border-radius: 6px; margin-bottom: 20px;">
+        <span style="font-size: 15px; font-weight: 700; color: #1E2022;">
+            🖨️ 공장 / 창고 / 나대지 창문 부착용 A4 포스터 (초고화질 300 DPI)
+        </span><br/>
+        <span style="font-size: 13px; color: #6C757D;">
+            중개사무소 유리창에 부착 시 지나가는 고객의 시선을 사로잡는 인쇄용 브리핑 포스터입니다. 원클릭 즉시 인쇄(Ctrl+P) 또는 300DPI 초고화질 저장이 지원됩니다.
+        </span>
+    </div>
+    """, unsafe_allow_html=True)
+
+    col_l, col_r = st.columns([1.2, 1.1])
+    
+    uploaded_factory_bg = st.session_state.get("saved_factory_uploaded_bg")
+    factory_specs = [
+        st.session_state.factory_spec1,
+        st.session_state.factory_spec2,
+        st.session_state.factory_spec3,
+        st.session_state.factory_spec4,
+        st.session_state.factory_spec5
+    ]
+    all_designs = load_all_designs()
+    selected_design = all_designs[0] if all_designs else {
+        "primary_color": "#3182CE",
+        "accent_color": "#2B6CB0",
+        "card_bg": "#FFFFFF"
+    }
+    cur_dname = st.session_state.get("factory_thumb_design_selector")
+    if cur_dname:
+        selected_design = get_design_by_name(cur_dname)
+
+    with col_l:
+        with st.spinner("창문 부착용 300DPI 초고화질 A4 포스터 렌더링 중..."):
+            factory_a4_img = render_a4_window_poster(
+                bg_image=uploaded_factory_bg,
+                item_no=st.session_state.factory_item_no,
+                main_title=st.session_state.factory_main_title,
+                sub_title=st.session_state.factory_sub_title,
+                feature_text=st.session_state.factory_feature_text,
+                trade_type=st.session_state.factory_trade_type,
+                price_text=st.session_state.factory_price_text,
+                spec_lines=factory_specs,
+                office_name=st.session_state.get("ad_office_name", "참좋은공인중개사사무소"),
+                office_owner=st.session_state.get("ad_office_owner", "신제환"),
+                office_phone=st.session_state.get("ad_office_phone", "010-9667-4201"),
+                office_reg_no=st.session_state.get("ad_office_reg_no", "제 26530-2026-00009 호"),
+                office_address=st.session_state.get("ad_office_address", "부산광역시 사상구 강선로 9, 1층"),
+                is_commercial=False,
+                office_tel=st.session_state.get("factory_office_tel", "051-911-8249"),
+                assistant_phone=st.session_state.get("factory_assistant_phone", ""),
+                primary_color_override=selected_design.get("primary_color", "#3182CE"),
+                accent_color_override=selected_design.get("accent_color", "#2B6CB0")
+            )
+        st.image(factory_a4_img, caption="공장 창문 부착용 A4 포스터 (초고화질 300 DPI)", use_container_width=True)
+
+        st.markdown("""
+        <div style="font-size:13px; color:#2D3748; background:#F8FAFC; border:1px solid #E2E8F0; padding:12px 14px; border-radius:8px; margin-top:12px; line-height:1.6;">
+            💡 <b>창문 부착 인쇄 팁:</b><br/>
+            1. 우측 <b>[원클릭 즉시 인쇄]</b>를 누르시면 프린터 인쇄창(Ctrl+P)이 즉시 호출됩니다.<br/>
+            2. 인쇄 대화상자에서 용지 방향을 <b>'세로'</b>로 하시고 <b>'용지에 맞춤'</b>을 체크하시면 A4 용지에 여백 없이 선명히 인쇄됩니다!<br/>
+            3. 인쇄 후 유리창 안쪽에 부착하시면 지나가는 고객의 시선을 100% 사로잡습니다.
+        </div>
+        """, unsafe_allow_html=True)
+
+    with col_r:
+        clean_f_title = re.sub(r'[\\/*?:"<>|]', "", st.session_state.factory_main_title).strip()
+        clean_f_price = re.sub(r'[\\/*?:"<>|]', "", st.session_state.factory_price_text).strip()
+        factory_a4_name = f"창문부착용_공장포스터_{clean_f_title}_{clean_f_price}.png"
+
+        f_a4_io = io.BytesIO()
+        factory_a4_img.save(f_a4_io, format="PNG", quality=98)
+        factory_a4_bytes = f_a4_io.getvalue()
+
+        st.markdown("### 🖨️ 포스터 출력 및 파일 저장")
+        render_download_save_controller(
+            file_bytes=factory_a4_bytes,
+            default_filename=factory_a4_name,
+            label_download="📥 300DPI 초고화질 A4 포스터 파일 저장",
+            key_prefix="poster_page_factory",
+            is_poster=True,
+            print_bytes=factory_a4_bytes
+        )
+
+        with st.expander("🛠️ 공장 포스터 주요 문구 간편 수정", expanded=False):
+            st.text_input("🏷️ 물건 번호", key="poster_factory_item_no", value=st.session_state.factory_item_no)
+            st.text_input("🏭 메인 타이틀 (공장명)", key="poster_factory_main_title", value=st.session_state.factory_main_title)
+            st.text_input("📍 서브 타이틀 (위치/도로)", key="poster_factory_sub_title", value=st.session_state.factory_sub_title)
+            st.text_input("✨ 매물 핵심 특징", key="poster_factory_feature", value=st.session_state.factory_feature_text)
+            
+            cp1, cp2 = st.columns(2)
+            with cp1:
+                st.selectbox("거래 형태", ["매매", "월세", "임대", "급매"], key="poster_factory_trade_type", index=0 if st.session_state.factory_trade_type not in ["매매", "월세", "임대", "급매"] else ["매매", "월세", "임대", "급매"].index(st.session_state.factory_trade_type))
+            with cp2:
+                st.text_input("금액", key="poster_factory_price", value=st.session_state.factory_price_text)
+
+            if st.button("🔄 공장 포스터 수정 내용 동기화 적용", key="btn_sync_poster_factory", use_container_width=True):
+                st.session_state.factory_item_no = st.session_state.poster_factory_item_no
+                st.session_state.factory_main_title = st.session_state.poster_factory_main_title
+                st.session_state.factory_sub_title = st.session_state.poster_factory_sub_title
+                st.session_state.factory_feature_text = st.session_state.poster_factory_feature
+                st.session_state.factory_trade_type = st.session_state.poster_factory_trade_type
+                st.session_state.factory_price_text = st.session_state.poster_factory_price
+                st.success("공장 포스터 문구가 동기화되었습니다!")
+                st.rerun()
 
 
 # ====================================================
 # [ 탭 2-1 ] 아파트 네이버 광고 & 중개대상물 표시 생성기
 # ====================================================
 def render_tab_apt_ad():
-
     st.markdown("""
     <div style="background-color: #F8F9FB; border-left: 4px solid #F48A26; padding: 12px 18px; border-radius: 6px; margin-bottom: 20px;">
         <span style="font-size: 15px; font-weight: 700; color: #1E2022;">
@@ -2153,32 +2736,10 @@ def render_tab_apt_ad():
         </div>
         """, unsafe_allow_html=True)
 
-        tab_crawl_txt, tab_crawl_num = st.tabs([
-            "📋 네이버 화면 복사 텍스트 붙여넣기 (가장 확실 & 1초 완성! 추천)",
-            "🔍 네이버 매물번호 / URL 크롤링 (실험적)"
+        tab_crawl_num, tab_crawl_txt = st.tabs([
+            "🔍 네이버 매물번호 / URL 크롤링",
+            "📋 네이버 화면 복사 텍스트 붙여넣기 (가장 확실 & 1초 완성! 추천)"
         ])
-
-        with tab_crawl_txt:
-            st.markdown("""
-            <div style="font-size:13px; color:#2B6CB0; background:#EBF8FF; border:1px solid #BEE3F8; padding:8px 12px; border-radius:6px; margin-bottom:8px;">
-                💡 <b>1초 자동완성 방법:</b> 네이버 부동산 매물 화면에서 마우스로 매물 정보 영역(매물명, 가격, 면적, 층수 등)을 드래그 복사(Ctrl+C)하여 아래에 붙여넣으세요! 네이버 봇 차단 없이 100% 즉시 반영됩니다.
-            </div>
-            """, unsafe_allow_html=True)
-            clip_article_text = st.text_area(
-                "네이버 부동산 매물 상세 복사 텍스트",
-                height=120,
-                placeholder="예:\n사상 중흥S-클래스 105동 매매 6억 2,000만원\n아파트 공급 111.42㎡ / 전용 79.85㎡, 25/36층, 남동향\n관리비 18만원, 방수/욕실수 3/2개...",
-                key="input_naver_clip_text"
-            )
-            if st.button("⚡ 붙여넣은 매물 텍스트 0.1초 분석 & 16개 항목 즉시 적용", type="primary", use_container_width=True, key="btn_parse_clip_text"):
-                if clip_article_text.strip():
-                    parsed_clip = parse_naver_clipboard_text(clip_article_text)
-                    if parsed_clip:
-                        queue_state_update("apply_apt", data=parsed_clip, clean_previous=True, success_msg=f"🎉 네이버 매물 [{parsed_clip.get('main_title', '매물')}] 텍스트 분석 완료! 16대 점검항목과 썸네일에 즉시 자동 반영되었습니다.", target_tab="📝 ③ 아파트 중개대상물 표시")
-                    else:
-                        st.warning("붙여넣은 텍스트에서 매물 정보를 식별하지 못했습니다. 형식을 확인해주세요.")
-                else:
-                    st.warning("네이버 부동산 매물 상세 텍스트를 먼저 붙여넣어 주세요.")
 
         with tab_crawl_num:
             c_cr_in, c_cr_btn = st.columns([2.5, 1])
@@ -2203,6 +2764,28 @@ def render_tab_apt_ad():
                             st.error(f"⚠️ {msg}")
                 else:
                     st.warning("매물 번호 또는 매물 링크 URL을 입력해주세요.")
+
+        with tab_crawl_txt:
+            st.markdown("""
+            <div style="font-size:13px; color:#2B6CB0; background:#EBF8FF; border:1px solid #BEE3F8; padding:8px 12px; border-radius:6px; margin-bottom:8px;">
+                💡 <b>1초 자동완성 방법:</b> 네이버 부동산 매물 화면에서 마우스로 매물 정보 영역(매물명, 가격, 면적, 층수 등)을 드래그 복사(Ctrl+C)하여 아래에 붙여넣으세요! 네이버 봇 차단 없이 100% 즉시 반영됩니다.
+            </div>
+            """, unsafe_allow_html=True)
+            clip_article_text = st.text_area(
+                "네이버 부동산 매물 상세 복사 텍스트",
+                height=120,
+                placeholder="예:\n사상 중흥S-클래스 105동 매매 6억 2,000만원\n아파트 공급 111.42㎡ / 전용 79.85㎡, 25/36층, 남동향\n관리비 18만원, 방수/욕실수 3/2개...",
+                key="input_naver_clip_text"
+            )
+            if st.button("⚡ 붙여넣은 매물 텍스트 0.1초 분석 & 16개 항목 즉시 적용", type="primary", use_container_width=True, key="btn_parse_clip_text"):
+                if clip_article_text.strip():
+                    parsed_clip = parse_naver_clipboard_text(clip_article_text)
+                    if parsed_clip:
+                        queue_state_update("apply_apt", data=parsed_clip, clean_previous=True, success_msg=f"🎉 네이버 매물 [{parsed_clip.get('main_title', '매물')}] 텍스트 분석 완료! 16대 점검항목과 썸네일에 즉시 자동 반영되었습니다.", target_tab="📝 ③ 아파트 중개대상물 표시")
+                    else:
+                        st.warning("붙여넣은 텍스트에서 매물 정보를 식별하지 못했습니다. 형식을 확인해주세요.")
+                else:
+                    st.warning("네이버 부동산 매물 상세 텍스트를 먼저 붙여넣어 주세요.")
 
     # ----------------------------------------------------
     # 📄 [요구사항 1] 공적서류 (집합건물 표제부/전유부, 토지대장) 자동 분석
@@ -2924,32 +3507,10 @@ def render_tab_comm_ad():
         </div>
         """, unsafe_allow_html=True)
 
-        comm_tab_crawl_txt, comm_tab_crawl_num = st.tabs([
-            "📋 네이버 상가 화면 복사 텍스트 붙여넣기 (가장 확실 & 1초 완성! 추천)",
-            "🔍 네이버 상가 매물번호 / URL 크롤링 (실험적)"
+        comm_tab_crawl_num, comm_tab_crawl_txt = st.tabs([
+            "🔍 네이버 상가 매물번호 / URL 크롤링",
+            "📋 네이버 상가 화면 복사 텍스트 붙여넣기 (가장 확실 & 1초 완성! 추천)"
         ])
-
-        with comm_tab_crawl_txt:
-            st.markdown("""
-            <div style="font-size:13px; color:#2B6CB0; background:#EBF8FF; border:1px solid #BEE3F8; padding:8px 12px; border-radius:6px; margin-bottom:8px;">
-                💡 <b>1초 자동완성 방법:</b> 네이버 부동산 상가 매물 화면에서 매물 상세 영역을 마우스로 드래그 복사(Ctrl+C)하여 아래에 붙여넣으세요! 네이버 차단 없이 100% 즉시 반영됩니다.
-            </div>
-            """, unsafe_allow_html=True)
-            comm_clip_article_text = st.text_area(
-                "네이버 부동산 상가 매물 상세 복사 텍스트",
-                height=120,
-                placeholder="예:\n괘법동 1층 상가 월세 3,000/180\n제1종근린생활시설 계약 125㎡ / 전용 82.64㎡, 1/5층, 남서향\n무권리, 주구조 철근콘크리트구조, 일반상업지역, 방화지구...",
-                key="comm_input_naver_clip_text"
-            )
-            if st.button("⚡ 붙여넣은 상가 텍스트 0.1초 분석 & 상가 항목 즉시 적용", type="primary", use_container_width=True, key="btn_parse_comm_clip_text"):
-                if comm_clip_article_text.strip():
-                    parsed_clip = parse_naver_clipboard_text(comm_clip_article_text)
-                    if parsed_clip:
-                        queue_state_update("apply_comm", data=parsed_clip, success_msg=f"🎉 네이버 상가 매물 [{parsed_clip.get('main_title', '상가')}] 텍스트 분석 완료! 상가 18대 점검항목과 썸네일에 즉시 자동 반영되었습니다.", target_tab="🏪 ④ 상가 중개대상물 표시 (임차·매매)")
-                    else:
-                        st.warning("붙여넣은 텍스트에서 상가 매물 정보를 식별하지 못했습니다. 형식을 확인해주세요.")
-                else:
-                    st.warning("네이버 부동산 상가 매물 상세 텍스트를 먼저 붙여넣어 주세요.")
 
         with comm_tab_crawl_num:
             c_ccr_in, c_ccr_btn = st.columns([2.5, 1])
@@ -2974,6 +3535,28 @@ def render_tab_comm_ad():
                             st.error(f"⚠️ {msg}")
                 else:
                     st.warning("상가 매물 번호 또는 매물 링크 URL을 입력해주세요.")
+
+        with comm_tab_crawl_txt:
+            st.markdown("""
+            <div style="font-size:13px; color:#2B6CB0; background:#EBF8FF; border:1px solid #BEE3F8; padding:8px 12px; border-radius:6px; margin-bottom:8px;">
+                💡 <b>1초 자동완성 방법:</b> 네이버 부동산 상가 매물 화면에서 매물 상세 영역을 마우스로 드래그 복사(Ctrl+C)하여 아래에 붙여넣으세요! 네이버 차단 없이 100% 즉시 반영됩니다.
+            </div>
+            """, unsafe_allow_html=True)
+            comm_clip_article_text = st.text_area(
+                "네이버 부동산 상가 매물 상세 복사 텍스트",
+                height=120,
+                placeholder="예:\n괘법동 1층 상가 월세 3,000/180\n제1종근린생활시설 계약 125㎡ / 전용 82.64㎡, 1/5층, 남서향\n무권리, 주구조 철근콘크리트구조, 일반상업지역, 방화지구...",
+                key="comm_input_naver_clip_text"
+            )
+            if st.button("⚡ 붙여넣은 상가 텍스트 0.1초 분석 & 상가 항목 즉시 적용", type="primary", use_container_width=True, key="btn_parse_comm_clip_text"):
+                if comm_clip_article_text.strip():
+                    parsed_clip = parse_naver_clipboard_text(comm_clip_article_text)
+                    if parsed_clip:
+                        queue_state_update("apply_comm", data=parsed_clip, success_msg=f"🎉 네이버 상가 매물 [{parsed_clip.get('main_title', '상가')}] 텍스트 분석 완료! 상가 18대 점검항목과 썸네일에 즉시 자동 반영되었습니다.", target_tab="🏪 ④ 상가 중개대상물 표시 (임차·매매)")
+                    else:
+                        st.warning("붙여넣은 텍스트에서 상가 매물 정보를 식별하지 못했습니다. 형식을 확인해주세요.")
+                else:
+                    st.warning("네이버 부동산 상가 매물 상세 텍스트를 먼저 붙여넣어 주세요.")
 
     # ----------------------------------------------------
     # 📄 상가 건축물대장 (일반 / 표제부 / 전유부) & 공적서류 자동 분석
@@ -3512,9 +4095,46 @@ def render_tab_factory_ad():
 
 
 # ====================================================
-# 🌟 요구사항 4번: 최상위 2대 메인 탭 (■ "썸네일" / ■ "중개대상물표시")
+# 🌟 최상위 3대 메인 메뉴 탭: 썸네일 / 창문부착용A4 / 중개대상물표시
 # ====================================================
-tab_main_thumb, tab_main_ad = st.tabs(["■ 썸네일", "■ 중개대상물표시"])
+st.markdown('<div id="main-top-tabs-anchor" style="display:none;"></div>', unsafe_allow_html=True)
+
+import streamlit.components.v1 as components
+components.html("""
+<script>
+function syncMainTopTabsFont() {
+    try {
+        var doc = window.parent.document;
+        // 메인 상단 3대 메뉴 탭 찾기
+        var tabsContainers = doc.querySelectorAll('[data-testid="stTabs"]');
+        if (tabsContainers && tabsContainers.length > 0) {
+            var firstTabList = tabsContainers[0].querySelector('[data-baseweb="tab-list"]');
+            if (firstTabList) {
+                firstTabList.style.gap = '14px';
+                firstTabList.style.padding = '8px 12px';
+                var buttons = firstTabList.querySelectorAll('[data-baseweb="tab"]');
+                buttons.forEach(function(btn) {
+                    btn.style.height = '56px';
+                    btn.style.padding = '0 26px';
+                    btn.style.borderRadius = '10px';
+                    var targets = btn.querySelectorAll('p, span, div');
+                    targets.forEach(function(el) {
+                        el.style.fontSize = '24px';
+                        el.style.fontWeight = '800';
+                        el.style.lineHeight = '1.2';
+                        el.style.letterSpacing = '-0.5px';
+                    });
+                });
+            }
+        }
+    } catch(e) {}
+}
+syncMainTopTabsFont();
+setInterval(syncMainTopTabsFont, 500);
+</script>
+""", height=0)
+
+tab_main_thumb, tab_main_poster, tab_main_ad = st.tabs(["썸네일", "창문부착용A4", "중개대상물표시"])
 
 with tab_main_thumb:
     thumb_sub_apt, thumb_sub_house, thumb_sub_comm, thumb_sub_factory = st.tabs([
@@ -3532,8 +4152,24 @@ with tab_main_thumb:
     with thumb_sub_factory:
         render_tab_factory_thumb()
 
+with tab_main_poster:
+    poster_sub_apt, poster_sub_house, poster_sub_comm, poster_sub_factory = st.tabs([
+        "🏢 아파트",
+        "🏡 주택",
+        "🏬 상가",
+        "🏭 공장"
+    ])
+    with poster_sub_apt:
+        render_tab_apt_poster()
+    with poster_sub_house:
+        render_tab_house_poster()
+    with poster_sub_comm:
+        render_tab_comm_poster()
+    with poster_sub_factory:
+        render_tab_factory_poster()
+
 with tab_main_ad:
-    # 요구사항 2번: 썸네일 화면에서는 마스터 콘솔 안내문구가 노출되지 않고, 중개대상물표시 탭에서만 스마트 자동완성 콘솔이 제공됩니다.
+    # 썸네일 및 포스터 화면에서는 마스터 콘솔 안내문구가 노출되지 않고, 중개대상물표시 탭에서만 스마트 자동완성 콘솔이 제공됩니다.
     render_smart_autocomplete_console()
     
     ad_sub_apt, ad_sub_house, ad_sub_comm, ad_sub_factory = st.tabs([
