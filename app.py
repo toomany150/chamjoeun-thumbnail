@@ -19,8 +19,12 @@ importlib.reload(design_manager)
 from design_manager import (
     load_all_designs,
     save_custom_design,
-    delete_custom_design,
-    get_design_by_name
+    delete_design,
+    get_design_by_name,
+    import_design_from_json,
+    import_design_from_image,
+    reset_default_designs,
+    export_all_designs_json
 )
 from thumbnail_generator import (
     render_thumbnail,
@@ -103,11 +107,66 @@ def render_direct_print_button(image_bytes: bytes, file_name: str, button_label:
     </div>
     """
 
+def render_copy_button(text_to_copy: str, button_label: str, btn_id: str = "") -> str:
+    """텍스트/HTML을 클립보드로 복사하는 원클릭 복사 버튼 컴포넌트입니다."""
+    if not btn_id:
+        btn_id = f"copy_{abs(hash(button_label)) % 100000}"
+    # 줄바꿈 및 특수문자, HTML 태그를 온전하게 전달하기 위해 base64로 인코딩
+    b64_text = base64.b64encode(text_to_copy.encode("utf-8")).decode("ascii")
+    
+    return f"""
+    <div style="margin: 8px 0 14px 0;">
+        <button id="{btn_id}" onclick="
+            (function() {{
+                try {{
+                    var text = decodeURIComponent(escape(window.atob('{b64_text}')));
+                    if (navigator.clipboard && window.isSecureContext) {{
+                        navigator.clipboard.writeText(text).then(function() {{
+                            var b = document.getElementById('{btn_id}');
+                            var old = b.innerText;
+                            b.innerText = '✅ 클립보드 복사 완료!';
+                            b.style.backgroundColor = '#10B981';
+                            setTimeout(function() {{ b.innerText = old; b.style.backgroundColor = '#3182CE'; }}, 2000);
+                        }}).catch(function() {{ fallbackCopy('{btn_id}', text); }});
+                    }} else {{
+                        fallbackCopy('{btn_id}', text);
+                    }}
+                }} catch (e) {{
+                    alert('복사에 실패했습니다. 텍스트를 직접 복사해주세요.');
+                }}
+                function fallbackCopy(id, val) {{
+                    var ta = document.createElement('textarea');
+                    ta.value = val;
+                    ta.style.position = 'fixed';
+                    ta.style.left = '-9999px';
+                    document.body.appendChild(ta);
+                    ta.select();
+                    try {{
+                        document.execCommand('copy');
+                        var b = document.getElementById(id);
+                        var old = b.innerText;
+                        b.innerText = '✅ 클립보드 복사 완료!';
+                        b.style.backgroundColor = '#10B981';
+                        setTimeout(function() {{ b.innerText = old; b.style.backgroundColor = '#3182CE'; }}, 2000);
+                    }} catch (err) {{
+                        alert('복사 권한이 제한되었습니다. 텍스트를 직접 드래그하여 복사해주세요.');
+                    }}
+                    document.body.removeChild(ta);
+                }}
+            }})();
+        " style="width: 100%; display: block; text-align: center; background-color: #3182CE; color: #FFFFFF !important; 
+                 padding: 13px 18px; border-radius: 8px; font-weight: 700; border: none; cursor: pointer;
+                 font-size: 15px; box-shadow: 0 4px 10px rgba(49,130,206,0.3); transition: all 0.2s ease-in-out;">
+            {button_label}
+        </button>
+    </div>
+    """
+
 def render_design_and_layout_controls(key_prefix: str, default_design_name: str = "🍊 참좋은 시그니처 오렌지 (기본)"):
     """
-    요구사항 1번: 레이아웃 모드를 오른쪽으로 이동시키고, 좌측에 디자인 모드를 배치합니다.
-    디자인 모드는 사진을 제외한 디자인(테마 색상/스타일)을 추가할 수 있고 영구 저장되어 다음 실행 시에도 나타납니다.
-    반환값: (selected_design_dict, layout_mode, photo_width_ratio)
+    디자인 모드 & 레이아웃 모드 컨트롤러:
+    - 좌측: 디자인 모드 (외부 파일 가져오기, 직접 테마 등록, 마음에 안 드는 디자인 즉시 삭제)
+    - 우측: 레이아웃 모드 (와이드 사선형, 상하 파노라마형, 표준 사선형)
     """
     col_dm, col_ly = st.columns([1.1, 1.1])
     
@@ -119,45 +178,113 @@ def render_design_and_layout_controls(key_prefix: str, default_design_name: str 
         def_idx = design_names.index(default_design_name)
     
     with col_dm:
-        st.markdown("<b style='font-size:15px; color:#1E2022;'>🎨 디자인 모드</b> <span style='font-size:12px; color:#718096;'>(현장 사진 제외 테마/디자인)</span>", unsafe_allow_html=True)
-        sel_design_name = st.selectbox(
-            "디자인 모드 선택",
-            options=design_names,
-            index=def_idx,
-            key=f"{key_prefix}_design_selector",
-            label_visibility="collapsed"
-        )
-        selected_design = get_design_by_name(sel_design_name)
+        st.markdown("<b style='font-size:15px; color:#1E2022;'>🎨 디자인 모드</b> <span style='font-size:12px; color:#718096;'>(현장 사진 제외 테마/그래픽)</span>", unsafe_allow_html=True)
         
-        # ➕ 새 디자인 모드 추가 / 영구 저장
-        with st.expander("➕ 새 디자인 모드 추가 / 영구 저장", expanded=False):
-            st.markdown("<span style='font-size:12.5px; color:#2D3748;'>현장 사진을 올렸을 때 사진 외의 디자인(색상 테마)을 등록하시면 <b>영구 저장되어 다음 실행 시에도 유지</b>됩니다.</span>", unsafe_allow_html=True)
-            new_d_name = st.text_input("새 디자인 이름", placeholder="예: 봄맞이 핑크 에디션", key=f"{key_prefix}_new_d_name")
-            cd1, cd2 = st.columns(2)
-            with cd1:
-                new_pri_color = st.color_picker("메인 포인트 색상", "#F48A26", key=f"{key_prefix}_new_d_pri")
-            with cd2:
-                new_acc_color = st.color_picker("서브 보조 색상", "#EB5E28", key=f"{key_prefix}_new_d_acc")
-            
-            if st.button("💾 이 디자인 영구 저장하기", key=f"{key_prefix}_save_design_btn", use_container_width=True, type="primary"):
-                if new_d_name.strip():
-                    saved = save_custom_design(new_d_name.strip(), new_pri_color, new_acc_color)
-                    st.success(f"🎉 '{saved['name']}' 디자인이 영구 저장되었습니다! 다음 실행 시에도 유지됩니다.")
+        # 선택 드롭다운과 즉시 삭제 버튼을 한 줄에 배치
+        c_sel, c_del = st.columns([3.8, 1.2])
+        with c_sel:
+            sel_design_name = st.selectbox(
+                "디자인 모드 선택",
+                options=design_names,
+                index=def_idx if def_idx < len(design_names) else 0,
+                key=f"{key_prefix}_design_selector",
+                label_visibility="collapsed"
+            )
+        with c_del:
+            if st.button("🗑️ 삭제", key=f"{key_prefix}_del_cur_btn", help="선택한 디자인 모드를 목록에서 삭제합니다.", use_container_width=True):
+                ok, msg = delete_design(sel_design_name)
+                if ok:
+                    st.success(msg)
                     st.rerun()
                 else:
-                    st.warning("디자인 이름을 입력해주세요.")
+                    st.error(msg)
+
+        selected_design = get_design_by_name(sel_design_name)
+        
+        # ➕ 새 디자인 모드 추가 / 외부 디자인 파일 가져오기 / 백업 관리
+        with st.expander("➕ 새 디자인 추가 / 외부 디자인 파일 가져오기", expanded=False):
+            tab_imp_file, tab_make_new, tab_export = st.tabs([
+                "📁 외부 파일 가져오기",
+                "🎨 직접 색상 등록",
+                "💾 백업 및 복원"
+            ])
             
-            custom_items = [d for d in all_designs if not d.get("is_default")]
-            if custom_items:
-                st.markdown("<hr style='margin: 8px 0;'/>", unsafe_allow_html=True)
-                st.markdown("<span style='font-size:12px; color:#718096;'>등록된 사용자 디자인 삭제:</span>", unsafe_allow_html=True)
-                del_target = st.selectbox("삭제할 디자인 선택", options=[d["name"] for d in custom_items], key=f"{key_prefix}_del_select")
-                if st.button("🗑️ 선택한 디자인 삭제", key=f"{key_prefix}_del_btn", use_container_width=True):
-                    for cd in custom_items:
-                        if cd["name"] == del_target:
-                            delete_custom_design(cd["id"])
-                            st.success(f"'{del_target}' 디자인이 삭제되었습니다.")
-                            st.rerun()
+            with tab_imp_file:
+                st.markdown("<span style='font-size:12px; color:#4A5568;'>외부 디자인 파일(<b>.json 설정 파일</b> 또는 <b>.png/.jpg 디자인 프레임/오버레이 이미지</b>)을 가져와 새 디자인 모드로 등록할 수 있습니다.</span>", unsafe_allow_html=True)
+                uploaded_design_file = st.file_uploader(
+                    "외부 디자인 파일 선택 (.json, .png, .jpg)",
+                    type=["json", "png", "jpg", "jpeg"],
+                    key=f"{key_prefix}_up_design_file"
+                )
+                if uploaded_design_file is not None:
+                    fname = uploaded_design_file.name
+                    if fname.lower().endswith(".json"):
+                        if st.button("📥 JSON 디자인 설정 테마 가져오기", key=f"{key_prefix}_btn_imp_json", type="primary", use_container_width=True):
+                            content_str = uploaded_design_file.getvalue().decode("utf-8", errors="ignore")
+                            ok, msg = import_design_from_json(content_str)
+                            if ok:
+                                st.success(msg)
+                                st.rerun()
+                            else:
+                                st.error(msg)
+                    else:
+                        img_design_name = st.text_input(
+                            "등록할 디자인 모드 이름",
+                            value=os.path.splitext(fname)[0],
+                            key=f"{key_prefix}_img_dname"
+                        )
+                        c_p1, c_p2 = st.columns(2)
+                        with c_p1:
+                            img_pri = st.color_picker("메인 포인트 색상", "#F48A26", key=f"{key_prefix}_img_pri")
+                        with c_p2:
+                            img_acc = st.color_picker("서브 보조 색상", "#EB5E28", key=f"{key_prefix}_img_acc")
+                            
+                        if st.button("🖼️ 디자인 프레임 이미지로 등록하기", key=f"{key_prefix}_btn_imp_img", type="primary", use_container_width=True):
+                            if img_design_name.strip():
+                                saved = import_design_from_image(
+                                    name=img_design_name.strip(),
+                                    image_bytes=uploaded_design_file.getvalue(),
+                                    filename=fname,
+                                    primary_hex=img_pri,
+                                    accent_hex=img_acc
+                                )
+                                st.success(f"🎉 '{saved['name']}' 디자인이 영구 저장되었습니다!")
+                                st.rerun()
+                            else:
+                                st.warning("디자인 모드 이름을 입력해주세요.")
+                                
+            with tab_make_new:
+                st.markdown("<span style='font-size:12px; color:#4A5568;'>원하는 테마 색상을 직접 지정하여 새 디자인 모드를 등록하면 <b>영구 저장되어 다음 실행 시에도 유지</b>됩니다.</span>", unsafe_allow_html=True)
+                new_d_name = st.text_input("새 디자인 이름", placeholder="예: 봄맞이 핑크 에디션", key=f"{key_prefix}_new_d_name")
+                cd1, cd2 = st.columns(2)
+                with cd1:
+                    new_pri_color = st.color_picker("메인 포인트 색상", "#F48A26", key=f"{key_prefix}_new_d_pri")
+                with cd2:
+                    new_acc_color = st.color_picker("서브 보조 색상", "#EB5E28", key=f"{key_prefix}_new_d_acc")
+                
+                if st.button("💾 이 디자인 영구 저장하기", key=f"{key_prefix}_save_design_btn", use_container_width=True, type="primary"):
+                    if new_d_name.strip():
+                        saved = save_custom_design(new_d_name.strip(), new_pri_color, new_acc_color)
+                        st.success(f"🎉 '{saved['name']}' 디자인이 영구 저장되었습니다!")
+                        st.rerun()
+                    else:
+                        st.warning("디자인 이름을 입력해주세요.")
+                        
+            with tab_export:
+                st.markdown("<span style='font-size:12px; color:#4A5568;'>현재 등록된 모든 디자인을 외부 파일(.json)로 저장하거나, 삭제했던 기본 디자인을 복원할 수 있습니다.</span>", unsafe_allow_html=True)
+                designs_json_str = export_all_designs_json()
+                st.download_button(
+                    "💾 현재 모든 디자인 테마 파일(.json) 내보내기",
+                    data=designs_json_str,
+                    file_name="chamjoeun_designs_backup.json",
+                    mime="application/json",
+                    key=f"{key_prefix}_btn_exp_json",
+                    use_container_width=True
+                )
+                if st.button("🔄 삭제된 기본 디자인 전체 복원", key=f"{key_prefix}_btn_reset_defs", use_container_width=True):
+                    reset_default_designs()
+                    st.success("기본 디자인 테마가 모두 원상 복구되었습니다.")
+                    st.rerun()
 
     with col_ly:
         st.markdown("<b style='font-size:15px; color:#1E2022;'>📐 레이아웃 모드</b>", unsafe_allow_html=True)
@@ -383,7 +510,7 @@ if not st.session_state.authenticated:
                 input_pw = st.text_input(
                     "접근 비밀번호 입력",
                     type="password",
-                    placeholder="비밀번호 입력 (기본: 4989)",
+                    placeholder="비밀번호 입력",
                     help="설정된 접근 비밀번호를 입력해주세요."
                 )
                 submit_btn = st.form_submit_button("🔓 로그인하여 시작하기", use_container_width=True)
@@ -394,7 +521,7 @@ if not st.session_state.authenticated:
                         st.success("✅ 인증되었습니다! 메인 화면으로 이동합니다.")
                         st.rerun()
                     else:
-                        st.error("비밀번호가 틀렸습니다. (비밀번호: 4989)")
+                        st.error("비밀번호가 일치하지 않습니다.")
             
             st.markdown("""
             <div style="text-align: center; margin-top: 25px; color: #4A5568; font-size: 13px; line-height: 1.5;">
@@ -1152,7 +1279,8 @@ def render_tab_apt_thumb():
                 footer_text=st.session_state.thumb_footer_text,
                 primary_color=selected_design["primary_color"],
                 accent_color=selected_design["accent_color"],
-                card_bg=selected_design["card_bg"]
+                card_bg=selected_design["card_bg"],
+                overlay_image=selected_design.get("overlay_image_path")
             )
 
         # 🌟 썸네일 & 창문 부착용 A4 포스터 출력 2대 옵션
@@ -1416,7 +1544,8 @@ def render_tab_house_thumb():
                 footer_text=st.session_state.house_footer_text,
                 primary_color=selected_design["primary_color"],
                 accent_color=selected_design["accent_color"],
-                card_bg=selected_design["card_bg"]
+                card_bg=selected_design["card_bg"],
+                overlay_image=selected_design.get("overlay_image_path")
             )
 
         tab_h_view_thumb, tab_h_view_a4 = st.tabs([
@@ -1893,7 +2022,8 @@ def render_tab_factory_thumb():
                 footer_text=st.session_state.factory_footer_text,
                 primary_color=selected_design["primary_color"],
                 accent_color=selected_design["accent_color"],
-                card_bg=selected_design["card_bg"]
+                card_bg=selected_design["card_bg"],
+                overlay_image=selected_design.get("overlay_image_path")
             )
 
         tab_f_view_thumb, tab_f_view_a4 = st.tabs([

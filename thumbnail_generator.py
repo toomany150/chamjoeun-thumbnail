@@ -122,7 +122,8 @@ def render_thumbnail(
     footer_text: str = "",
     primary_color: tuple = None,
     accent_color: tuple = None,
-    card_bg: tuple = None
+    card_bg: tuple = None,
+    overlay_image = None
 ) -> Image.Image:
     """1080x1080 썸네일을 생성하여 PIL Image로 반환합니다."""
     primary_color = _to_rgba(primary_color, (244, 138, 38, 255))
@@ -143,7 +144,7 @@ def render_thumbnail(
     content_h = H - bottom_h  # 1000px 또는 1080px
 
     if layout_mode == "top_panoramic":
-        return _render_top_panoramic(
+        res_img = _render_top_panoramic(
             bg_image=bg_image,
             item_no=item_no,
             main_title=main_title,
@@ -163,7 +164,7 @@ def render_thumbnail(
         # side_wide 또는 side_standard
         # standard 모드면 photo_width_ratio를 약 0.50으로 세팅
         effective_ratio = photo_width_ratio if layout_mode == "side_wide" else 0.50
-        return _render_side_split(
+        res_img = _render_side_split(
             bg_image=bg_image,
             item_no=item_no,
             main_title=main_title,
@@ -180,6 +181,26 @@ def render_thumbnail(
             show_footer=show_footer, footer_text=footer_text,
             primary_color=primary_color, accent_color=accent_color, card_bg=card_bg
         )
+
+    # 외부 디자인 프레임/오버레이 그래픽이 지정되어 있다면 합성
+    if overlay_image:
+        try:
+            ov_pil = None
+            if isinstance(overlay_image, str):
+                base_dir = os.path.dirname(os.path.abspath(__file__))
+                ov_path = overlay_image if os.path.isabs(overlay_image) else os.path.join(base_dir, overlay_image)
+                if os.path.exists(ov_path):
+                    ov_pil = Image.open(ov_path).convert("RGBA")
+            elif hasattr(overlay_image, "convert"):
+                ov_pil = overlay_image.convert("RGBA")
+            
+            if ov_pil:
+                ov_resized = ov_pil.resize((W, H), Image.Resampling.LANCZOS)
+                res_img = Image.alpha_composite(res_img.convert("RGBA"), ov_resized)
+        except Exception:
+            pass
+
+    return res_img
 
 def _render_side_split(
     bg_image, item_no, main_title, sub_title, feature_text, trade_type, price_text, spec_lines,
