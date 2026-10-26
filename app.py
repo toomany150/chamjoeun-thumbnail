@@ -1295,7 +1295,7 @@ def render_tab_apt_thumb():
         with tab_view_a4:
             with st.spinner("창문 부착용 300DPI 초고화질 A4 포스터 렌더링 중..."):
                 a4_poster_img = render_a4_window_poster(
-                    thumbnail_img=None,
+                    thumbnail_img=thumbnail_img,
                     bg_image=uploaded_bg,
                     item_no=st.session_state.item_no,
                     main_title=st.session_state.main_title,
@@ -1559,7 +1559,7 @@ def render_tab_house_thumb():
         with tab_h_view_a4:
             with st.spinner("창문 부착용 300DPI 초고화질 A4 포스터 렌더링 중..."):
                 house_a4_img = render_a4_window_poster(
-                    thumbnail_img=None,
+                    thumbnail_img=house_thumb_img,
                     bg_image=uploaded_house_bg,
                     item_no=st.session_state.house_item_no,
                     main_title=st.session_state.house_main_title,
@@ -1774,7 +1774,7 @@ def render_tab_comm_thumb():
 
             with st.spinner("상가 창문 부착용 300DPI 초고화질 A4 포스터 렌더링 중..."):
                 comm_a4_poster_img = render_a4_window_poster(
-                    thumbnail_img=None,
+                    thumbnail_img=comm_thumb_img,
                     bg_image=uploaded_comm_bg,
                     item_no=st.session_state.get("comm_item_no", "No. COMM-01"),
                     main_title=comm_a4_title,
@@ -2037,7 +2037,7 @@ def render_tab_factory_thumb():
         with tab_f_view_a4:
             with st.spinner("창문 부착용 300DPI 초고화질 A4 포스터 렌더링 중..."):
                 factory_a4_img = render_a4_window_poster(
-                    thumbnail_img=None,
+                    thumbnail_img=factory_thumb_img,
                     bg_image=uploaded_factory_bg,
                     item_no=st.session_state.factory_item_no,
                     main_title=st.session_state.factory_main_title,
