@@ -9,7 +9,21 @@
 
 import os
 import io
-from PIL import Image, ImageDraw, ImageFont, ImageFilter, ImageOps
+from PIL import Image, ImageDraw, ImageFont, ImageFilter, ImageOps, ImageColor
+
+def _to_rgba(c, default=(244, 138, 38, 255)):
+    if c is None:
+        return default
+    if isinstance(c, tuple):
+        if len(c) == 3:
+            return (c[0], c[1], c[2], 255)
+        return c
+    if isinstance(c, str):
+        try:
+            return ImageColor.getcolor(c, "RGBA")
+        except Exception:
+            return default
+    return default
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 ASSETS_DIR = os.path.join(BASE_DIR, "assets")
@@ -106,8 +120,15 @@ def render_thumbnail(
     bg_zoom: float = 1.0,
     show_footer: bool = True,
     footer_text: str = "",
+    primary_color: tuple = None,
+    accent_color: tuple = None,
+    card_bg: tuple = None
 ) -> Image.Image:
     """1080x1080 썸네일을 생성하여 PIL Image로 반환합니다."""
+    primary_color = _to_rgba(primary_color, (244, 138, 38, 255))
+    accent_color = _to_rgba(accent_color, (235, 94, 40, 255))
+    card_bg = _to_rgba(card_bg, (246, 247, 249, 255))
+
     if spec_lines is None:
         spec_lines = [
             "105동 / 15층(로얄층)",
@@ -135,7 +156,8 @@ def render_thumbnail(
             bg_offset_y=bg_offset_y,
             bg_zoom=bg_zoom,
             W=W, H=H, bottom_h=bottom_h, content_h=content_h,
-            show_footer=show_footer, footer_text=footer_text
+            show_footer=show_footer, footer_text=footer_text,
+            primary_color=primary_color, accent_color=accent_color, card_bg=card_bg
         )
     else:
         # side_wide 또는 side_standard
@@ -155,15 +177,23 @@ def render_thumbnail(
             bg_offset_y=bg_offset_y,
             bg_zoom=bg_zoom,
             W=W, H=H, bottom_h=bottom_h, content_h=content_h,
-            show_footer=show_footer, footer_text=footer_text
+            show_footer=show_footer, footer_text=footer_text,
+            primary_color=primary_color, accent_color=accent_color, card_bg=card_bg
         )
 
 def _render_side_split(
     bg_image, item_no, main_title, sub_title, feature_text, trade_type, price_text, spec_lines,
     photo_ratio, bg_offset_x, bg_offset_y, bg_zoom, W, H, bottom_h, content_h,
-    show_footer: bool = True, footer_text: str = ""
+    show_footer: bool = True, footer_text: str = "",
+    primary_color: tuple = (244, 138, 38, 255),
+    accent_color: tuple = (235, 94, 40, 255),
+    card_bg: tuple = (246, 247, 249, 255)
 ) -> Image.Image:
     """좌우 사선 분할 모드 (와이드 조절 지원)"""
+    primary_color = _to_rgba(primary_color, (244, 138, 38, 255))
+    accent_color = _to_rgba(accent_color, (235, 94, 40, 255))
+    card_bg = _to_rgba(card_bg, (246, 247, 249, 255))
+
     canvas = Image.new("RGBA", (W, H), (255, 255, 255, 255))
 
     # 1. 배경 사진 로드 및 배치
@@ -181,7 +211,7 @@ def _render_side_split(
     # 우측 상단 장식 오렌지 웨지
     wedge_draw = ImageDraw.Draw(canvas)
     wedge_start = max(x_top + 160, int(W * 0.70))
-    wedge_draw.polygon([(wedge_start, 0), (W, 0), (W, 230)], fill=(244, 138, 38, 255))
+    wedge_draw.polygon([(wedge_start, 0), (W, 0), (W, 230)], fill=primary_color)
 
     # 3. 주황색 쉐브론 밴드 & 좌측 소프트 화이트 카드 레이어
     poly_layer = Image.new("RGBA", (W, H), (0, 0, 0, 0))
@@ -196,7 +226,7 @@ def _render_side_split(
         (x_mid + band_w + 4, y_mid),
         (x_top + band_w, 0)
     ]
-    poly_draw.polygon(orange_poly, fill=(244, 138, 38, 255))
+    poly_draw.polygon(orange_poly, fill=primary_color)
 
     white_poly = [
         (0, 0),
@@ -205,7 +235,7 @@ def _render_side_split(
         (x_bot, content_h),
         (0, content_h)
     ]
-    poly_draw.polygon(white_poly, fill=(246, 247, 249, 255))
+    poly_draw.polygon(white_poly, fill=card_bg)
 
     canvas = Image.alpha_composite(canvas, poly_layer)
     draw = ImageDraw.Draw(canvas)
@@ -216,7 +246,7 @@ def _render_side_split(
         ribbon_h = 56
         font_item = get_font("NanumGothicBold.ttf", 23)
         ribbon_w = min(x_top - 20, 240)
-        draw.polygon([(0, 0), (ribbon_w, 0), (ribbon_w - 30, ribbon_h), (0, ribbon_h)], fill=(244, 138, 38, 255))
+        draw.polygon([(0, 0), (ribbon_w, 0), (ribbon_w - 30, ribbon_h), (0, ribbon_h)], fill=primary_color)
         draw.text((26, 16), clean_item, fill=(255, 255, 255, 255), font=font_item)
 
     # 5. 카드 너비에 따른 타이포그래피 스케일링
@@ -258,7 +288,7 @@ def _render_side_split(
     total_badge_w = coin_margin + coin_w + 8 + inner_w + 8
 
     # 외곽 오렌지 캡슐
-    draw.rounded_rectangle([left_x, badge_y, left_x + total_badge_w, badge_y + badge_h], radius=badge_h // 2, fill=(244, 138, 38, 255))
+    draw.rounded_rectangle([left_x, badge_y, left_x + total_badge_w, badge_y + badge_h], radius=badge_h // 2, fill=primary_color)
 
     # 코인 아이콘
     coin_path = os.path.join(ASSETS_DIR, "coin.png")
@@ -269,7 +299,7 @@ def _render_side_split(
     # 내부 블랙 캡슐
     inner_x = left_x + coin_margin + coin_w + 6
     draw.rounded_rectangle([inner_x, inner_y, inner_x + inner_w, inner_y + inner_h], radius=inner_h // 2, fill=(28, 30, 33, 255))
-    draw.text((inner_x + (inner_w - tw) // 2, inner_y + 6), clean_trade, fill=(244, 138, 38, 255), font=font_trade)
+    draw.text((inner_x + (inner_w - tw) // 2, inner_y + 6), clean_trade, fill=primary_color, font=font_trade)
 
     # 금액 텍스트
     if clean_price:
@@ -323,9 +353,16 @@ def _render_side_split(
 def _render_top_panoramic(
     bg_image, item_no, main_title, sub_title, feature_text, trade_type, price_text, spec_lines,
     bg_offset_x, bg_offset_y, bg_zoom, W, H, bottom_h, content_h,
-    show_footer: bool = True, footer_text: str = ""
+    show_footer: bool = True, footer_text: str = "",
+    primary_color: tuple = (244, 138, 38, 255),
+    accent_color: tuple = (235, 94, 40, 255),
+    card_bg: tuple = (246, 247, 249, 255)
 ) -> Image.Image:
     """상하 파노라마 모드: 상단 약 68% 전체를 와이드 사진으로 노출 (사진 하단 잘림 방지 및 노출 극대화)"""
+    primary_color = _to_rgba(primary_color, (244, 138, 38, 255))
+    accent_color = _to_rgba(accent_color, (235, 94, 40, 255))
+    card_bg = _to_rgba(card_bg, (246, 247, 249, 255))
+
     canvas = Image.new("RGBA", (W, H), (255, 255, 255, 255))
 
     shift_down = 120
@@ -351,7 +388,7 @@ def _render_top_panoramic(
         (540, p_mid + band_y),
         (0, p_left + band_y)
     ]
-    poly_draw.polygon(orange_poly, fill=(244, 138, 38, 255))
+    poly_draw.polygon(orange_poly, fill=primary_color)
 
     # 하단 화이트 정보 카드
     white_poly = [
@@ -361,7 +398,7 @@ def _render_top_panoramic(
         (W, content_h),
         (0, content_h)
     ]
-    poly_draw.polygon(white_poly, fill=(246, 247, 249, 255))
+    poly_draw.polygon(white_poly, fill=card_bg)
 
     canvas = Image.alpha_composite(canvas, poly_layer)
     draw = ImageDraw.Draw(canvas)
@@ -369,11 +406,11 @@ def _render_top_panoramic(
     # 상단 물건 번호 띠지
     clean_item = (item_no or "").strip()
     if clean_item:
-        draw.polygon([(0, 0), (230, 0), (200, 56), (0, 56)], fill=(244, 138, 38, 255))
+        draw.polygon([(0, 0), (230, 0), (200, 56), (0, 56)], fill=primary_color)
         draw.text((26, 16), clean_item, fill=(255, 255, 255, 255), font=get_font("NanumGothicBold.ttf", 23))
 
     # 상단 우측 오렌지 웨지
-    draw.polygon([(820, 0), (W, 0), (W, 160)], fill=(244, 138, 38, 255))
+    draw.polygon([(820, 0), (W, 0), (W, 160)], fill=primary_color)
 
     # 하단 2열(좌: 타이틀&금액, 우: 4대 스펙) 정돈 배치
     left_x = 55
@@ -406,7 +443,7 @@ def _render_top_panoramic(
     coin_w = 42
 
     total_badge_w = 10 + coin_w + 8 + inner_w + 8
-    draw.rounded_rectangle([left_x, badge_y, left_x + total_badge_w, badge_y + badge_h], radius=badge_h // 2, fill=(244, 138, 38, 255))
+    draw.rounded_rectangle([left_x, badge_y, left_x + total_badge_w, badge_y + badge_h], radius=badge_h // 2, fill=primary_color)
 
     coin_path = os.path.join(ASSETS_DIR, "coin.png")
     if os.path.exists(coin_path):
@@ -415,7 +452,7 @@ def _render_top_panoramic(
 
     inner_x = left_x + 10 + coin_w + 6
     draw.rounded_rectangle([inner_x, inner_y, inner_x + inner_w, inner_y + inner_h], radius=inner_h // 2, fill=(28, 30, 33, 255))
-    draw.text((inner_x + (inner_w - tw) // 2, inner_y + 6), clean_trade, fill=(244, 138, 38, 255), font=font_trade)
+    draw.text((inner_x + (inner_w - tw) // 2, inner_y + 6), clean_trade, fill=primary_color, font=font_trade)
 
     if clean_price:
         font_price = get_font("NanumGothicExtraBold.ttf", 44)
@@ -978,22 +1015,27 @@ def render_a4_window_poster(
     office_name: str = "참좋은공인중개사사무소",
     office_owner: str = "신제환",
     office_phone: str = "010-9667-4201",
+    office_tel: str = "051-911-8249",
     office_reg_no: str = "제 26530-2026-00009 호",
     office_address: str = "부산광역시 사상구 강선로 9, 1층",
+    assistant_phone: str = "",
     is_commercial: bool = False,
     bg_offset_x: int = 0,
     bg_offset_y: int = 0,
-    bg_zoom: float = 1.0
+    bg_zoom: float = 1.0,
+    primary_color_override = None,
+    accent_color_override = None,
+    banner_bg_override = None
 ) -> Image.Image:
     """
     중개사무소 창문(유리창/외벽)에 부착하여 보행자의 시선을 사로잡는
     초고화질 A4(2480 x 3508 px, 300 DPI) 매물 브리핑 포스터를 렌더링합니다.
-    - 썸네일에서 작성한 매물번호 연동
+    - 우측 상단 매물번호 눈에 띄는 캡슐 뱃지 배치
     - 메인타이틀 & 서브타이틀 1.4배 확대 및 밀착 배치
     - 매매 정보 및 4행 입주시기 반영 & 대형 글자 크기
     - 사진 영역 최대화 (중복 세부정보 삭제, 순수 실물 사진 고화질 노출)
     - 6대 정보 2열 x 3행 (3줄) 배치로 가독성 극대화 및 잘림 방지
-    - 하단 중개사무소 정보 최하단 테두리 위로 완벽 밀착
+    - 하단 사무실 연락처(051-911-8249) 및 담당자 연락처 직관 노출
     """
     W = 2480
     H = 3508
@@ -1010,12 +1052,37 @@ def render_a4_window_poster(
         accent_color = (235, 94, 40, 255)      # 딥 오렌지
         banner_bg = (244, 138, 38, 255)
 
+    if primary_color_override:
+        primary_color = _to_rgba(primary_color_override, primary_color)
+    if accent_color_override:
+        accent_color = _to_rgba(accent_color_override, accent_color)
+    if banner_bg_override:
+        banner_bg = _to_rgba(banner_bg_override, banner_bg)
+    elif primary_color_override and not is_commercial:
+        banner_bg = primary_color
+
     # 1. 외곽 더블 테두리 (창문에 부착 시 강력한 주목도 제공)
     draw.rounded_rectangle([(50, 50), (W - 50, H - 50)], radius=36, outline=primary_color, width=14)
     draw.rounded_rectangle([(72, 72), (W - 72, H - 72)], radius=24, outline=(226, 232, 240, 255), width=3)
 
-    # 2. 상단 시작 위치 설정 (추천 매물 브리핑 문구, 매물번호, 서브타이틀 삭제)
+    # 2. 상단 시작 위치 설정 & 우측 상단 매물번호 뱃지
     cur_y = 110
+
+    # 2-1. 우측 상단 매물번호 뱃지 (요구사항 5번 반영)
+    clean_item = (item_no or "").strip()
+    if clean_item:
+        font_item = get_font("NanumGothicExtraBold.ttf", 46)
+        item_text = f"매물번호 : {clean_item}"
+        itb = font_item.getbbox(item_text)
+        itw = itb[2] - itb[0]
+        ith = itb[3] - itb[1]
+        ib_pad_x = 36
+        ib_w = itw + ib_pad_x * 2
+        ib_h = 76
+        ib_x = W - 100 - ib_w
+        ib_y = 95
+        draw.rounded_rectangle([(ib_x, ib_y), (ib_x + ib_w, ib_y + ib_h)], radius=20, fill=(248, 250, 252, 255), outline=primary_color, width=3)
+        draw.text((ib_x + ib_pad_x - itb[0], ib_y + (ib_h - ith) // 2 - itb[1]), item_text, fill=primary_color, font=font_item)
 
     # 매물 특징 배지 (있을 경우 중앙 배치)
     if feature_text and feature_text.strip():
@@ -1303,20 +1370,36 @@ def render_a4_window_poster(
     draw.line([(150, footer_y + 158), (W - 150, footer_y + 158)], fill=(51, 65, 85, 255), width=2)
 
     # 초대형 전화번호 (보행자 시선 강탈!)
-    font_f_phone_lbl = get_font("NanumGothicBold.ttf", 48)
-    draw.text((150, footer_y + 225), "빠른 매물 문의 :", fill=(244, 138, 38, 255), font=font_f_phone_lbl)
+    font_f_phone_lbl = get_font("NanumGothicBold.ttf", 46)
+    draw.text((150, footer_y + 225), "사무실 연락처 :", fill=(244, 138, 38, 255), font=font_f_phone_lbl)
 
-    font_f_phone_num = get_font("NanumGothicExtraBold.ttf", 115)
-    phone_clean = (office_phone or "010-9667-4201").strip()
-    draw.text((580, footer_y + 175), phone_clean, fill=(251, 191, 36, 255), font=font_f_phone_num)
+    font_f_phone_num = get_font("NanumGothicExtraBold.ttf", 100)
+    tel_clean = (office_tel or "051-911-8249").strip()
+    draw.text((530, footer_y + 180), tel_clean, fill=(251, 191, 36, 255), font=font_f_phone_num)
 
-    # 우측 슬로건 알약 배지
-    font_slogan = get_font("NanumGothicBold.ttf", 38)
-    slogan_txt = "친절 상담 · 책임 중개 · 매물 접수"
-    sb = font_slogan.getbbox(slogan_txt)
-    sw = sb[2] - sb[0]
-    draw.rounded_rectangle([(W - 150 - sw - 48, footer_y + 215), (W - 150, footer_y + 295)], radius=20, fill=(30, 41, 59, 255), outline=(71, 85, 105, 255), width=2)
-    draw.text((W - 150 - sw - 24, footer_y + 236), slogan_txt, fill=(241, 245, 249, 255), font=font_slogan)
+    # 담당자 연락처 유무에 따른 우측 표시 (요구사항 5번 반영)
+    ast_clean = (assistant_phone or "").strip()
+    if ast_clean:
+        # 담당자(소공/직원) 직통 연락처 강조 뱃지
+        ast_display_txt = f"📱 담당자 : {ast_clean}"
+        font_ast = get_font("NanumGothicExtraBold.ttf", 52)
+        ab = font_ast.getbbox(ast_display_txt)
+        aw = ab[2] - ab[0]
+        ah = ab[3] - ab[1]
+        ast_box_w = aw + 64
+        ast_box_h = 104
+        ast_box_x = W - 150 - ast_box_w
+        ast_box_y = footer_y + 190
+        draw.rounded_rectangle([(ast_box_x, ast_box_y), (ast_box_x + ast_box_w, ast_box_y + ast_box_h)], radius=24, fill=(244, 138, 38, 255), outline=(255, 255, 255, 220), width=3)
+        draw.text((ast_box_x + 32 - ab[0], ast_box_y + (ast_box_h - ah) // 2 - ab[1]), ast_display_txt, fill=(255, 255, 255, 255), font=font_ast)
+    else:
+        # 우측 슬로건 알약 배지
+        font_slogan = get_font("NanumGothicBold.ttf", 38)
+        slogan_txt = "친절 상담 · 책임 중개 · 매물 접수"
+        sb = font_slogan.getbbox(slogan_txt)
+        sw = sb[2] - sb[0]
+        draw.rounded_rectangle([(W - 150 - sw - 48, footer_y + 215), (W - 150, footer_y + 295)], radius=20, fill=(30, 41, 59, 255), outline=(71, 85, 105, 255), width=2)
+        draw.text((W - 150 - sw - 24, footer_y + 236), slogan_txt, fill=(241, 245, 249, 255), font=font_slogan)
 
     return canvas.convert("RGB")
 

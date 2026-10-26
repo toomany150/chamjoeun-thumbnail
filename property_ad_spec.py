@@ -295,9 +295,98 @@ def get_ordered_spec_table_data(data: dict) -> list[dict]:
     return items
 
 
-def generate_blog_html_table(data: dict) -> str:
+def get_house_spec_table_data(data: dict) -> list[dict]:
+    """주택(단독·다가구·전원주택) 16개 인터넷 표시·광고 명시사항"""
+    area_land = str(data.get("area_land", "148.7")).strip()
+    area_gross = str(data.get("area_gross", "99.2")).strip()
+    area_display = f"대지 {area_land}㎡ / 연면적 {area_gross}㎡"
+
+    items = [
+        {"num": 1, "name": "소재지", "val": data.get("location", "부산광역시 사상구 감전동"), "guide": "동·리 및 지번 표기 필수 (동·호수 생략 가능)"},
+        {"num": 2, "name": "대지 / 연면적", "val": area_display, "guide": "법정단위인 ㎡만 표기 (평수 표기 금지)"},
+        {"num": 3, "name": "해당층 / 총층", "val": data.get("floor_info", "지상 2층 / 지하 0층"), "guide": "건축물대장 상 층수"},
+        {"num": 4, "name": "방수 / 욕실수", "val": data.get("room_bath", "방 4 / 욕실 2개"), "guide": "실제 주거 구조 기준"},
+        {"num": 5, "name": "관리비", "val": data.get("maintenance_fee", "자체관리 (실사용량 별도 부과)"), "guide": "단독주택 자체관리 명시"},
+        {"num": 6, "name": "거래 형태", "val": data.get("trade_type", "매매"), "guide": "매매, 전세, 월세 중 1개 명시"},
+        {"num": 7, "name": "가격", "val": data.get("price_text", "3억 8,000만 원"), "guide": "매매가 / 보증금·월세"},
+        {"num": 8, "name": "방향", "val": data.get("direction", "남향 (거실 기준)"), "guide": "주실(거실) 기준"},
+        {"num": 9, "name": "주차대수", "val": data.get("parking", "총 1대 가능 (마당/자주식)"), "guide": "마당 또는 인근 주차 여부"},
+        {"num": 10, "name": "난방(방식/연료)", "val": data.get("heating", "개별난방 / 도시가스"), "guide": "난방방식 및 연료"},
+        {"num": 11, "name": "입주가능일", "val": data.get("move_in_date", "즉시입주 협의가능"), "guide": "즉시입주 또는 날짜 협의"},
+        {"num": 12, "name": "건축물 용도", "val": data.get("building_use", "단독주택"), "guide": "건축물대장 상 용도"},
+        {"num": 13, "name": "건축물 구조", "val": data.get("structure", "벽돌구조 / 연와조"), "guide": "건축물대장 주구조"},
+        {"num": 14, "name": "사용승인일", "val": data.get("approval_date", "1998년 05월 12일"), "guide": "건축물대장 상 사용승인일"},
+        {"num": 15, "name": "주요 특징", "val": data.get("feature", "마당 넓음 · 올리모델링 완료"), "guide": "매물 특장점"},
+    ]
+
+    include_office = data.get("include_office_info", True)
+    if include_office:
+        office_lines = [
+            f"• 상호: {data.get('office_name', '참좋은공인중개사사무소')}",
+            f"• 대표: {data.get('office_owner', '신제환')}",
+            f"• 등록번호: {data.get('office_reg_no', '제 26530-2026-00009 호')}",
+            f"• 소재지: {data.get('office_address', '부산광역시 사상구 강선로 9, 1층')}",
+            f"• 연락처: {data.get('office_phone', '010-9667-4201')}"
+        ]
+        as_name = data.get("assistant_name", "").strip()
+        as_phone = data.get("assistant_phone", "").strip()
+        if as_name or as_phone:
+            as_info = f"{as_name} ({as_phone})".strip() if as_phone else as_name
+            office_lines.append(f"• 담당(소공): {as_info}")
+        office_full = "\n".join(office_lines)
+        items.append({"num": 16, "name": "중개사무소 정보", "val": office_full, "guide": "5대 필수 명시"})
+
+    return items
+
+
+def get_factory_spec_table_data(data: dict) -> list[dict]:
+    """공장/창고 16개 인터넷 표시·광고 명시사항"""
+    area_land = str(data.get("area_land", "826.5")).strip()
+    area_gross = str(data.get("area_gross", "550.0")).strip()
+    area_display = f"대지 {area_land}㎡ / 연면적 {area_gross}㎡"
+
+    items = [
+        {"num": 1, "name": "소재지", "val": data.get("location", "부산광역시 사상구 삼락동 사상공단"), "guide": "동·리 및 지번 표기"},
+        {"num": 2, "name": "대지 / 연면적", "val": area_display, "guide": "공장용지 및 건축 연면적"},
+        {"num": 3, "name": "용도지역 / 지목", "val": data.get("zoning", "일반공업지역 / 공장용지"), "guide": "토지이용계획원 기준"},
+        {"num": 4, "name": "건축물 용도", "val": data.get("building_use", "공장 (제조업소)"), "guide": "건축물대장 상 용도"},
+        {"num": 5, "name": "층고 / 처마고", "val": data.get("height", "처마 8.5m / 최고 9.5m"), "guide": "유효 층고"},
+        {"num": 6, "name": "호이스트 설비", "val": data.get("hoist", "5톤 1기 완비"), "guide": "호이스트 용량 및 유무"},
+        {"num": 7, "name": "동력 (전기)", "val": data.get("power", "150kW 수전설비"), "guide": "인입 동력 전력"},
+        {"num": 8, "name": "진입도로 폭", "val": data.get("road", "8m 포장도로 (츄레라/트레일러 진입 원활)"), "guide": "진입도로 및 접근성"},
+        {"num": 9, "name": "거래 형태", "val": data.get("trade_type", "매매"), "guide": "매매, 임대차 중 1개 명시"},
+        {"num": 10, "name": "거래 금액", "val": data.get("price_text", "18억 5,000만 원"), "guide": "매매가 또는 보증금/월세"},
+        {"num": 11, "name": "관리비", "val": data.get("maintenance_fee", "자체관리"), "guide": "공장 자체관리"},
+        {"num": 12, "name": "주차 대수", "val": data.get("parking", "옥외 마당 5대 이상"), "guide": "주차 및 야적 공간"},
+        {"num": 13, "name": "입주 가능일", "val": data.get("move_in_date", "즉시입주 협의가능"), "guide": "즉시가동 또는 협의"},
+        {"num": 14, "name": "사용승인일", "val": data.get("approval_date", "2015년 10월 20일"), "guide": "건축물대장 준공일"},
+        {"num": 15, "name": "주출입구 방향", "val": data.get("direction", "남향 (주출입구 기준)"), "guide": "공장 주출입구 기준"},
+    ]
+
+    include_office = data.get("include_office_info", True)
+    if include_office:
+        office_lines = [
+            f"• 상호: {data.get('office_name', '참좋은공인중개사사무소')}",
+            f"• 대표: {data.get('office_owner', '신제환')}",
+            f"• 등록번호: {data.get('office_reg_no', '제 26530-2026-00009 호')}",
+            f"• 소재지: {data.get('office_address', '부산광역시 사상구 강선로 9, 1층')}",
+            f"• 연락처: {data.get('office_phone', '010-9667-4201')}"
+        ]
+        as_name = data.get("assistant_name", "").strip()
+        as_phone = data.get("assistant_phone", "").strip()
+        if as_name or as_phone:
+            as_info = f"{as_name} ({as_phone})".strip() if as_phone else as_name
+            office_lines.append(f"• 담당(소공): {as_info}")
+        office_full = "\n".join(office_lines)
+        items.append({"num": 16, "name": "중개사무소 정보", "val": office_full, "guide": "5대 필수 명시"})
+
+    return items
+
+
+def generate_blog_html_table(data: dict, items: list = None) -> str:
     """네이버 블로그 스마트에디터에 바로 붙여넣을 수 있는 세련된 HTML 표 서식 생성"""
-    items = get_ordered_spec_table_data(data)
+    if items is None:
+        items = get_ordered_spec_table_data(data)
     
     html = """
 <div style="font-family: -apple-system, BlinkMacSystemFont, 'Malgun Gothic', sans-serif; max-width: 780px; margin: 25px auto; border: 2px solid #232529; border-radius: 8px; overflow: hidden; box-shadow: 0 4px 15px rgba(0,0,0,0.08);">
@@ -347,9 +436,10 @@ def generate_blog_html_table(data: dict) -> str:
 """
     return html.strip()
 
-def generate_clipboard_text(data: dict) -> str:
+def generate_clipboard_text(data: dict, items: list = None) -> str:
     """블로그 본문 또는 카카오톡 전송용 일반 텍스트 서식"""
-    items = get_ordered_spec_table_data(data)
+    if items is None:
+        items = get_ordered_spec_table_data(data)
     lines = [
         "═══════════════════════════════════════════",
         "📋 [중개대상물 인터넷 표시·광고 명시사항]",
@@ -375,9 +465,10 @@ def generate_clipboard_text(data: dict) -> str:
         lines.append("═══════════════════════════════════════════")
     return "\n".join(lines)
 
-def generate_naver_ad_guide_text(data: dict) -> str:
+def generate_naver_ad_guide_text(data: dict, items: list = None) -> str:
     """네이버 부동산 매물 등록창을 보면서 그대로 1:1 대조 복사할 수 있는 가이드 텍스트"""
-    items = get_ordered_spec_table_data(data)
+    if items is None:
+        items = get_ordered_spec_table_data(data)
     lines = [
         "📝 [네이버 부동산 광고 입력 체크리스트 - 순서 1:1 매칭]",
         "───────────────────────────────────────────"
@@ -389,12 +480,13 @@ def generate_naver_ad_guide_text(data: dict) -> str:
         lines.append("")
     return "\n".join(lines)
 
-def render_spec_table_image(data: dict) -> Image.Image:
+def render_spec_table_image(data: dict, items: list = None) -> Image.Image:
     """
     1080px 고화질 '중개대상물 인터넷 표시·광고 명시사항' 카드 이미지 렌더링 (Pillow)
     블로그 포스팅 이미지 및 스마트폰 보관용
     """
-    items = get_ordered_spec_table_data(data)
+    if items is None:
+        items = get_ordered_spec_table_data(data)
     
     img_w = 1080
     # 높이 계산 (여유 있게 1600px로 잡고 마지막에 크롭)

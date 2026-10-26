@@ -9,11 +9,19 @@ import property_ad_spec
 import commercial_ad_spec
 import document_parser
 import naver_crawler
+import design_manager
 importlib.reload(thumbnail_generator)
 importlib.reload(property_ad_spec)
 importlib.reload(commercial_ad_spec)
 importlib.reload(document_parser)
 importlib.reload(naver_crawler)
+importlib.reload(design_manager)
+from design_manager import (
+    load_all_designs,
+    save_custom_design,
+    delete_custom_design,
+    get_design_by_name
+)
 from thumbnail_generator import (
     render_thumbnail,
     render_commercial_lease_thumbnail,
@@ -28,6 +36,8 @@ from property_ad_spec import (
     SPEC_ITEMS_META,
     format_area_text,
     get_ordered_spec_table_data,
+    get_house_spec_table_data,
+    get_factory_spec_table_data,
     generate_blog_html_table,
     generate_clipboard_text,
     generate_naver_ad_guide_text,
@@ -92,6 +102,95 @@ def render_direct_print_button(image_bytes: bytes, file_name: str, button_label:
         </button>
     </div>
     """
+
+def render_design_and_layout_controls(key_prefix: str, default_design_name: str = "🍊 참좋은 시그니처 오렌지 (기본)"):
+    """
+    요구사항 1번: 레이아웃 모드를 오른쪽으로 이동시키고, 좌측에 디자인 모드를 배치합니다.
+    디자인 모드는 사진을 제외한 디자인(테마 색상/스타일)을 추가할 수 있고 영구 저장되어 다음 실행 시에도 나타납니다.
+    반환값: (selected_design_dict, layout_mode, photo_width_ratio)
+    """
+    col_dm, col_ly = st.columns([1.1, 1.1])
+    
+    all_designs = load_all_designs()
+    design_names = [d["name"] for d in all_designs]
+    
+    def_idx = 0
+    if default_design_name in design_names:
+        def_idx = design_names.index(default_design_name)
+    
+    with col_dm:
+        st.markdown("<b style='font-size:15px; color:#1E2022;'>🎨 디자인 모드</b> <span style='font-size:12px; color:#718096;'>(현장 사진 제외 테마/디자인)</span>", unsafe_allow_html=True)
+        sel_design_name = st.selectbox(
+            "디자인 모드 선택",
+            options=design_names,
+            index=def_idx,
+            key=f"{key_prefix}_design_selector",
+            label_visibility="collapsed"
+        )
+        selected_design = get_design_by_name(sel_design_name)
+        
+        # ➕ 새 디자인 모드 추가 / 영구 저장
+        with st.expander("➕ 새 디자인 모드 추가 / 영구 저장", expanded=False):
+            st.markdown("<span style='font-size:12.5px; color:#2D3748;'>현장 사진을 올렸을 때 사진 외의 디자인(색상 테마)을 등록하시면 <b>영구 저장되어 다음 실행 시에도 유지</b>됩니다.</span>", unsafe_allow_html=True)
+            new_d_name = st.text_input("새 디자인 이름", placeholder="예: 봄맞이 핑크 에디션", key=f"{key_prefix}_new_d_name")
+            cd1, cd2 = st.columns(2)
+            with cd1:
+                new_pri_color = st.color_picker("메인 포인트 색상", "#F48A26", key=f"{key_prefix}_new_d_pri")
+            with cd2:
+                new_acc_color = st.color_picker("서브 보조 색상", "#EB5E28", key=f"{key_prefix}_new_d_acc")
+            
+            if st.button("💾 이 디자인 영구 저장하기", key=f"{key_prefix}_save_design_btn", use_container_width=True, type="primary"):
+                if new_d_name.strip():
+                    saved = save_custom_design(new_d_name.strip(), new_pri_color, new_acc_color)
+                    st.success(f"🎉 '{saved['name']}' 디자인이 영구 저장되었습니다! 다음 실행 시에도 유지됩니다.")
+                    st.rerun()
+                else:
+                    st.warning("디자인 이름을 입력해주세요.")
+            
+            custom_items = [d for d in all_designs if not d.get("is_default")]
+            if custom_items:
+                st.markdown("<hr style='margin: 8px 0;'/>", unsafe_allow_html=True)
+                st.markdown("<span style='font-size:12px; color:#718096;'>등록된 사용자 디자인 삭제:</span>", unsafe_allow_html=True)
+                del_target = st.selectbox("삭제할 디자인 선택", options=[d["name"] for d in custom_items], key=f"{key_prefix}_del_select")
+                if st.button("🗑️ 선택한 디자인 삭제", key=f"{key_prefix}_del_btn", use_container_width=True):
+                    for cd in custom_items:
+                        if cd["name"] == del_target:
+                            delete_custom_design(cd["id"])
+                            st.success(f"'{del_target}' 디자인이 삭제되었습니다.")
+                            st.rerun()
+
+    with col_ly:
+        st.markdown("<b style='font-size:15px; color:#1E2022;'>📐 레이아웃 모드</b>", unsafe_allow_html=True)
+        layout_options = {
+            "와이드 사선형 (실내 추천)": "side_wide",
+            "상하 파노라마형 (전경 극대화)": "top_panoramic",
+            "표준 사선형 (외관 5:5)": "side_standard",
+        }
+        selected_layout_label = st.radio(
+            "레이아웃 모드",
+            options=list(layout_options.keys()),
+            index=0,
+            horizontal=True,
+            key=f"{key_prefix}_layout_selector",
+            label_visibility="collapsed"
+        )
+        layout_mode = layout_options[selected_layout_label]
+        
+        photo_width_ratio = 0.68
+        if layout_mode == "side_wide":
+            photo_width_ratio_pct = st.slider(
+                "📷 사진 가로 비중 (와이드 조절)",
+                min_value=50,
+                max_value=76,
+                value=68,
+                step=2,
+                format="%d%%",
+                key=f"{key_prefix}_photo_width_slider"
+            )
+            photo_width_ratio = photo_width_ratio_pct / 100.0
+            
+    return selected_design, layout_mode, photo_width_ratio
+
 
 # 페이지 설정
 st.set_page_config(
@@ -490,6 +589,81 @@ for ok, ov in OFFICE_REFRESH_MAP.items():
     if not cur_comm or "2021-00045" in cur_comm or "사상로 200" in cur_comm:
         st.session_state[f"comm_ad_{ok}"] = ov
 
+# 5. 주택 세션 상태 (썸네일 & 중개대상물)
+if "house_item_no" not in st.session_state:
+    st.session_state.house_item_no = "No. HOUSE-01"
+if "house_main_title" not in st.session_state:
+    st.session_state.house_main_title = "사상 덕포동 단독주택"
+if "house_sub_title" not in st.session_state:
+    st.session_state.house_sub_title = "마당 넓은 올수리 2층 주택"
+if "house_feature_text" not in st.session_state:
+    st.session_state.house_feature_text = "대지 45평 · 올리모델링 첫입주"
+if "house_trade_type" not in st.session_state:
+    st.session_state.house_trade_type = "매매"
+if "house_price_text" not in st.session_state:
+    st.session_state.house_price_text = "3억 8천"
+if "house_spec1" not in st.session_state:
+    st.session_state.house_spec1 = "지상 2층 / 단독주택"
+if "house_spec2" not in st.session_state:
+    st.session_state.house_spec2 = "대지 148.7㎡ / 연면적 99.2㎡"
+if "house_spec3" not in st.session_state:
+    st.session_state.house_spec3 = "방 4개 / 욕실 2개"
+if "house_spec4" not in st.session_state:
+    st.session_state.house_spec4 = "즉시입주 협의가능"
+if "house_spec5" not in st.session_state:
+    st.session_state.house_spec5 = "정남향 (일조권 풍부)"
+if "house_show_footer" not in st.session_state:
+    st.session_state.house_show_footer = True
+if "house_footer_text" not in st.session_state:
+    st.session_state.house_footer_text = ""
+if "house_assistant_phone" not in st.session_state:
+    st.session_state.house_assistant_phone = ""
+if "house_office_tel" not in st.session_state:
+    st.session_state.house_office_tel = "051-911-8249"
+
+# 6. 공장/창고 세션 상태 (썸네일 & 중개대상물)
+if "factory_item_no" not in st.session_state:
+    st.session_state.factory_item_no = "No. FACTORY-01"
+if "factory_main_title" not in st.session_state:
+    st.session_state.factory_main_title = "사상 감전동 특급 공장"
+if "factory_sub_title" not in st.session_state:
+    st.session_state.factory_sub_title = "트레일러 진입 최상 / 역세권"
+if "factory_feature_text" not in st.session_state:
+    st.session_state.factory_feature_text = "호이스트 5톤 + 전력 150kW 완비"
+if "factory_trade_type" not in st.session_state:
+    st.session_state.factory_trade_type = "월세"
+if "factory_price_text" not in st.session_state:
+    st.session_state.factory_price_text = "보3,000/월250"
+if "factory_spec1" not in st.session_state:
+    st.session_state.factory_spec1 = "단층 공장 (층고 8m)"
+if "factory_spec2" not in st.session_state:
+    st.session_state.factory_spec2 = "대지 660㎡ / 연면적 396㎡ (120평)"
+if "factory_spec3" not in st.session_state:
+    st.session_state.factory_spec3 = "동력 150kW / 호이스트 5T"
+if "factory_spec4" not in st.session_state:
+    st.session_state.factory_spec4 = "즉시입주 협의가능"
+if "factory_spec5" not in st.session_state:
+    st.session_state.factory_spec5 = "마당 넓음 · 주차 8대 가능"
+if "factory_show_footer" not in st.session_state:
+    st.session_state.factory_show_footer = True
+if "factory_footer_text" not in st.session_state:
+    st.session_state.factory_footer_text = ""
+if "factory_assistant_phone" not in st.session_state:
+    st.session_state.factory_assistant_phone = ""
+if "factory_office_tel" not in st.session_state:
+    st.session_state.factory_office_tel = "051-911-8249"
+
+# 아파트 및 상가 사무실/담당자 연락처 기본 세션
+if "office_tel_input" not in st.session_state:
+    st.session_state.office_tel_input = "051-911-8249"
+if "assistant_phone_input" not in st.session_state:
+    st.session_state.assistant_phone_input = ""
+if "comm_office_tel_input" not in st.session_state:
+    st.session_state.comm_office_tel_input = "051-911-8249"
+if "comm_assistant_phone_input" not in st.session_state:
+    st.session_state.comm_assistant_phone_input = ""
+
+
 def apply_comm_preset(p_type):
     if p_type == "lease":
         st.session_state.comm_thumb_mode = "🔑 상가 임차 (월세)"
@@ -758,94 +932,68 @@ with col_h2:
         st.rerun()
 
 # ----------------------------------------------------
-# ⚡ [최상단 전면 배치] 1초 스마트 자동완성 마스터 콘솔
-# (네이버 복사 텍스트 / 대장 스크립트·PDF / 매물번호 크롤링 1초 완성)
+# ⚡ 스마트 자동완성 콘솔 헬퍼 함수 (중개대상물 표시 탭 전용)
+# 요구사항 2번: 썸네일에서는 이 마스터 콘솔 안내문구가 나오지 않습니다.
+# 요구사항 3번: [새 매물 빈 양식 초기화], [사상 중흥 예시], [센텀 오피스텔 예시] 3개 버튼은 완전 삭제되었습니다.
 # ----------------------------------------------------
-if st.session_state.get("last_applied_msg"):
-    st.success(st.session_state["last_applied_msg"])
-
-with st.expander("⚡ [원클릭 1초 스마트 자동완성 마스터 콘솔] 네이버 복사 텍스트 / 건축물대장 스크립트 / 매물번호 입력", expanded=True):
-    st.markdown("""
-    <div style="font-size:14px; color:#1A365D; background:#F0F7FF; border:1.5px solid #90CDF4; padding:12px 16px; border-radius:10px; margin-bottom:12px;">
-        🚀 <b>네이버 매물 화면 복사 텍스트</b>나 <b>건축물대장 텍스트(스크립트)</b>를 아래에 붙여넣으시면, 
-        <b>16대 점검항목(중개대상물 표시)</b>과 <b>블로그 썸네일(아파트명, 가격, 5대 스펙)</b>을 0.1초 만에 자동으로 싹 채워드립니다!<br/>
-        <span style="color:#2B6CB0; font-size:12.5px;">🏢 중개사무소 정보(참좋은공인중개사사무소 신제환 대표 | 강선로 9 | 제 26530-2026-00009 호)는 100% 안전하게 유지되며 매물 정보만 깨끗하게 갱신됩니다.</span>
-    </div>
-    """, unsafe_allow_html=True)
-
-    c_top_b1, c_top_b2, c_top_b3 = st.columns([1.2, 1.2, 1.2])
-    with c_top_b1:
-        if st.button("✨ 새 매물 빈 양식으로 초기화", use_container_width=True, help="중개사무소 정보는 유지하고 모든 매물 항목을 깨끗하게 비웁니다."):
-            queue_state_update("clear_apt", success_msg="✨ 새 매물을 입력하실 수 있도록 모든 매물 항목이 깨끗하게 초기화되었습니다!")
-    with c_top_b2:
-        if st.button("⚡ 사상 중흥 예시 채우기", use_container_width=True):
-            queue_state_update("preset_apt", preset="living", success_msg="📋 사상 중흥S-클래스 추천 예시가 반영되었습니다.")
-    with c_top_b3:
-        if st.button("⚡ 센텀 오피스텔 예시 채우기", use_container_width=True):
-            queue_state_update("preset_apt", preset="op", success_msg="📋 해운대 센텀스퀘어 오피스텔 예시가 반영되었습니다.")
-
-    st.markdown("<div style='height: 8px;'></div>", unsafe_allow_html=True)
-
-    top_tab_clip, top_tab_script, top_tab_num = st.tabs([
-        "📋 네이버 화면 복사 텍스트 붙여넣기 (가장 확실 & 1초 완성! ⭐추천)",
-        "📄 건축물대장 텍스트(스크립트) 붙여넣기 & PDF 업로드",
-        "🔍 네이버 부동산 매물 번호 / URL 크롤링 (실험적)"
-    ])
-
-    # 1. 네이버 화면 복사 텍스트 붙여넣기
-    with top_tab_clip:
+def render_smart_autocomplete_console(target_prop_type="apt"):
+    """네이버 복사 텍스트 / 건축물대장 스크립트·PDF / 매물번호 크롤링 1초 자동완성 콘솔"""
+    with st.expander("⚡ [원클릭 1초 스마트 자동완성 콘솔] 네이버 복사 텍스트 / 건축물대장 스크립트 / 매물번호 입력", expanded=False):
         st.markdown("""
-        <div style="font-size:13px; color:#2B6CB0; background:#EBF8FF; border:1px solid #BEE3F8; padding:8px 12px; border-radius:6px; margin-bottom:8px;">
-            💡 <b>사용 방법:</b> 네이버 부동산 매물 상세 화면에서 마우스로 매물 정보 영역(매물명, 가격, 면적, 층수 등)을 드래그 복사(Ctrl+C)하여 아래에 붙여넣고 버튼을 누르세요!
+        <div style="font-size:13.5px; color:#1A365D; background:#F0F7FF; border:1.5px solid #90CDF4; padding:10px 14px; border-radius:8px; margin-bottom:10px;">
+            🚀 <b>네이버 매물 화면 복사 텍스트</b>나 <b>건축물대장 텍스트(스크립트)·PDF</b>를 넣으시면 
+            점검항목과 썸네일 데이터가 즉시 0.1초 만에 자동 완성됩니다!
         </div>
         """, unsafe_allow_html=True)
-        top_clip_text = st.text_area(
-            "네이버 매물 상세 복사 텍스트",
-            height=110,
-            placeholder="예:\n사상 중흥S-클래스 105동 매매 6억 2,000만원\n아파트 공급 111.42㎡ / 전용 79.85㎡, 25/36층, 남동향\n관리비 18만원, 방수/욕실수 3/2개...",
-            key="top_input_naver_clip"
-        )
-        if st.button("⚡ 붙여넣은 네이버 텍스트 분석 & 썸네일·점검표 즉시 자동완성", type="primary", use_container_width=True, key="top_btn_parse_clip"):
-            if top_clip_text.strip():
-                parsed_c = parse_naver_clipboard_text(top_clip_text)
-                if parsed_c:
-                    queue_state_update("apply_apt", data=parsed_c, clean_previous=True, success_msg=f"🎉 네이버 매물 [{parsed_c.get('main_title', '매물')}] 분석 완료! 썸네일과 16대 점검항목에 즉시 자동 반영되었습니다.")
-                else:
-                    st.warning("붙여넣은 텍스트에서 매물 정보를 식별하지 못했습니다. 내용을 확인해주세요.")
-            else:
-                st.warning("네이버 부동산 매물 상세 텍스트를 먼저 붙여넣어 주세요.")
 
-    # 2. 건축물대장 텍스트(스크립트) 붙여넣기 & PDF
-    with top_tab_script:
-        top_doc_tab1, top_doc_tab2 = st.tabs([
-            "📋 대장 텍스트(스크립트) 통째로 붙여넣기 (정부24/세움터 열람 복사본)",
-            "📁 대장 PDF 파일 업로드"
+        top_tab_clip, top_tab_script, top_tab_num = st.tabs([
+            "📋 네이버 화면 복사 텍스트 붙여넣기 (가장 확실 & 추천)",
+            "📄 건축물대장 텍스트(스크립트) & PDF 업로드",
+            "🔍 네이버 매물 번호 / URL 크롤링 (실험적)"
         ])
+
+        with top_tab_clip:
+            top_clip_text = st.text_area(
+                "네이버 매물 상세 복사 텍스트",
+                height=110,
+                placeholder="예:\n사상 중흥S-클래스 105동 매매 6억 2,000만원\n아파트 공급 111.42㎡ / 전용 79.85㎡, 25/36층, 남동향\n관리비 18만원...",
+                key="top_input_naver_clip"
+            )
+            if st.button("⚡ 붙여넣은 텍스트 0.1초 분석 & 점검표 즉시 자동완성", type="primary", use_container_width=True, key="top_btn_parse_clip"):
+                if top_clip_text.strip():
+                    parsed_c = parse_naver_clipboard_text(top_clip_text)
+                    if parsed_c:
+                        queue_state_update("apply_apt", data=parsed_c, clean_previous=True, success_msg=f"🎉 매물 [{parsed_c.get('main_title', '매물')}] 분석 완료! 점검항목과 썸네일에 즉시 자동 반영되었습니다.")
+                    else:
+                        st.warning("붙여넣은 텍스트에서 매물 정보를 식별하지 못했습니다. 내용을 확인해주세요.")
+                else:
+                    st.warning("네이버 매물 텍스트를 먼저 붙여넣어 주세요.")
+
+        with top_tab_script:
+            top_doc_tab1, top_doc_tab2 = st.tabs([
+                "📋 대장 텍스트 통째로 붙여넣기 (정부24/세움터)",
+                "📁 대장 PDF 파일 업로드"
+            ])
         with top_doc_tab1:
-            st.markdown("""
-            <div style="font-size:13px; color:#2D3748; background:#F7FAFC; border:1px solid #E2E8F0; padding:8px 12px; border-radius:6px; margin-bottom:8px;">
-                💡 <b>정부24 / 세움터 / 일사편리 100% 지원:</b> 화면에서 열람한 건축물대장(표제부/전유부/일반대장) 텍스트를 마우스로 복사하여 그대로 붙여넣으세요! 표제부와 전유부를 구분할 필요 없이 프로그램이 지능적으로 자동 병합합니다.
-            </div>
-            """, unsafe_allow_html=True)
             top_script_text = st.text_area(
                 "건축물대장 열람 복사 텍스트 (스크립트)",
                 height=120,
-                placeholder="대지위치: 부산시 사상구 덕포동 220\n건축물명칭: 사상 중흥S-클래스 제105동 제2501호\n층별: 25층\n전유부분 면적: 79.85㎡\n사용승인일: 2023-07-28...",
+                placeholder="대지위치: 부산시 사상구 덕포동 220\n건축물명칭: 사상 중흥S-클래스 제105동 제2501호\n층별: 25층\n전유부분 면적: 79.85㎡...",
                 key="top_input_script_doc"
             )
-            if st.button("🔍 붙여넣은 대장 스크립트 통합 분석 & 즉시 적용", type="primary", use_container_width=True, key="top_btn_parse_script"):
+            if st.button("🔍 붙여넣은 대장 스크립트 분석 & 즉시 적용", type="primary", use_container_width=True, key="top_btn_parse_script"):
                 if top_script_text.strip():
                     doc_lbl, parsed_doc = parse_raw_script_document(top_script_text)
                     if parsed_doc:
-                        queue_state_update("apply_apt", data=parsed_doc, clean_previous=True, success_msg=f"🎉 [{doc_lbl}] 분석 완료! 썸네일과 16대 점검항목에 깨끗하게 즉시 반영되었습니다.")
+                        queue_state_update("apply_apt", data=parsed_doc, clean_previous=True, success_msg=f"🎉 [{doc_lbl}] 분석 완료! 점검표와 썸네일에 즉시 반영되었습니다.")
                     else:
-                        st.warning("붙여넣은 대장 텍스트에서 건축물 정보를 식별하지 못했습니다. 내용을 확인해주세요.")
+                        st.warning("대장 텍스트에서 건축물 정보를 식별하지 못했습니다.")
                 else:
-                    st.warning("건축물대장 텍스트를 먼저 붙여넣어 주세요.")
+                    st.warning("대장 텍스트를 먼저 붙여넣어 주세요.")
 
         with top_doc_tab2:
             top_uploaded_pdf = st.file_uploader(
-                "건축물대장 (표제부 / 전유부) PDF 파일",
+                "건축물대장 PDF 파일",
                 type=["pdf"],
                 key="top_pdf_uploader_key"
             )
@@ -854,83 +1002,93 @@ with st.expander("⚡ [원클릭 1초 스마트 자동완성 마스터 콘솔] �
                     try:
                         p_t, p_res, _ = parse_official_document(top_uploaded_pdf, top_uploaded_pdf.name)
                         if p_res:
-                            queue_state_update("apply_apt", data=p_res, clean_previous=True, success_msg=f"🎉 [{p_t}] 분석 완료! 썸네일과 점검표에 즉시 반영되었습니다.")
+                            queue_state_update("apply_apt", data=p_res, clean_previous=True, success_msg=f"🎉 [{p_t}] 분석 완료! 즉시 반영되었습니다.")
                         else:
-                            st.error("PDF 파일에서 텍스트를 추출하지 못했습니다. 보안문서인 경우 앞의 [📋 대장 텍스트 통째로 붙여넣기]를 이용해주세요!")
+                            st.error("PDF 파일에서 텍스트를 추출하지 못했습니다.")
                     except Exception as e:
                         st.error(f"PDF 분석 오류: {e}")
 
-    # 3. 네이버 부동산 매물 번호 / URL 크롤링
-    with top_tab_num:
-        c_top_n1, c_top_n2 = st.columns([2.5, 1])
-        with c_top_n1:
-            top_article_val = st.text_input(
-                "네이버 매물 번호 (숫자) 또는 매물 링크 URL",
-                placeholder="예: 2428591234 또는 https://fin.land.naver.com/articles/2428591234",
-                key="top_input_article_no"
-            )
-        with c_top_n2:
-            st.markdown("<div style='height: 28px;'></div>", unsafe_allow_html=True)
-            top_btn_crawl = st.button("🚀 실시간 크롤링 시도", type="primary", use_container_width=True, key="top_btn_crawl_run")
+        with top_tab_num:
+            c_top_n1, c_top_n2 = st.columns([2.5, 1])
+            with c_top_n1:
+                top_article_val = st.text_input(
+                    "네이버 매물 번호 또는 URL",
+                    placeholder="예: 2428591234 또는 URL",
+                    key="top_input_article_no"
+                )
+            with c_top_n2:
+                st.markdown("<div style='height: 28px;'></div>", unsafe_allow_html=True)
+                top_btn_crawl = st.button("🚀 실시간 크롤링 시도", type="primary", use_container_width=True, key="top_btn_crawl_run")
 
-        if top_btn_crawl:
-            if top_article_val.strip():
-                with st.spinner("네이버 부동산 매물 정보 실시간 조회 중..."):
-                    is_ok, msg, c_data = crawl_naver_article(top_article_val.strip())
-                    if is_ok:
-                        queue_state_update("apply_apt", data=c_data, clean_previous=True, success_msg=f"🎉 {msg} 썸네일과 점검표에 즉시 자동 반영되었습니다.", target_tab="📝 ③ 아파트 중개대상물 표시")
-                    else:
-                        st.error(f"⚠️ {msg}")
-            else:
-                st.warning("매물 번호 또는 링크 URL을 입력해주세요.")
+            if top_btn_crawl:
+                if top_article_val.strip():
+                    with st.spinner("네이버 부동산 매물 정보 실시간 조회 중..."):
+                        is_ok, msg, c_data = crawl_naver_article(top_article_val.strip())
+                        if is_ok:
+                            queue_state_update("apply_apt", data=c_data, clean_previous=True, success_msg=f"🎉 {msg} 즉시 자동 반영되었습니다.")
+                        else:
+                            st.error(f"⚠️ {msg}")
+                else:
+                    st.warning("매물 번호 또는 링크 URL을 입력해주세요.")
 
 # ----------------------------------------------------
-# 🌟 메인 2대 탭 구성 (1. 썸네일 생성 / 2. 네이버광고 점검표)
+# 🌟 요구사항 4번: 최상위 2대 메인 탭 (■ "썸네일" / ■ "중개대상물표시")
 # ----------------------------------------------------
-MAIN_TAB_LIST = [
-    "🏢 ① 아파트 썸네일",
-    "🏬 ② 상가 썸네일 (임차·매매)",
-    "📝 ③ 아파트 중개대상물 표시",
-    "🏪 ④ 상가 중개대상물 표시 (임차·매매)"
-]
+if st.session_state.get("last_applied_msg"):
+    st.success(st.session_state["last_applied_msg"])
 
-target_tab = st.session_state.pop("target_main_tab", None)
+# ----------------------------------------------------
+# 🏡 주택 점검표 기본값 세션 초기화
+# ----------------------------------------------------
+if "house_ad_location" not in st.session_state: st.session_state.house_ad_location = "부산광역시 사상구 덕포동"
+if "house_ad_area_land" not in st.session_state: st.session_state.house_ad_area_land = "192.0"
+if "house_ad_area_gross" not in st.session_state: st.session_state.house_ad_area_gross = "145.2"
+if "house_ad_floor_info" not in st.session_state: st.session_state.house_ad_floor_info = "지상 2층 / 지하 0층"
+if "house_ad_room_bath" not in st.session_state: st.session_state.house_ad_room_bath = "방 4 / 욕실 2개"
+if "house_ad_maintenance_fee" not in st.session_state: st.session_state.house_ad_maintenance_fee = "자체관리 (수도/전기/가스 실사용량 별도)"
+if "house_ad_trade_type" not in st.session_state: st.session_state.house_ad_trade_type = "매매"
+if "house_ad_price_text" not in st.session_state: st.session_state.house_ad_price_text = "3억 8,000만 원"
+if "house_ad_direction" not in st.session_state: st.session_state.house_ad_direction = "남향 (거실 기준)"
+if "house_ad_parking" not in st.session_state: st.session_state.house_ad_parking = "총 1대 가능 (마당/자주식)"
+if "house_ad_heating" not in st.session_state: st.session_state.house_ad_heating = "개별난방 / 도시가스"
+if "house_ad_move_in_date" not in st.session_state: st.session_state.house_ad_move_in_date = "즉시입주 협의가능"
+if "house_ad_building_use" not in st.session_state: st.session_state.house_ad_building_use = "단독주택"
+if "house_ad_structure" not in st.session_state: st.session_state.house_ad_structure = "벽돌구조 / 연와조"
+if "house_ad_approval_date" not in st.session_state: st.session_state.house_ad_approval_date = "1998년 05월 12일"
+if "house_ad_feature" not in st.session_state: st.session_state.house_ad_feature = "마당 넓음 · 올리모델링 완료"
+if "house_ad_include_office" not in st.session_state: st.session_state.house_ad_include_office = True
+if "house_ad_as_name" not in st.session_state: st.session_state.house_ad_as_name = ""
+if "house_ad_as_phone" not in st.session_state: st.session_state.house_ad_as_phone = ""
 
-if target_tab and target_tab in MAIN_TAB_LIST:
-    try:
-        tab_apt_thumb, tab_comm_thumb, tab_apt_ad, tab_comm_ad = st.tabs(MAIN_TAB_LIST, default=target_tab)
-    except TypeError:
-        tab_apt_thumb, tab_comm_thumb, tab_apt_ad, tab_comm_ad = st.tabs(MAIN_TAB_LIST)
+# ----------------------------------------------------
+# 🏭 공장 점검표 기본값 세션 초기화
+# ----------------------------------------------------
+if "factory_ad_location" not in st.session_state: st.session_state.factory_ad_location = "부산광역시 사상구 삼락동 사상공단"
+if "factory_ad_area_land" not in st.session_state: st.session_state.factory_ad_area_land = "826.5"
+if "factory_ad_area_gross" not in st.session_state: st.session_state.factory_ad_area_gross = "550.0"
+if "factory_ad_zoning" not in st.session_state: st.session_state.factory_ad_zoning = "일반공업지역 / 공장용지"
+if "factory_ad_building_use" not in st.session_state: st.session_state.factory_ad_building_use = "공장 (제조업소)"
+if "factory_ad_height" not in st.session_state: st.session_state.factory_ad_height = "처마 8.5m / 최고 9.5m"
+if "factory_ad_hoist" not in st.session_state: st.session_state.factory_ad_hoist = "5톤 1기 완비"
+if "factory_ad_power" not in st.session_state: st.session_state.factory_ad_power = "150kW 수전설비"
+if "factory_ad_road" not in st.session_state: st.session_state.factory_ad_road = "8m 포장도로 (츄레라/트레일러 진입 원활)"
+if "factory_ad_trade_type" not in st.session_state: st.session_state.factory_ad_trade_type = "매매"
+if "factory_ad_price_text" not in st.session_state: st.session_state.factory_ad_price_text = "18억 5,000만 원"
+if "factory_ad_maintenance_fee" not in st.session_state: st.session_state.factory_ad_maintenance_fee = "자체관리"
+if "factory_ad_parking" not in st.session_state: st.session_state.factory_ad_parking = "옥외 마당 5대 이상"
+if "factory_ad_move_in_date" not in st.session_state: st.session_state.factory_ad_move_in_date = "즉시입주 협의가능"
+if "factory_ad_approval_date" not in st.session_state: st.session_state.factory_ad_approval_date = "2015년 10월 20일"
+if "factory_ad_direction" not in st.session_state: st.session_state.factory_ad_direction = "남향 (주출입구 기준)"
+if "factory_ad_include_office" not in st.session_state: st.session_state.factory_ad_include_office = True
+if "factory_ad_as_name" not in st.session_state: st.session_state.factory_ad_as_name = ""
+if "factory_ad_as_phone" not in st.session_state: st.session_state.factory_ad_as_phone = ""
 
-    label_keyword = "③ 아파트 중개대상물" if "③" in target_tab else ("④ 상가 중개대상물" if "④" in target_tab else ("② 상가 썸네일" if "②" in target_tab else "① 아파트 썸네일"))
-    st.components.v1.html(f"""
-    <script>
-    function selectTargetTab() {{
-        try {{
-            var doc = window.parent.document;
-            var allTabs = doc.querySelectorAll('button[data-baseweb="tab"]');
-            for (var i = 0; i < allTabs.length; i++) {{
-                var txt = (allTabs[i].textContent || allTabs[i].innerText || "").trim();
-                if (txt.indexOf("{label_keyword}") !== -1) {{
-                    allTabs[i].click();
-                    return true;
-                }}
-            }}
-        }} catch (e) {{}}
-        return false;
-    }}
-    setTimeout(selectTargetTab, 50);
-    setTimeout(selectTargetTab, 150);
-    setTimeout(selectTargetTab, 350);
-    </script>
-    """, height=0, width=0)
-else:
-    tab_apt_thumb, tab_comm_thumb, tab_apt_ad, tab_comm_ad = st.tabs(MAIN_TAB_LIST)
 
 # ====================================================
-# [ 탭 1 ] 아파트 블로그 썸네일 생성기
+# [ 탭 1-1 ] 아파트 썸네일 생성기
 # ====================================================
-with tab_apt_thumb:
+def render_tab_apt_thumb():
+
     col_t_left, col_t_right = st.columns([1.25, 0.75])
     
     with col_t_left:
@@ -947,34 +1105,8 @@ with tab_apt_thumb:
         with col_pr3:
             st.caption("👈 버튼을 누르면 추천 예시가 즉시 채워집니다.")
 
-        # 레이아웃 설정
-        col_ly1, col_ly2 = st.columns([1.2, 1])
-        with col_ly1:
-            layout_options = {
-                "와이드 사선형 (⭐ 거실/실내 추천)": "side_wide",
-                "상하 파노라마형 (가로 100% 전경 극대화)": "top_panoramic",
-                "표준 사선형 (시안 기본 5:5 - 외관용)": "side_standard",
-            }
-            selected_layout_label = st.radio(
-                "레이아웃 모드",
-                options=list(layout_options.keys()),
-                index=0,
-                horizontal=True
-            )
-            layout_mode = layout_options[selected_layout_label]
-        
-        with col_ly2:
-            photo_width_ratio = 0.68
-            if layout_mode == "side_wide":
-                photo_width_ratio_pct = st.slider(
-                    "📷 사진 가로 비중 (와이드 조절)",
-                    min_value=50,
-                    max_value=76,
-                    value=68,
-                    step=2,
-                    format="%d%%"
-                )
-                photo_width_ratio = photo_width_ratio_pct / 100.0
+        # 요구사항 1번: 레이아웃 모드를 우측으로 이동하고 좌측에 디자인 모드 배치 (영구 저장 지원)
+        selected_design, layout_mode, photo_width_ratio = render_design_and_layout_controls("apt_thumb", default_design_name="🍊 참좋은 시그니처 오렌지 (기본)")
 
         # 사진 업로드
         uploaded_bg = st.file_uploader(
@@ -1017,7 +1149,10 @@ with tab_apt_thumb:
                 bg_offset_y=bg_offset_y,
                 bg_zoom=bg_zoom,
                 show_footer=st.session_state.thumb_show_footer,
-                footer_text=st.session_state.thumb_footer_text
+                footer_text=st.session_state.thumb_footer_text,
+                primary_color=selected_design["primary_color"],
+                accent_color=selected_design["accent_color"],
+                card_bg=selected_design["card_bg"]
             )
 
         # 🌟 썸네일 & 창문 부착용 A4 포스터 출력 2대 옵션
@@ -1049,7 +1184,11 @@ with tab_apt_thumb:
                     is_commercial=False,
                     bg_offset_x=bg_offset_x,
                     bg_offset_y=bg_offset_y,
-                    bg_zoom=bg_zoom
+                    bg_zoom=bg_zoom,
+                    office_tel=st.session_state.get("office_tel_input", "051-911-8249"),
+                    assistant_phone=st.session_state.get("assistant_phone_input", ""),
+                    primary_color_override=selected_design["primary_color"],
+                    accent_color_override=selected_design["accent_color"]
                 )
             st.image(a4_poster_img, caption="중개사무소 유리창 부착용 A4 브리핑 포스터 (초고화질 300 DPI)", use_container_width=True)
 
@@ -1088,6 +1227,22 @@ with tab_apt_thumb:
                 key="thumb_footer_text",
                 placeholder="미입력 시: 참좋은공인중개사사무소 (대표 신제환) ☎ 010-9667-4201"
             )
+            c_f_tel1, c_f_tel2 = st.columns(2)
+            with c_f_tel1:
+                st.text_input(
+                    "사무실 연락처 (창문 전단지용)",
+                    key="office_tel_input",
+                    value=st.session_state.get("office_tel_input", "051-911-8249"),
+                    help="창문 포스터 하단 띠지에 '사무실 연락처 : [번호]' 로 표시됩니다."
+                )
+            with c_f_tel2:
+                st.text_input(
+                    "📱 담당자 연락처 (창문 전단지용)",
+                    key="assistant_phone_input",
+                    value=st.session_state.get("assistant_phone_input", ""),
+                    placeholder="예: 010-9667-4201",
+                    help="연락처를 넣으시면 창문 전단지에 '담당자 : 연락처' 강조 배지가 들어갑니다."
+                )
 
         # 1. 썸네일 이미지 다운로드 바이트
         img_byte_arr = io.BytesIO()
@@ -1150,7 +1305,221 @@ with tab_apt_thumb:
 # ====================================================
 # [ 탭 2 ] 상가 썸네일 생성기 (임차 & 매매 2대 모드)
 # ====================================================
-with tab_comm_thumb:
+
+
+# ====================================================
+# [ 탭 1-2 ] 주택 썸네일 생성기 (단독·다가구·전원주택)
+# ====================================================
+def render_tab_house_thumb():
+    col_t_left, col_t_right = st.columns([1.25, 0.75])
+    
+    with col_t_left:
+        # 빠른 추천 프리셋
+        col_hpr1, col_hpr2, col_hpr3 = st.columns([1, 1, 1])
+        with col_hpr1:
+            if st.button("⚡ 덕포동 마당 단독주택 (매매)", use_container_width=True, key="btn_preset_house_1"):
+                st.session_state.house_item_no = "No. H-001"
+                st.session_state.house_main_title = "사상 덕포동 단독주택"
+                st.session_state.house_sub_title = "햇살 가득 남향 코너 마당"
+                st.session_state.house_feature_text = "대지 58평 · 올리모델링 완료"
+                st.session_state.house_trade_type = "매매"
+                st.session_state.house_price_text = "3억 8천"
+                st.session_state.house_spec1 = "지상 2층 / 단독주택"
+                st.session_state.house_spec2 = "대지 192㎡ / 연면적 145㎡"
+                st.session_state.house_spec3 = "방 4개 / 욕실 2개 (마당有)"
+                st.session_state.house_spec4 = "즉시입주 협의가능"
+                st.session_state.house_spec5 = "정남향 / 주차 1대 가능"
+                # 점검표도 동기화
+                st.session_state.house_ad_location = "부산광역시 사상구 덕포동"
+                st.session_state.house_ad_price_text = "3억 8,000만 원"
+                st.session_state.house_ad_trade_type = "매매"
+                st.session_state.house_ad_area_land = "192.0"
+                st.session_state.house_ad_area_gross = "145.2"
+                st.session_state.house_ad_floor_info = "지상 2층 / 지하 0층"
+                st.session_state.house_ad_room_bath = "방 4 / 욕실 2개"
+                st.session_state.house_ad_direction = "남향 (거실 기준)"
+                st.session_state.house_ad_parking = "총 1대 (마당/자주식)"
+                st.session_state.house_ad_move_in_date = "즉시입주 협의가능"
+                st.rerun()
+        with col_hpr2:
+            if st.button("⚡ 모라동 올리모델링 주택 (매매)", use_container_width=True, key="btn_preset_house_2"):
+                st.session_state.house_item_no = "No. H-002"
+                st.session_state.house_main_title = "사상 모라동 리모델링 주택"
+                st.session_state.house_sub_title = "역세권 도보 5분 생활권"
+                st.session_state.house_feature_text = "샤시·배관 올교체 첫입주"
+                st.session_state.house_trade_type = "매매"
+                st.session_state.house_price_text = "2억 9천"
+                st.session_state.house_spec1 = "지상 2층 단독주택"
+                st.session_state.house_spec2 = "대지 132㎡ / 연면적 98㎡"
+                st.session_state.house_spec3 = "방 3개 / 욕실 2개"
+                st.session_state.house_spec4 = "즉시입주 협의가능"
+                st.session_state.house_spec5 = "남동향 / 일조권 우수"
+                # 점검표도 동기화
+                st.session_state.house_ad_location = "부산광역시 사상구 모라동"
+                st.session_state.house_ad_price_text = "2억 9,000만 원"
+                st.session_state.house_ad_trade_type = "매매"
+                st.session_state.house_ad_area_land = "132.0"
+                st.session_state.house_ad_area_gross = "98.5"
+                st.session_state.house_ad_floor_info = "지상 2층 / 지하 0층"
+                st.session_state.house_ad_room_bath = "방 3 / 욕실 2개"
+                st.session_state.house_ad_direction = "남동향 (거실 기준)"
+                st.session_state.house_ad_parking = "인근 거주자 우선 주차"
+                st.session_state.house_ad_move_in_date = "즉시입주 협의가능"
+                st.rerun()
+        with col_hpr3:
+            st.caption("👈 버튼을 누르면 추천 주택 예시가 즉시 채워집니다.")
+
+        # 요구사항 1번: 디자인모드 및 레이아웃 모드
+        selected_design, layout_mode, photo_width_ratio = render_design_and_layout_controls("house_thumb", default_design_name="🌿 싱그러운 에메랄드 그린")
+
+        # 사진 업로드
+        uploaded_house_bg = st.file_uploader(
+            "📸 주택 현장 실물/외관 사진 업로드 (스마트폰 촬영 사진 즉시 지원)",
+            type=["jpg", "jpeg", "png", "webp"],
+            key="house_thumb_uploader"
+        )
+
+        with st.expander("🔍 사진 위치 / 확대 미세 조정", expanded=False):
+            h_z1, h_z2, h_z3 = st.columns(3)
+            with h_z1:
+                house_bg_zoom = st.slider("사진 확대/축소", 0.6, 2.0, 1.0, 0.05, key="house_bg_zoom")
+            with h_z2:
+                house_bg_ox = st.slider("사진 좌우 이동 (px)", -450, 450, 0, 10, key="house_bg_ox")
+            with h_z3:
+                house_bg_oy = st.slider("사진 상하 이동 (px)", -450, 450, 0, 10, key="house_bg_oy")
+
+        # 썸네일 렌더링
+        house_specs = [
+            st.session_state.house_spec1,
+            st.session_state.house_spec2,
+            st.session_state.house_spec3,
+            st.session_state.house_spec4,
+            st.session_state.house_spec5
+        ]
+
+        with st.spinner("고화질 주택 썸네일 렌더링 중..."):
+            house_thumb_img = render_thumbnail(
+                bg_image=uploaded_house_bg,
+                item_no=st.session_state.house_item_no,
+                main_title=st.session_state.house_main_title,
+                sub_title=st.session_state.house_sub_title,
+                feature_text=st.session_state.house_feature_text,
+                trade_type=st.session_state.house_trade_type,
+                price_text=st.session_state.house_price_text,
+                spec_lines=house_specs,
+                layout_mode=layout_mode,
+                photo_width_ratio=photo_width_ratio,
+                bg_offset_x=house_bg_ox,
+                bg_offset_y=house_bg_oy,
+                bg_zoom=house_bg_zoom,
+                show_footer=st.session_state.house_show_footer,
+                footer_text=st.session_state.house_footer_text,
+                primary_color=selected_design["primary_color"],
+                accent_color=selected_design["accent_color"],
+                card_bg=selected_design["card_bg"]
+            )
+
+        tab_h_view_thumb, tab_h_view_a4 = st.tabs([
+            "🖼️ 1. 주택 블로그 썸네일 (1080x1080)",
+            "🖨️ 2. 중개사무소 창문 부착용 A4 포스터 (210x297mm)"
+        ])
+
+        with tab_h_view_thumb:
+            st.image(house_thumb_img, caption="주택 블로그 썸네일 실시간 미리보기 (1080 x 1080 px)", use_container_width=True)
+
+        with tab_h_view_a4:
+            with st.spinner("창문 부착용 300DPI 초고화질 A4 포스터 렌더링 중..."):
+                house_a4_img = render_a4_window_poster(
+                    thumbnail_img=None,
+                    bg_image=uploaded_house_bg,
+                    item_no=st.session_state.house_item_no,
+                    main_title=st.session_state.house_main_title,
+                    sub_title=st.session_state.house_sub_title,
+                    feature_text=st.session_state.house_feature_text,
+                    trade_type=st.session_state.house_trade_type,
+                    price_text=st.session_state.house_price_text,
+                    spec_lines=house_specs,
+                    office_name=st.session_state.get("ad_office_name", "참좋은공인중개사사무소"),
+                    office_owner=st.session_state.get("ad_office_owner", "신제환"),
+                    office_phone=st.session_state.get("ad_office_phone", "010-9667-4201"),
+                    office_reg_no=st.session_state.get("ad_office_reg_no", "제 26530-2026-00009 호"),
+                    office_address=st.session_state.get("ad_office_address", "부산광역시 사상구 강선로 9, 1층"),
+                    is_commercial=False,
+                    bg_offset_x=house_bg_ox,
+                    bg_offset_y=house_bg_oy,
+                    bg_zoom=house_bg_zoom,
+                    office_tel=st.session_state.get("house_office_tel", "051-911-8249"),
+                    assistant_phone=st.session_state.get("house_assistant_phone", ""),
+                    primary_color_override=selected_design["primary_color"],
+                    accent_color_override=selected_design["accent_color"]
+                )
+            st.image(house_a4_img, caption="중개사무소 유리창 부착용 주택 브리핑 포스터 (초고화질 300 DPI)", use_container_width=True)
+
+    with col_t_right:
+        st.markdown("### 🛠️ 주택 썸네일 텍스트 수정")
+        st.text_input("🏷️ 물건 번호", key="house_item_no")
+        st.text_input("🏡 메인 타이틀 (주택명)", key="house_main_title")
+        st.text_input("📍 서브 타이틀 (동/지역명)", key="house_sub_title")
+        st.text_input("✨ 매물 핵심 특징", key="house_feature_text")
+
+        c_ht1, c_ht2 = st.columns([1, 1.3])
+        with c_ht1:
+            h_trade_opts = ["매매", "전세", "월세", "급매"]
+            if st.session_state.house_trade_type not in h_trade_opts:
+                h_trade_opts.append(st.session_state.house_trade_type)
+            st.selectbox("거래 형태", h_trade_opts, key="house_trade_type")
+        with c_ht2:
+            st.text_input("금액 (예: 3억 8천)", key="house_price_text")
+
+        st.markdown("#### 📋 5대 스펙 텍스트")
+        st.text_input("1행: 층수 / 구조", key="house_spec1")
+        st.text_input("2행: 대지 / 연면적", key="house_spec2")
+        st.text_input("3행: 방/욕실 수 (마당 등)", key="house_spec3")
+        st.text_input("4행: 입주시기", key="house_spec4")
+        st.text_input("5행: 방향 및 주차", key="house_spec5")
+
+        st.markdown("#### 🏢 하단 띠지 (중개사무소 정보)")
+        st.checkbox("하단 띠지 표시 (체크 해제 시 전체 사진 영역 확장)", key="house_show_footer")
+        if st.session_state.house_show_footer:
+            st.text_input("띠지 문구 (소공/직원 커스텀 가능)", key="house_footer_text", placeholder="미입력 시: 참좋은공인중개사사무소 (대표 신제환) ☎ 010-9667-4201")
+            c_hf1, c_hf2 = st.columns(2)
+            with c_hf1:
+                st.text_input("사무실 연락처 (창문 전단지용)", key="house_office_tel", value=st.session_state.get("house_office_tel", "051-911-8249"))
+            with c_hf2:
+                st.text_input("📱 담당자 연락처 (창문 전단지용)", key="house_assistant_phone", value=st.session_state.get("house_assistant_phone", ""), placeholder="예: 010-9667-4201")
+
+        # 다운로드 바이트
+        h_thumb_io = io.BytesIO()
+        house_thumb_img.save(h_thumb_io, format="PNG", quality=98)
+        h_thumb_bytes = h_thumb_io.getvalue()
+
+        clean_h_title = re.sub(r'[^\w\s-]', '', (st.session_state.house_main_title or "주택")).strip().replace(" ", "_")
+        clean_h_price = re.sub(r'[^\w\s-]', '', (st.session_state.house_price_text or "")).strip().replace(" ", "")
+        h_down_name = f"주택썸네일_{clean_h_title}_{st.session_state.house_trade_type}_{clean_h_price}.png"
+
+        h_a4_io = io.BytesIO()
+        house_a4_img.save(h_a4_io, format="PNG", quality=98)
+        h_a4_bytes = h_a4_io.getvalue()
+        h_a4_name = f"창문부착용_주택포스터_{clean_h_title}_{clean_h_price}.png"
+
+        st.markdown("<hr style='margin: 15px 0 12px 0;'/>", unsafe_allow_html=True)
+        st.markdown("### 📥 출력 및 저장 옵션")
+
+        t_h_down, t_h_a4 = st.tabs(["🖼️ 1. 주택 썸네일 저장", "🖨️ 2. 창문 포스터 즉시 출력/저장"])
+        with t_h_down:
+            st.download_button("📥 1080x1080 썸네일 저장 (기본)", data=h_thumb_bytes, file_name=h_down_name, mime="image/png", key="btn_h_thumb_down", use_container_width=True)
+            st.markdown(render_direct_download_button(h_thumb_bytes, h_down_name, "💾 [즉시 다운로드] 주택 썸네일 파일 저장"), unsafe_allow_html=True)
+        with t_h_a4:
+            st.markdown(render_direct_print_button(h_a4_bytes, h_a4_name, "🖨️ [원클릭 즉시 인쇄] 창문 부착용 A4 바로 출력 (Ctrl+P)", bg_color="#1A202C"), unsafe_allow_html=True)
+            st.download_button("📥 300DPI A4 포스터 파일 저장", data=h_a4_bytes, file_name=h_a4_name, mime="image/png", key="btn_h_a4_down", use_container_width=True)
+            st.markdown(render_direct_download_button(h_a4_bytes, h_a4_name, "💾 [즉시 다운로드] A4 포스터 원클릭 저장", bg_color="#2B6CB0"), unsafe_allow_html=True)
+
+
+# ====================================================
+# [ 탭 1-3 ] 상가 썸네일 생성기 (임차 & 매매 2대 모드)
+# ====================================================
+def render_tab_comm_thumb():
+
     col_ct_left, col_ct_right = st.columns([1.25, 0.75])
     
     with col_ct_left:
@@ -1178,6 +1547,9 @@ with tab_comm_thumb:
                 st.rerun()
         with col_cpr3:
             st.caption("👈 버튼을 누르면 추천 예시가 즉시 채워집니다.")
+
+        # 요구사항 1번: 상가 디자인모드 및 레이아웃 모드
+        selected_comm_design, comm_layout_mode, comm_photo_ratio = render_design_and_layout_controls("comm_thumb", default_design_name="👑 럭셔리 골드 (상가·수익형)")
 
         # 내가 찍어온 사진 업로드
         uploaded_comm_bg = st.file_uploader(
@@ -1287,7 +1659,11 @@ with tab_comm_thumb:
                     office_phone=st.session_state.get("comm_ad_office_phone", "010-9667-4201"),
                     office_reg_no=st.session_state.get("comm_ad_office_reg_no", "제 26530-2026-00009 호"),
                     office_address=st.session_state.get("comm_ad_office_address", "부산광역시 사상구 강선로 9, 1층"),
-                    is_commercial=True
+                    is_commercial=True,
+                    office_tel=st.session_state.get("comm_office_tel_input", "051-911-8249"),
+                    assistant_phone=st.session_state.get("comm_assistant_phone_input", ""),
+                    primary_color_override=selected_comm_design["primary_color"],
+                    accent_color_override=selected_comm_design["accent_color"]
                 )
             st.image(comm_a4_poster_img, caption="상가 유리창 부착용 A4 브리핑 포스터 (초고화질 300 DPI)", use_container_width=True)
 
@@ -1404,7 +1780,223 @@ with tab_comm_thumb:
 # [ 탭 3 ] 아파트 네이버 광고 & 대상중개물 표시 생성기
 # (신소장님 지정 16개 순서 완벽 적용)
 # ====================================================
-with tab_apt_ad:
+
+
+# ====================================================
+# [ 탭 1-4 ] 공장 / 창고 썸네일 생성기
+# ====================================================
+def render_tab_factory_thumb():
+    col_t_left, col_t_right = st.columns([1.25, 0.75])
+    
+    with col_t_left:
+        # 빠른 추천 프리셋
+        col_fpr1, col_fpr2, col_fpr3 = st.columns([1, 1, 1])
+        with col_fpr1:
+            if st.button("⚡ 사상공단 1급 제조공장 (매매)", use_container_width=True, key="btn_preset_factory_1"):
+                st.session_state.factory_item_no = "No. F-001"
+                st.session_state.factory_main_title = "사상공단 1급 제조공장"
+                st.session_state.factory_sub_title = "대형 츄레라 진입 · 호이스트 5톤"
+                st.session_state.factory_feature_text = "대지 250평 · 동력 150kW 완비"
+                st.session_state.factory_trade_type = "매매"
+                st.session_state.factory_price_text = "18억 5천"
+                st.session_state.factory_spec1 = "일반공업지역 / 공장용지"
+                st.session_state.factory_spec2 = "대지 826㎡ / 연면적 550㎡"
+                st.session_state.factory_spec3 = "호이스트 5T 1기 / 층고 9.5m"
+                st.session_state.factory_spec4 = "동력 150kW / 진입로 8m"
+                st.session_state.factory_spec5 = "즉시가동 협의가능"
+                # 점검표도 동기화
+                st.session_state.factory_ad_location = "부산광역시 사상구 삼락동 사상공단"
+                st.session_state.factory_ad_trade_type = "매매"
+                st.session_state.factory_ad_price_text = "18억 5,000만 원"
+                st.session_state.factory_ad_area_land = "826.5"
+                st.session_state.factory_ad_area_gross = "550.0"
+                st.session_state.factory_ad_height = "처마 8.5m / 최고 9.5m"
+                st.session_state.factory_ad_hoist = "5톤 1기 완비"
+                st.session_state.factory_ad_power = "150kW 수전설비"
+                st.session_state.factory_ad_road = "8m 포장도로 (츄레라 진입 원활)"
+                st.session_state.factory_ad_parking = "옥외 마당 5대 이상"
+                st.session_state.factory_ad_move_in_date = "즉시입주 협의가능"
+                st.rerun()
+        with col_fpr2:
+            if st.button("⚡ 강서 대저동 신축 창고 (임대)", use_container_width=True, key="btn_preset_factory_2"):
+                st.session_state.factory_item_no = "No. F-002"
+                st.session_state.factory_main_title = "강서 대저동 신축 물류창고"
+                st.session_state.factory_sub_title = "IC 5분 / 대형 트럭 진입 원활"
+                st.session_state.factory_feature_text = "마당 넓음 · 캐노피 설치 완료"
+                st.session_state.factory_trade_type = "월세"
+                st.session_state.factory_price_text = "보3,000/월250"
+                st.session_state.factory_spec1 = "제2종근생(제조업소/창고)"
+                st.session_state.factory_spec2 = "대지 660㎡ / 연면적 396㎡ (120평)"
+                st.session_state.factory_spec3 = "층고 8m / 바닥 에폭시 완비"
+                st.session_state.factory_spec4 = "동력 30kW / 진입로 8m"
+                st.session_state.factory_spec5 = "단독 마당 · 주차 8대"
+                # 점검표도 동기화
+                st.session_state.factory_ad_location = "부산광역시 강서구 대저동"
+                st.session_state.factory_ad_trade_type = "월세"
+                st.session_state.factory_ad_price_text = "보증금 3,000만 원 / 월 250만 원"
+                st.session_state.factory_ad_area_land = "660.0"
+                st.session_state.factory_ad_area_gross = "396.0"
+                st.session_state.factory_ad_height = "처마 7.5m / 최고 8.5m"
+                st.session_state.factory_ad_hoist = "무 (필요시 협의)"
+                st.session_state.factory_ad_power = "30kW"
+                st.session_state.factory_ad_road = "8m 아스팔트 포장도로"
+                st.session_state.factory_ad_parking = "단독 마당 8대 가능"
+                st.session_state.factory_ad_move_in_date = "즉시입주 가능"
+                st.rerun()
+        with col_fpr3:
+            st.caption("👈 버튼을 누르면 추천 공장/창고 예시가 즉시 채워집니다.")
+
+        # 요구사항 1번: 디자인모드 및 레이아웃 모드
+        selected_design, layout_mode, photo_width_ratio = render_design_and_layout_controls("factory_thumb", default_design_name="💎 로열 사파이어 블루")
+
+        # 사진 업로드
+        uploaded_factory_bg = st.file_uploader(
+            "📸 공장/창고 현장 실물/외관 사진 업로드 (스마트폰 촬영 사진 즉시 지원)",
+            type=["jpg", "jpeg", "png", "webp"],
+            key="factory_thumb_uploader"
+        )
+
+        with st.expander("🔍 사진 위치 / 확대 미세 조정", expanded=False):
+            f_z1, f_z2, f_z3 = st.columns(3)
+            with f_z1:
+                factory_bg_zoom = st.slider("사진 확대/축소", 0.6, 2.0, 1.0, 0.05, key="factory_bg_zoom")
+            with f_z2:
+                factory_bg_ox = st.slider("사진 좌우 이동 (px)", -450, 450, 0, 10, key="factory_bg_ox")
+            with f_z3:
+                factory_bg_oy = st.slider("사진 상하 이동 (px)", -450, 450, 0, 10, key="factory_bg_oy")
+
+        # 썸네일 렌더링
+        factory_specs = [
+            st.session_state.factory_spec1,
+            st.session_state.factory_spec2,
+            st.session_state.factory_spec3,
+            st.session_state.factory_spec4,
+            st.session_state.factory_spec5
+        ]
+
+        with st.spinner("고화질 공장 썸네일 렌더링 중..."):
+            factory_thumb_img = render_thumbnail(
+                bg_image=uploaded_factory_bg,
+                item_no=st.session_state.factory_item_no,
+                main_title=st.session_state.factory_main_title,
+                sub_title=st.session_state.factory_sub_title,
+                feature_text=st.session_state.factory_feature_text,
+                trade_type=st.session_state.factory_trade_type,
+                price_text=st.session_state.factory_price_text,
+                spec_lines=factory_specs,
+                layout_mode=layout_mode,
+                photo_width_ratio=photo_width_ratio,
+                bg_offset_x=factory_bg_ox,
+                bg_offset_y=factory_bg_oy,
+                bg_zoom=factory_bg_zoom,
+                show_footer=st.session_state.factory_show_footer,
+                footer_text=st.session_state.factory_footer_text,
+                primary_color=selected_design["primary_color"],
+                accent_color=selected_design["accent_color"],
+                card_bg=selected_design["card_bg"]
+            )
+
+        tab_f_view_thumb, tab_f_view_a4 = st.tabs([
+            "🖼️ 1. 공장 블로그 썸네일 (1080x1080)",
+            "🖨️ 2. 중개사무소 창문 부착용 A4 포스터 (210x297mm)"
+        ])
+
+        with tab_f_view_thumb:
+            st.image(factory_thumb_img, caption="공장 블로그 썸네일 실시간 미리보기 (1080 x 1080 px)", use_container_width=True)
+
+        with tab_f_view_a4:
+            with st.spinner("창문 부착용 300DPI 초고화질 A4 포스터 렌더링 중..."):
+                factory_a4_img = render_a4_window_poster(
+                    thumbnail_img=None,
+                    bg_image=uploaded_factory_bg,
+                    item_no=st.session_state.factory_item_no,
+                    main_title=st.session_state.factory_main_title,
+                    sub_title=st.session_state.factory_sub_title,
+                    feature_text=st.session_state.factory_feature_text,
+                    trade_type=st.session_state.factory_trade_type,
+                    price_text=st.session_state.factory_price_text,
+                    spec_lines=factory_specs,
+                    office_name=st.session_state.get("ad_office_name", "참좋은공인중개사사무소"),
+                    office_owner=st.session_state.get("ad_office_owner", "신제환"),
+                    office_phone=st.session_state.get("ad_office_phone", "010-9667-4201"),
+                    office_reg_no=st.session_state.get("ad_office_reg_no", "제 26530-2026-00009 호"),
+                    office_address=st.session_state.get("ad_office_address", "부산광역시 사상구 강선로 9, 1층"),
+                    is_commercial=False,
+                    bg_offset_x=factory_bg_ox,
+                    bg_offset_y=factory_bg_oy,
+                    bg_zoom=factory_bg_zoom,
+                    office_tel=st.session_state.get("factory_office_tel", "051-911-8249"),
+                    assistant_phone=st.session_state.get("factory_assistant_phone", ""),
+                    primary_color_override=selected_design["primary_color"],
+                    accent_color_override=selected_design["accent_color"]
+                )
+            st.image(factory_a4_img, caption="중개사무소 유리창 부착용 공장 브리핑 포스터 (초고화질 300 DPI)", use_container_width=True)
+
+    with col_t_right:
+        st.markdown("### 🛠️ 공장 썸네일 텍스트 수정")
+        st.text_input("🏷️ 물건 번호", key="factory_item_no")
+        st.text_input("🏭 메인 타이틀 (공장/창고명)", key="factory_main_title")
+        st.text_input("📍 서브 타이틀 (동/공단명)", key="factory_sub_title")
+        st.text_input("✨ 매물 핵심 특징", key="factory_feature_text")
+
+        c_ft1, c_ft2 = st.columns([1, 1.3])
+        with c_ft1:
+            f_trade_opts = ["매매", "월세", "임대", "급매"]
+            if st.session_state.factory_trade_type not in f_trade_opts:
+                f_trade_opts.append(st.session_state.factory_trade_type)
+            st.selectbox("거래 형태", f_trade_opts, key="factory_trade_type")
+        with c_ft2:
+            st.text_input("금액 (예: 18억 5천)", key="factory_price_text")
+
+        st.markdown("#### 📋 5대 스펙 텍스트")
+        st.text_input("1행: 용도지역 / 지목", key="factory_spec1")
+        st.text_input("2행: 대지 / 연면적", key="factory_spec2")
+        st.text_input("3행: 호이스트 / 층고", key="factory_spec3")
+        st.text_input("4행: 동력 / 진입도로", key="factory_spec4")
+        st.text_input("5행: 입주 및 주차", key="factory_spec5")
+
+        st.markdown("#### 🏢 하단 띠지 (중개사무소 정보)")
+        st.checkbox("하단 띠지 표시 (체크 해제 시 전체 사진 영역 확장)", key="factory_show_footer")
+        if st.session_state.factory_show_footer:
+            st.text_input("띠지 문구 (소공/직원 커스텀 가능)", key="factory_footer_text", placeholder="미입력 시: 참좋은공인중개사사무소 (대표 신제환) ☎ 010-9667-4201")
+            c_ff1, c_ff2 = st.columns(2)
+            with c_ff1:
+                st.text_input("사무실 연락처 (창문 전단지용)", key="factory_office_tel", value=st.session_state.get("factory_office_tel", "051-911-8249"))
+            with c_ff2:
+                st.text_input("📱 담당자 연락처 (창문 전단지용)", key="factory_assistant_phone", value=st.session_state.get("factory_assistant_phone", ""), placeholder="예: 010-9667-4201")
+
+        # 다운로드 바이트
+        f_thumb_io = io.BytesIO()
+        factory_thumb_img.save(f_thumb_io, format="PNG", quality=98)
+        f_thumb_bytes = f_thumb_io.getvalue()
+
+        clean_f_title = re.sub(r'[^\w\s-]', '', (st.session_state.factory_main_title or "공장")).strip().replace(" ", "_")
+        clean_f_price = re.sub(r'[^\w\s-]', '', (st.session_state.factory_price_text or "")).strip().replace(" ", "")
+        f_down_name = f"공장썸네일_{clean_f_title}_{st.session_state.factory_trade_type}_{clean_f_price}.png"
+
+        f_a4_io = io.BytesIO()
+        factory_a4_img.save(f_a4_io, format="PNG", quality=98)
+        f_a4_bytes = f_a4_io.getvalue()
+        f_a4_name = f"창문부착용_공장포스터_{clean_f_title}_{clean_f_price}.png"
+
+        st.markdown("<hr style='margin: 15px 0 12px 0;'/>", unsafe_allow_html=True)
+        st.markdown("### 📥 출력 및 저장 옵션")
+
+        t_f_down, t_f_a4 = st.tabs(["🖼️ 1. 공장 썸네일 저장", "🖨️ 2. 창문 포스터 즉시 출력/저장"])
+        with t_f_down:
+            st.download_button("📥 1080x1080 썸네일 저장 (기본)", data=f_thumb_bytes, file_name=f_down_name, mime="image/png", key="btn_f_thumb_down", use_container_width=True)
+            st.markdown(render_direct_download_button(f_thumb_bytes, f_down_name, "💾 [즉시 다운로드] 공장 썸네일 파일 저장"), unsafe_allow_html=True)
+        with t_f_a4:
+            st.markdown(render_direct_print_button(f_a4_bytes, f_a4_name, "🖨️ [원클릭 즉시 인쇄] 창문 부착용 A4 바로 출력 (Ctrl+P)", bg_color="#1A202C"), unsafe_allow_html=True)
+            st.download_button("📥 300DPI A4 포스터 파일 저장", data=f_a4_bytes, file_name=f_a4_name, mime="image/png", key="btn_f_a4_down", use_container_width=True)
+            st.markdown(render_direct_download_button(f_a4_bytes, f_a4_name, "💾 [즉시 다운로드] A4 포스터 원클릭 저장", bg_color="#2B6CB0"), unsafe_allow_html=True)
+
+
+# ====================================================
+# [ 탭 2-1 ] 아파트 네이버 광고 & 중개대상물 표시 생성기
+# ====================================================
+def render_tab_apt_ad():
+
     st.markdown("""
     <div style="background-color: #F8F9FB; border-left: 4px solid #F48A26; padding: 12px 18px; border-radius: 6px; margin-bottom: 20px;">
         <span style="font-size: 15px; font-weight: 700; color: #1E2022;">
@@ -1986,7 +2578,148 @@ with tab_apt_ad:
 # ====================================================
 # [ 탭 4 ] 상가 중개대상물 표시 생성기 (임차 & 매매 전용)
 # ====================================================
-with tab_comm_ad:
+
+
+# ====================================================
+# [ 탭 2-2 ] 주택 네이버 광고 & 중개대상물 표시 생성기
+# ====================================================
+def render_tab_house_ad():
+    st.markdown('''
+    <div style="background-color: #F8F9FB; border-left: 4px solid #38A169; padding: 12px 18px; border-radius: 6px; margin-bottom: 20px;">
+        <span style="font-size: 15px; font-weight: 700; color: #1E2022;">
+            🏡 주택(단독·다가구·전원주택) 인터넷 표시·광고 점검표 (16개 법정 항목)
+        </span><br/>
+        <span style="font-size: 13px; color: #6C757D;">
+            단독주택, 다가구, 상가주택 등 주택 실무에 특화된 16개 법정 표시항목을 블로그 표 및 네이버 광고 형식으로 완벽하게 자동 생성합니다.
+        </span>
+    </div>
+    ''', unsafe_allow_html=True)
+
+    # 상단 썸네일 데이터 실시간 동기화 배너
+    col_hs1, col_hs2 = st.columns([3, 1])
+    with col_hs1:
+        st.markdown('''
+        <div style="font-size:13.5px; color:#22543D; background:#F0FFF4; border:1px solid #9AE6B4; padding:8px 14px; border-radius:6px;">
+            🔄 <b>주택 썸네일 데이터 연동:</b> 썸네일에서 수정한 주택명, 거래형태, 가격, 층수, 방수, 입주일, 방향이 점검표에 자동 연동됩니다.
+        </div>
+        ''', unsafe_allow_html=True)
+    with col_hs2:
+        if st.button("🔄 주택 썸네일값 즉시 동기화", key="btn_sync_house_ad", use_container_width=True):
+            st.session_state.house_ad_trade_type = st.session_state.house_trade_type
+            st.session_state.house_ad_price_text = st.session_state.house_price_text
+            st.session_state.house_ad_floor_info = st.session_state.house_spec1
+            st.session_state.house_ad_room_bath = st.session_state.house_spec3
+            st.session_state.house_ad_move_in_date = st.session_state.house_spec4
+            st.session_state.house_ad_direction = st.session_state.house_spec5
+            if st.session_state.house_main_title:
+                st.session_state.house_ad_location = f"부산광역시 사상구 ({st.session_state.house_main_title})"
+            st.success("주택 썸네일 데이터가 점검표에 동기화되었습니다!")
+            st.rerun()
+
+    # 좌우 분할 (입력 폼 / 실시간 미리보기)
+    col_in, col_out = st.columns([1.1, 1.2])
+    with col_in:
+        st.markdown("### 📋 주택 16대 점검항목 입력 및 수정")
+        st.text_input("1. 소재지 (지번 포함)", key="house_ad_location")
+        c_a1, c_a2 = st.columns(2)
+        with c_a1:
+            st.text_input("2-1. 대지면적 (㎡)", key="house_ad_area_land")
+        with c_a2:
+            st.text_input("2-2. 연면적 (㎡)", key="house_ad_area_gross")
+        st.text_input("3. 해당층 / 총층", key="house_ad_floor_info")
+        st.text_input("4. 방수 / 욕실수", key="house_ad_room_bath")
+        st.text_input("5. 관리비 (세부내역)", key="house_ad_maintenance_fee")
+        c_t1, c_t2 = st.columns(2)
+        with c_t1:
+            st.selectbox("6. 거래 형태", ["매매", "전세", "월세", "급매"], key="house_ad_trade_type")
+        with c_t2:
+            st.text_input("7. 거래 금액", key="house_ad_price_text")
+        st.text_input("8. 주실(거실) 방향", key="house_ad_direction")
+        st.text_input("9. 주차 대수", key="house_ad_parking")
+        st.text_input("10. 난방 방식 / 연료", key="house_ad_heating")
+        st.text_input("11. 입주 가능일", key="house_ad_move_in_date")
+        st.text_input("12. 건축물 용도", key="house_ad_building_use")
+        st.text_input("13. 주구조", key="house_ad_structure")
+        st.text_input("14. 사용승인일", key="house_ad_approval_date")
+        st.text_input("15. 주요 특징", key="house_ad_feature")
+
+        st.markdown("#### 🏢 중개사무소 정보")
+        st.checkbox("중개사무소 정보 포함", value=True, key="house_ad_include_office")
+        c_as1, c_as2 = st.columns(2)
+        with c_as1:
+            st.text_input("소속공인중개사(직원) 성명", key="house_ad_as_name", placeholder="미입력 시 생략")
+        with c_as2:
+            st.text_input("소속공인중개사 연락처", key="house_ad_as_phone", placeholder="미입력 시 생략")
+
+    with col_out:
+        st.markdown("### 📊 실시간 주택 점검표 미리보기 & 복사")
+        house_dict = {
+            "location": st.session_state.house_ad_location,
+            "area_land": st.session_state.house_ad_area_land,
+            "area_gross": st.session_state.house_ad_area_gross,
+            "floor_info": st.session_state.house_ad_floor_info,
+            "room_bath": st.session_state.house_ad_room_bath,
+            "maintenance_fee": st.session_state.house_ad_maintenance_fee,
+            "trade_type": st.session_state.house_ad_trade_type,
+            "price_text": st.session_state.house_ad_price_text,
+            "direction": st.session_state.house_ad_direction,
+            "parking": st.session_state.house_ad_parking,
+            "heating": st.session_state.house_ad_heating,
+            "move_in_date": st.session_state.house_ad_move_in_date,
+            "building_use": st.session_state.house_ad_building_use,
+            "structure": st.session_state.house_ad_structure,
+            "approval_date": st.session_state.house_ad_approval_date,
+            "feature": st.session_state.house_ad_feature,
+            "include_office_info": st.session_state.house_ad_include_office,
+            "office_name": st.session_state.get("ad_office_name", "참좋은공인중개사사무소"),
+            "office_owner": st.session_state.get("ad_office_owner", "신제환"),
+            "office_reg_no": st.session_state.get("ad_office_reg_no", "제 26530-2026-00009 호"),
+            "office_address": st.session_state.get("ad_office_address", "부산광역시 사상구 강선로 9, 1층"),
+            "office_phone": st.session_state.get("ad_office_phone", "010-9667-4201"),
+            "assistant_name": st.session_state.house_ad_as_name,
+            "assistant_phone": st.session_state.house_ad_as_phone
+        }
+        house_items = get_house_spec_table_data(house_dict)
+        house_html = generate_blog_html_table(house_dict, items=house_items)
+        house_txt = generate_clipboard_text(house_dict, items=house_items)
+        house_guide = generate_naver_ad_guide_text(house_dict, items=house_items)
+
+        tab_hov1, tab_hov2, tab_hov3, tab_hov4 = st.tabs([
+            "📋 1. 스마트에디터 HTML 표 복사",
+            "📄 2. 네이버광고 등록 체크리스트",
+            "💬 3. 텍스트 복사 (카톡/본문)",
+            "🖼️ 4. 고화질 카드 이미지 저장"
+        ])
+
+        with tab_hov1:
+            st.markdown(house_html, unsafe_allow_html=True)
+            st.markdown(render_copy_button(house_html, "📋 [원클릭 복사] 블로그 스마트에디터 표 서식 복사", "btn_copy_h_html"), unsafe_allow_html=True)
+
+        with tab_hov2:
+            st.text_area("네이버 광고 등록용", value=house_guide, height=350, key="txt_h_guide")
+            st.markdown(render_copy_button(house_guide, "📄 [원클릭 복사] 네이버 등록 가이드 복사", "btn_copy_h_guide"), unsafe_allow_html=True)
+
+        with tab_hov3:
+            st.text_area("텍스트 양식", value=house_txt, height=350, key="txt_h_clip")
+            st.markdown(render_copy_button(house_txt, "💬 [원클릭 복사] 일반 텍스트 복사", "btn_copy_h_txt"), unsafe_allow_html=True)
+
+        with tab_hov4:
+            with st.spinner("주택 점검표 카드 이미지 생성 중..."):
+                h_card_img = render_spec_table_image(house_dict, items=house_items)
+            st.image(h_card_img, caption="1080px 정방형 중개대상물 표시 카드", use_container_width=True)
+            h_card_io = io.BytesIO()
+            h_card_img.save(h_card_io, format="PNG", quality=98)
+            h_card_bytes = h_card_io.getvalue()
+            h_card_name = f"중개대상물표시_주택_{st.session_state.house_ad_trade_type}.png"
+            st.download_button("📥 1080px 주택 표시 카드 파일 다운로드", data=h_card_bytes, file_name=h_card_name, mime="image/png", key="btn_h_card_down", use_container_width=True)
+            st.markdown(render_direct_download_button(h_card_bytes, h_card_name, "💾 [즉시 다운로드] 주택 표시 카드 저장", "#1A202C"), unsafe_allow_html=True)
+
+
+# ====================================================
+# [ 탭 2-3 ] 상가 네이버 광고 & 중개대상물 표시 생성기 (임차 & 매매)
+# ====================================================
+def render_tab_comm_ad():
+
     st.markdown("""
     <div style="background-color: #181C24; border-left: 4px solid #DAA844; padding: 14px 18px; border-radius: 6px; margin-bottom: 20px; color: #FFFFFF;">
         <span style="font-size: 16px; font-weight: 700; color: #DAA844;">
@@ -2507,3 +3240,183 @@ with tab_comm_ad:
             st.markdown(render_direct_download_button(comm_card_bytes, comm_card_filename, "💾 [원클릭 즉시 다운로드] 1080px 상가 표시 카드 저장", bg_color="#DAA844"), unsafe_allow_html=True)
             st.caption("스마트폰에서는 위 버튼을 누르시면 사진첩에 바로 다운로드 저장됩니다.")
 
+
+# ====================================================
+# [ 탭 2-4 ] 공장 / 창고 네이버 광고 & 중개대상물 표시 생성기
+# ====================================================
+def render_tab_factory_ad():
+    st.markdown('''
+    <div style="background-color: #F8F9FB; border-left: 4px solid #3182CE; padding: 12px 18px; border-radius: 6px; margin-bottom: 20px;">
+        <span style="font-size: 15px; font-weight: 700; color: #1E2022;">
+            🏭 공장 / 창고 인터넷 표시·광고 점검표 (16개 법정 항목)
+        </span><br/>
+        <span style="font-size: 13px; color: #6C757D;">
+            공장용지, 층고, 호이스트, 전력(동력 kW), 진입도로 폭 등 공장/창고 실무에 특화된 법정 항목을 완벽 지원합니다.
+        </span>
+    </div>
+    ''', unsafe_allow_html=True)
+
+    # 상단 썸네일 데이터 실시간 동기화 배너
+    col_fs1, col_fs2 = st.columns([3, 1])
+    with col_fs1:
+        st.markdown('''
+        <div style="font-size:13.5px; color:#1A365D; background:#EBF8FF; border:1px solid #90CDF4; padding:8px 14px; border-radius:6px;">
+            🔄 <b>공장 썸네일 데이터 연동:</b> 썸네일에서 수정한 공장명, 거래형태, 가격, 대지/연면적, 층고, 호이스트, 전력이 점검표에 자동 연동됩니다.
+        </div>
+        ''', unsafe_allow_html=True)
+    with col_fs2:
+        if st.button("🔄 공장 썸네일값 즉시 동기화", key="btn_sync_factory_ad", use_container_width=True):
+            st.session_state.factory_ad_trade_type = st.session_state.factory_trade_type
+            st.session_state.factory_ad_price_text = st.session_state.factory_price_text
+            st.session_state.factory_ad_structure = st.session_state.factory_spec1
+            st.session_state.factory_ad_hoist = st.session_state.factory_spec3
+            st.session_state.factory_ad_move_in_date = st.session_state.factory_spec5
+            if st.session_state.factory_main_title:
+                st.session_state.factory_ad_location = f"부산광역시 사상구 ({st.session_state.factory_main_title})"
+            st.success("공장 썸네일 데이터가 점검표에 동기화되었습니다!")
+            st.rerun()
+
+    # 좌우 분할 (입력 폼 / 실시간 미리보기)
+    col_in, col_out = st.columns([1.1, 1.2])
+    with col_in:
+        st.markdown("### 📋 공장/창고 16대 점검항목 입력 및 수정")
+        st.text_input("1. 소재지 (지번 포함)", key="factory_ad_location")
+        c_fa1, c_fa2 = st.columns(2)
+        with c_fa1:
+            st.text_input("2-1. 대지면적 (㎡)", key="factory_ad_area_land")
+        with c_fa2:
+            st.text_input("2-2. 연면적 (㎡)", key="factory_ad_area_gross")
+        st.text_input("3. 용도지역 / 지목", key="factory_ad_zoning")
+        st.text_input("4. 건축물 용도", key="factory_ad_building_use")
+        c_fh1, c_fh2 = st.columns(2)
+        with c_fh1:
+            st.text_input("5. 층고 / 처마고", key="factory_ad_height")
+        with c_fh2:
+            st.text_input("6. 호이스트 설비", key="factory_ad_hoist")
+        c_fp1, c_fp2 = st.columns(2)
+        with c_fp1:
+            st.text_input("7. 동력 (전기 kW)", key="factory_ad_power")
+        with c_fp2:
+            st.text_input("8. 진입도로 폭 (m)", key="factory_ad_road")
+        c_ft1, c_ft2 = st.columns(2)
+        with c_ft1:
+            st.selectbox("9. 거래 형태", ["매매", "월세", "임대", "급매"], key="factory_ad_trade_type")
+        with c_ft2:
+            st.text_input("10. 거래 금액", key="factory_ad_price_text")
+        st.text_input("11. 관리비", key="factory_ad_maintenance_fee")
+        st.text_input("12. 주차 대수 및 마당", key="factory_ad_parking")
+        st.text_input("13. 입주 가능일", key="factory_ad_move_in_date")
+        st.text_input("14. 사용승인일", key="factory_ad_approval_date")
+        st.text_input("15. 주출입구 방향", key="factory_ad_direction")
+
+        st.markdown("#### 🏢 중개사무소 정보")
+        st.checkbox("중개사무소 정보 포함", value=True, key="factory_ad_include_office")
+        c_fas1, c_fas2 = st.columns(2)
+        with c_fas1:
+            st.text_input("소속공인중개사(직원) 성명", key="factory_ad_as_name", placeholder="미입력 시 생략")
+        with c_fas2:
+            st.text_input("소속공인중개사 연락처", key="factory_ad_as_phone", placeholder="미입력 시 생략")
+
+    with col_out:
+        st.markdown("### 📊 실시간 공장 점검표 미리보기 & 복사")
+        factory_dict = {
+            "location": st.session_state.factory_ad_location,
+            "area_land": st.session_state.factory_ad_area_land,
+            "area_gross": st.session_state.factory_ad_area_gross,
+            "zoning": st.session_state.factory_ad_zoning,
+            "building_use": st.session_state.factory_ad_building_use,
+            "height": st.session_state.factory_ad_height,
+            "hoist": st.session_state.factory_ad_hoist,
+            "power": st.session_state.factory_ad_power,
+            "road": st.session_state.factory_ad_road,
+            "trade_type": st.session_state.factory_ad_trade_type,
+            "price_text": st.session_state.factory_ad_price_text,
+            "maintenance_fee": st.session_state.factory_ad_maintenance_fee,
+            "parking": st.session_state.factory_ad_parking,
+            "move_in_date": st.session_state.factory_ad_move_in_date,
+            "approval_date": st.session_state.factory_ad_approval_date,
+            "direction": st.session_state.factory_ad_direction,
+            "include_office_info": st.session_state.factory_ad_include_office,
+            "office_name": st.session_state.get("ad_office_name", "참좋은공인중개사사무소"),
+            "office_owner": st.session_state.get("ad_office_owner", "신제환"),
+            "office_reg_no": st.session_state.get("ad_office_reg_no", "제 26530-2026-00009 호"),
+            "office_address": st.session_state.get("ad_office_address", "부산광역시 사상구 강선로 9, 1층"),
+            "office_phone": st.session_state.get("ad_office_phone", "010-9667-4201"),
+            "assistant_name": st.session_state.factory_ad_as_name,
+            "assistant_phone": st.session_state.factory_ad_as_phone
+        }
+        factory_items = get_factory_spec_table_data(factory_dict)
+        factory_html = generate_blog_html_table(factory_dict, items=factory_items)
+        factory_txt = generate_clipboard_text(factory_dict, items=factory_items)
+        factory_guide = generate_naver_ad_guide_text(factory_dict, items=factory_items)
+
+        tab_fov1, tab_fov2, tab_fov3, tab_fov4 = st.tabs([
+            "📋 1. 스마트에디터 HTML 표 복사",
+            "📄 2. 네이버광고 등록 체크리스트",
+            "💬 3. 텍스트 복사 (카톡/본문)",
+            "🖼️ 4. 고화질 카드 이미지 저장"
+        ])
+
+        with tab_fov1:
+            st.markdown(factory_html, unsafe_allow_html=True)
+            st.markdown(render_copy_button(factory_html, "📋 [원클릭 복사] 블로그 스마트에디터 표 서식 복사", "btn_copy_f_html"), unsafe_allow_html=True)
+
+        with tab_fov2:
+            st.text_area("네이버 광고 등록용", value=factory_guide, height=350, key="txt_f_guide")
+            st.markdown(render_copy_button(factory_guide, "📄 [원클릭 복사] 네이버 등록 가이드 복사", "btn_copy_f_guide"), unsafe_allow_html=True)
+
+        with tab_fov3:
+            st.text_area("텍스트 양식", value=factory_txt, height=350, key="txt_f_clip")
+            st.markdown(render_copy_button(factory_txt, "💬 [원클릭 복사] 일반 텍스트 복사", "btn_copy_f_txt"), unsafe_allow_html=True)
+
+        with tab_fov4:
+            with st.spinner("공장 점검표 카드 이미지 생성 중..."):
+                f_card_img = render_spec_table_image(factory_dict, items=factory_items)
+            st.image(f_card_img, caption="1080px 정방형 공장 중개대상물 표시 카드", use_container_width=True)
+            f_card_io = io.BytesIO()
+            f_card_img.save(f_card_io, format="PNG", quality=98)
+            f_card_bytes = f_card_io.getvalue()
+            f_card_name = f"중개대상물표시_공장_{st.session_state.factory_ad_trade_type}.png"
+            st.download_button("📥 1080px 공장 표시 카드 파일 다운로드", data=f_card_bytes, file_name=f_card_name, mime="image/png", key="btn_f_card_down", use_container_width=True)
+            st.markdown(render_direct_download_button(f_card_bytes, f_card_name, "💾 [즉시 다운로드] 공장 표시 카드 저장", "#1A202C"), unsafe_allow_html=True)
+
+
+# ====================================================
+# 🌟 요구사항 4번: 최상위 2대 메인 탭 (■ "썸네일" / ■ "중개대상물표시")
+# ====================================================
+tab_main_thumb, tab_main_ad = st.tabs(["■ 썸네일", "■ 중개대상물표시"])
+
+with tab_main_thumb:
+    thumb_sub_apt, thumb_sub_house, thumb_sub_comm, thumb_sub_factory = st.tabs([
+        "🏢 아파트",
+        "🏡 주택",
+        "🏬 상가",
+        "🏭 공장"
+    ])
+    with thumb_sub_apt:
+        render_tab_apt_thumb()
+    with thumb_sub_house:
+        render_tab_house_thumb()
+    with thumb_sub_comm:
+        render_tab_comm_thumb()
+    with thumb_sub_factory:
+        render_tab_factory_thumb()
+
+with tab_main_ad:
+    # 요구사항 2번: 썸네일 화면에서는 마스터 콘솔 안내문구가 노출되지 않고, 중개대상물표시 탭에서만 스마트 자동완성 콘솔이 제공됩니다.
+    render_smart_autocomplete_console()
+    
+    ad_sub_apt, ad_sub_house, ad_sub_comm, ad_sub_factory = st.tabs([
+        "🏢 아파트",
+        "🏡 주택",
+        "🏬 상가",
+        "🏭 공장"
+    ])
+    with ad_sub_apt:
+        render_tab_apt_ad()
+    with ad_sub_house:
+        render_tab_house_ad()
+    with ad_sub_comm:
+        render_tab_comm_ad()
+    with ad_sub_factory:
+        render_tab_factory_ad()
