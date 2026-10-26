@@ -1232,11 +1232,11 @@ def render_a4_window_poster(
         font=font_move_in
     )
 
-    cur_y += banner_h + 30
+    cur_y += banner_h + 25
 
-    # 5. 매물 비주얼 영역 (요구사항: "이 사진만 말고 썸네일 사진으로 넣어줘" -> thumbnail_img 최우선 반영)
+    # 5. 매물 비주얼 영역 (요구사항: 썸네일 디자인된 사진을 비주얼 영역 크기에 맞게 꽉 채우고, 썸네일 하단의 중복정보는 제거!)
     visual_box_w = W - 200
-    visual_box_h = 1200
+    visual_box_h = 1320  # 기존 1200 -> 1320px로 확대하여 시원하고 웅장하게 배치
     visual_x = 100
     visual_y = cur_y
 
@@ -1269,79 +1269,46 @@ def render_a4_window_poster(
 
         pw, ph = target_photo.size
 
-        # 둥근 모서리 마스크 클리핑용 마스크
+        # ⭐ 요구사항: "썸네일 사진밑에 해당정보는 중복정보니깐 없어도 돼. 썸네일 디자인된 사진을 크기에 맞게 넣고"
+        # 썸네일에서 하단 중복 텍스트(매물명, 가격, 스펙 등)가 적힌 하단 영역(약 32%)을 제외하고,
+        # 상단의 디자인된 사진 영역(0 ~ 68%)만 취하여 비주얼 박스 전체에 꽉 채웁니다!
+        if is_from_thumb:
+            valid_h = int(ph * 0.68)
+            photo_to_fit = target_photo.crop((0, 0, pw, valid_h))
+            src_w, src_h = photo_to_fit.size
+        else:
+            photo_to_fit = target_photo
+            src_w, src_h = pw, ph
+
+        # 비주얼 박스 전체(2280 x 1320)에 꽉 채움 (Cover)
+        scale = max(visual_box_w / src_w, visual_box_h / src_h)
+        if bg_zoom and bg_zoom != 1.0:
+            scale *= bg_zoom
+        new_w = int(src_w * scale)
+        new_h = int(src_h * scale)
+        resized_photo = photo_to_fit.resize((new_w, new_h), Image.Resampling.LANCZOS)
+
+        crop_x = (new_w - visual_box_w) // 2 - int(bg_offset_x * (visual_box_w / 1080))
+        crop_y = (new_h - visual_box_h) // 2 - int(bg_offset_y * (visual_box_h / 1080))
+        crop_x = max(0, min(new_w - visual_box_w, crop_x))
+        crop_y = max(0, min(new_h - visual_box_h, crop_y))
+
+        cropped_photo = resized_photo.crop((crop_x, crop_y, crop_x + visual_box_w, crop_y + visual_box_h))
+
+        # 둥근 모서리 마스크 클리핑
         mask = Image.new("L", (visual_box_w, visual_box_h), 0)
         mask_draw = ImageDraw.Draw(mask)
         mask_draw.rounded_rectangle([(0, 0), (visual_box_w, visual_box_h)], radius=24, fill=255)
-
-        if is_from_thumb:
-            # ⭐ 블로그 썸네일(1:1 정방형): 글자/디자인 잘림 방지를 위해 앰비언트 블러 배경 + 중앙 고화질 카드 배치
-            # 1. 앰비언트 블러 배경 생성
-            bg_scale = max(visual_box_w / pw, visual_box_h / ph)
-            bg_w = int(pw * bg_scale)
-            bg_h = int(ph * bg_scale)
-            bg_resized = target_photo.resize((bg_w, bg_h), Image.Resampling.BILINEAR)
-            bg_crop_x = (bg_w - visual_box_w) // 2
-            bg_crop_y = (bg_h - visual_box_h) // 2
-            bg_cropped = bg_resized.crop((bg_crop_x, bg_crop_y, bg_crop_x + visual_box_w, bg_crop_y + visual_box_h))
-            bg_blurred = bg_cropped.filter(ImageFilter.GaussianBlur(35))
-            
-            # 은은한 딤(dim) 오버레이 합성
-            dim_layer = Image.new("RGBA", (visual_box_w, visual_box_h), (0, 0, 0, 85))
-            ambient_bg = Image.alpha_composite(bg_blurred, dim_layer)
-
-            # 2. 전경 고화질 썸네일 (비율 100% 유지, 1픽셀도 잘림 없이 완벽 노출)
-            card_h = visual_box_h - 40  # 1160px
-            card_w = int(pw * (card_h / ph))
-            if card_w > visual_box_w - 40:
-                card_w = visual_box_w - 40
-                card_h = int(ph * (card_w / pw))
-
-            thumb_card = target_photo.resize((card_w, card_h), Image.Resampling.LANCZOS)
-
-            # 카드 모서리 라운딩 및 화이트 프리미엄 테두리
-            card_mask = Image.new("L", (card_w, card_h), 0)
-            c_draw = ImageDraw.Draw(card_mask)
-            c_draw.rounded_rectangle([(0, 0), (card_w, card_h)], radius=20, fill=255)
-
-            card_x = (visual_box_w - card_w) // 2
-            card_y = (visual_box_h - card_h) // 2
-
-            # 카드 테두리 그리기
-            thumb_card_with_border = thumb_card.copy()
-            tb_draw = ImageDraw.Draw(thumb_card_with_border)
-            tb_draw.rounded_rectangle([(0, 0), (card_w - 1, card_h - 1)], radius=20, outline=(255, 255, 255, 230), width=4)
-
-            # 앰비언트 배경 위에 카드 합성
-            ambient_bg.paste(thumb_card_with_border, (card_x, card_y), card_mask)
-
-            # 최종 캔버스에 마스크 클리핑하여 배치
-            canvas.paste(ambient_bg, (visual_x, visual_y), mask)
-        else:
-            # 원본 현장 사진인 경우: 전체 영역 꽉 채움(Cover)
-            scale = max(visual_box_w / pw, visual_box_h / ph)
-            if bg_zoom and bg_zoom != 1.0:
-                scale *= bg_zoom
-            new_w = int(pw * scale)
-            new_h = int(ph * scale)
-            resized_photo = target_photo.resize((new_w, new_h), Image.Resampling.LANCZOS)
-
-            crop_x = (new_w - visual_box_w) // 2 - int(bg_offset_x * (visual_box_w / 1080))
-            crop_y = (new_h - visual_box_h) // 2 - int(bg_offset_y * (visual_box_h / 1080))
-            crop_x = max(0, min(new_w - visual_box_w, crop_x))
-            crop_y = max(0, min(new_h - visual_box_h, crop_y))
-
-            cropped_photo = resized_photo.crop((crop_x, crop_y, crop_x + visual_box_w, crop_y + visual_box_h))
-            canvas.paste(cropped_photo, (visual_x, visual_y), mask)
+        canvas.paste(cropped_photo, (visual_x, visual_y), mask)
     else:
         font_no_img = get_font("NanumGothicBold.ttf", 56)
         no_img_txt = "블로그 완성 썸네일 이미지"
         nib = font_no_img.getbbox(no_img_txt)
         draw.text((visual_x + (visual_box_w - (nib[2] - nib[0])) // 2, visual_y + visual_box_h // 2 - 30), no_img_txt, fill=(148, 163, 184, 255), font=font_no_img)
 
-    cur_y += visual_box_h + 26
+    cur_y += visual_box_h + 24
 
-    # 6. 핵심 4대 스펙 카드 (요구사항: 입주시기 중복 삭제, 주차대수 삭제 -> 남은 4개 2열x2행 배치 및 글자 크기 대폭 확대!)
+    # 6. 핵심 4대 스펙 카드 (요구사항: 4대 핵심사항 글자 크기도 공간에 맞게 더 크게 해줘!)
     if not spec_lines or len(spec_lines) < 5:
         spec_lines = [
             "25층 / 36층 (로얄층)",
@@ -1364,9 +1331,9 @@ def render_a4_window_poster(
     card_gap_y = 20
     total_card_w = visual_box_w
     c_w = (total_card_w - (card_cols - 1) * card_gap_x) // card_cols
-    c_h = 225  # 185 -> 225px로 대폭 확대!
+    c_h = 265  # 225 -> 265px로 대폭 확대하여 공간을 알차게 채움!
 
-    font_c_label = get_font("NanumGothicBold.ttf", 46)  # 40 -> 46px로 라벨 확대
+    font_c_label = get_font("NanumGothicBold.ttf", 52)  # 46 -> 52px로 라벨 대폭 확대
 
     for idx, (lbl, val) in enumerate(cards_data):
         row = idx // card_cols
@@ -1375,40 +1342,34 @@ def render_a4_window_poster(
         cy = cur_y + row * (c_h + card_gap_y)
 
         # 카드 박스
-        draw.rounded_rectangle([(cx, cy), (cx + c_w, cy + c_h)], radius=24, fill=(248, 250, 252, 255), outline=(226, 232, 240, 255), width=2)
+        draw.rounded_rectangle([(cx, cy), (cx + c_w, cy + c_h)], radius=26, fill=(248, 250, 252, 255), outline=(226, 232, 240, 255), width=2)
         # 카드 상단 라벨
-        draw.text((cx + 36, cy + 26), lbl, fill=(100, 116, 139, 255), font=font_c_label)
+        draw.text((cx + 42, cy + 28), lbl, fill=(100, 116, 139, 255), font=font_c_label)
 
-        # 카드 메인 값 (68~70px 초대형 폰트로 웅장하게 확대!)
+        # 카드 메인 값 (68px -> 78px 초대형 폰트로 웅장하게 확대!)
         val_clean = str(val).strip()
-        v_size = 68
+        v_size = 78
         font_c_val = get_font("NanumGothicExtraBold.ttf", v_size)
         vb = font_c_val.getbbox(val_clean)
         vw = vb[2] - vb[0]
-        max_val_w = c_w - 72
-        while vw > max_val_w and v_size > 44:
+        max_val_w = c_w - 84
+        while vw > max_val_w and v_size > 48:
             v_size -= 2
             font_c_val = get_font("NanumGothicExtraBold.ttf", v_size)
             vb = font_c_val.getbbox(val_clean)
             vw = vb[2] - vb[0]
 
-        draw.text((cx + 36, cy + 104), val_clean, fill=(15, 23, 42, 255), font=font_c_val)
+        draw.text((cx + 42, cy + 124), val_clean, fill=(15, 23, 42, 255), font=font_c_val)
 
     # 4대 스펙 카드 (2행) 종료 위치 계산
     cur_y += 2 * (c_h + card_gap_y) + 10
 
-    # 6-2. ⭐ 매물 핵심 특징 배너 (요구사항: 빈공간에 맞춰 하단매물특징 크기도 키워줘!)
-    feat_clean = (feature_text or "").strip()
-    if feat_clean:
-        if not (feat_clean.startswith("★") or feat_clean.startswith("✦") or feat_clean.startswith("✔")):
-            feat_display = f"★ {feat_clean} ★"
-        else:
-            feat_display = feat_clean
-    else:
-        feat_display = "★ 초역세권 대단지 프리미엄 추천 매물 ★"
+    # 6-2. ⭐ 매물 핵심 특징 배너 (요구사항: "매물특징에 별표는 지워죠.")
+    feat_clean = (feature_text or "").replace("★", "").replace("☆", "").replace("✦", "").replace("✔", "").strip()
+    feat_display = feat_clean if feat_clean else "초역세권 대단지 프리미엄 추천 매물"
 
     feat_box_w = visual_box_w
-    feat_box_h = 165  # 140 -> 165px로 대폭 확대!
+    feat_box_h = 180  # 165 -> 180px로 확대!
     feat_x = visual_x
     feat_y = cur_y
 
@@ -1429,15 +1390,15 @@ def render_a4_window_poster(
         width=4
     )
 
-    # 12자 내외 문구에 최적화된 82px 초대형 폰트 (기존 68px -> 82px로 초대형 확대!)
-    feat_f_size = 82
+    # 12자 내외 문구에 최적화된 90px 초대형 폰트 (기존 82px -> 90px로 초대형 확대!)
+    feat_f_size = 90
     font_feat_banner = get_font("NanumGothicExtraBold.ttf", feat_f_size)
     ftb = font_feat_banner.getbbox(feat_display)
     ftw = ftb[2] - ftb[0]
     fth = ftb[3] - ftb[1]
     max_ftw = feat_box_w - 90
 
-    while ftw > max_ftw and feat_f_size > 44:
+    while ftw > max_ftw and feat_f_size > 48:
         feat_f_size -= 2
         font_feat_banner = get_font("NanumGothicExtraBold.ttf", feat_f_size)
         ftb = font_feat_banner.getbbox(feat_display)
@@ -1451,75 +1412,73 @@ def render_a4_window_poster(
         font=font_feat_banner
     )
 
-    # 7. 하단 중개사무소 정보 (요구사항: "사무실 연락처:" 삭제, 051-911-8249와 담당자 직통번호 글자 크기를 동일하게 맞춰 배치)
-    footer_h = 350
-    footer_bottom = H - 90  # 하단 테두리(H-50) 바로 위 40px 여백으로 완벽 밀착
-    footer_y = footer_bottom - footer_h
+    cur_y += feat_box_h + 30
+
+    # 7. 하단 중개사무소 정보 (요구사항: "하단 매물특징 문구와 중개소하단 정보 사이에 공간이 비잖아. 그 공간을 줄이고")
+    # 하단 테두리 바로 위 40px 여백으로 딱 맞추고, 높이를 380px로 넉넉하게 확장하여 공백을 완벽하게 없앰!
+    footer_bottom = H - 85
+    footer_y = max(cur_y, footer_bottom - 380)
 
     draw.rounded_rectangle([(100, footer_y), (W - 100, footer_bottom)], radius=28, fill=(15, 23, 42, 255))
 
     # 상단 사무소 명칭 및 대표자
-    font_f_head = get_font("NanumGothicBold.ttf", 52)
+    font_f_head = get_font("NanumGothicBold.ttf", 54)
     o_name = (office_name or "참좋은공인중개사사무소").strip()
     o_owner = (office_owner or "신제환").strip()
-    draw.text((150, footer_y + 36), f"{o_name}   |   대표 공인중개사: {o_owner}", fill=(255, 255, 255, 255), font=font_f_head)
+    draw.text((150, footer_y + 40), f"{o_name}   |   대표 공인중개사: {o_owner}", fill=(255, 255, 255, 255), font=font_f_head)
 
     # 등록번호 및 소재지
-    font_f_sub = get_font("NanumGothic.ttf", 36)
+    font_f_sub = get_font("NanumGothic.ttf", 38)
     o_reg = (office_reg_no or "제 26530-2026-00009 호").strip()
     o_addr = (office_address or "부산광역시 사상구 강선로 9, 1층").strip()
     f_sub_str = f"등록번호: {o_reg}   •   사무소 소재지: {o_addr}"
-    draw.text((150, footer_y + 104), f_sub_str, fill=(203, 213, 225, 255), font=font_f_sub)
+    draw.text((150, footer_y + 116), f_sub_str, fill=(203, 213, 225, 255), font=font_f_sub)
 
     # 구분선
-    draw.line([(150, footer_y + 158), (W - 150, footer_y + 158)], fill=(51, 65, 85, 255), width=2)
+    draw.line([(150, footer_y + 175), (W - 150, footer_y + 175)], fill=(51, 65, 85, 255), width=2)
 
-    # 요구사항: "사무실 연락처:" 삭제! 051-911-8249와 담당자 직통번호의 글자 크기를 동일하게 일치(80px)하여 균형 배치
+    # 요구사항: "사무실 연락처:" 삭제! 051-911-8249와 담당자 직통번호의 글자 크기를 동일하게 일치(84px)하여 균형 배치
     tel_clean = (office_tel or "051-911-8249").strip()
     ast_clean = (assistant_phone or "").strip()
 
-    phone_font_size = 80
+    phone_font_size = 84
     font_phone = get_font("NanumGothicExtraBold.ttf", phone_font_size)
 
     if ast_clean:
-        # 1) 담당자 번호가 있는 경우: 좌측 051-911-8249 & 우측 [담당자 직통 : 010-...] 동일 80px로 좌우 대칭 배치!
-        tb_box = font_phone.getbbox(tel_clean)
-        tb_w = tb_box[2] - tb_box[0]
-        tb_h = tb_box[3] - tb_box[1]
-        phone_y = footer_y + 200
+        # 1) 담당자 번호가 있는 경우: 좌측 051-911-8249 & 우측 [담당자 직통 : 010-...] 동일 84px로 좌우 대칭 배치!
+        phone_y = footer_y + 225
 
-        # 좌측: 051-911-8249 (옐로우 골드, 80px)
+        # 좌측: 051-911-8249 (옐로우 골드, 84px)
         draw.text((150, phone_y), tel_clean, fill=(251, 191, 36, 255), font=font_phone)
 
-        # 우측: 담당자 직통 번호 (오렌지 알약 뱃지 안에 80px 동일 크기로 렌더링!)
+        # 우측: 담당자 직통 번호 (오렌지 알약 뱃지 안에 84px 동일 크기로 렌더링!)
         ast_display_txt = f"담당자 직통 : {ast_clean}"
         ab = font_phone.getbbox(ast_display_txt)
         aw = ab[2] - ab[0]
         ah = ab[3] - ab[1]
 
         ast_box_w = aw + 64
-        ast_box_h = 110
+        ast_box_h = 114
         ast_box_x = W - 150 - ast_box_w
-        ast_box_y = footer_y + 185
+        ast_box_y = footer_y + 210
         draw.rounded_rectangle([(ast_box_x, ast_box_y), (ast_box_x + ast_box_w, ast_box_y + ast_box_h)], radius=24, fill=(244, 138, 38, 255), outline=(255, 255, 255, 220), width=3)
         draw.text((ast_box_x + 32 - ab[0], ast_box_y + (ast_box_h - ah) // 2 - ab[1]), ast_display_txt, fill=(255, 255, 255, 255), font=font_phone)
     else:
         # 2) 담당자 번호가 없는 경우: 좌측 051-911-8249 & 우측 친절 상담 슬로건
-        font_solo_phone = get_font("NanumGothicExtraBold.ttf", 95)
-        draw.text((150, footer_y + 188), tel_clean, fill=(251, 191, 36, 255), font=font_solo_phone)
+        font_solo_phone = get_font("NanumGothicExtraBold.ttf", 98)
+        draw.text((150, footer_y + 212), tel_clean, fill=(251, 191, 36, 255), font=font_solo_phone)
 
-        font_slogan = get_font("NanumGothicBold.ttf", 42)
+        font_slogan = get_font("NanumGothicBold.ttf", 44)
         slogan_txt = "친절 상담 · 책임 중개 · 매물 접수 환영"
         sb = font_slogan.getbbox(slogan_txt)
         sw = sb[2] - sb[0]
         sh = sb[3] - sb[1]
         sl_box_w = sw + 56
-        sl_box_h = 88
+        sl_box_h = 92
         sl_box_x = W - 150 - sl_box_w
-        sl_box_y = footer_y + 198
+        sl_box_y = footer_y + 220
         draw.rounded_rectangle([(sl_box_x, sl_box_y), (sl_box_x + sl_box_w, sl_box_y + sl_box_h)], radius=20, fill=(30, 41, 59, 255), outline=(71, 85, 105, 255), width=2)
         draw.text((sl_box_x + 28 - sb[0], sl_box_y + (sl_box_h - sh) // 2 - sb[1]), slogan_txt, fill=(241, 245, 249, 255), font=font_slogan)
-
     return canvas.convert("RGB")
 
 
