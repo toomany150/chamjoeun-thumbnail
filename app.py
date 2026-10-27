@@ -3,6 +3,7 @@ import io
 import os
 import re
 import base64
+import subprocess
 import importlib
 import thumbnail_generator
 import property_ad_spec
@@ -198,29 +199,78 @@ def render_copy_button(text_to_copy: str, button_label: str, btn_id: str = "") -
     </div>
     """
 
-def choose_folder_and_save(file_bytes: bytes, default_filename: str, current_path: str = ""):
-    """Windows GUI 폴더 선택 다이얼로그를 띄워 파일 즉시 저장"""
+def get_default_download_path() -> str:
+    """기본 다운로드 경로(바탕화면 -> 다운로드 -> 현재폴더)를 안전하게 탐색하여 반환합니다."""
+    user_home = os.environ.get("USERPROFILE") or os.path.expanduser("~")
+    desktop = os.path.join(user_home, "Desktop")
+    if os.path.exists(desktop):
+        return desktop
+    downloads = os.path.join(user_home, "Downloads")
+    if os.path.exists(downloads):
+        return downloads
+    try:
+        os.makedirs(desktop, exist_ok=True)
+        return desktop
+    except Exception:
+        pass
+    return os.path.abspath(os.path.dirname(__file__))
+
+def browse_folder_dialog(initial_dir: str = "") -> str:
+    """GUI 폴더 선택창(PowerShell Windows Forms 또는 Tkinter)을 안전하게 호출하여 선택한 폴더 경로를 반환합니다."""
+    init_dir = initial_dir if (initial_dir and os.path.exists(initial_dir)) else get_default_download_path()
+    
+    # 1. PowerShell Windows Forms 다이얼로그 (Windows 환경에서 Tkinter 라이브러리 누락 오류 없이 가장 안정적)
+    try:
+        ps_cmd = (
+            'Add-Type -AssemblyName System.Windows.Forms; '
+            '[System.Windows.Forms.Application]::EnableVisualStyles(); '
+            '$f = New-Object System.Windows.Forms.FolderBrowserDialog; '
+            f'$f.SelectedPath = "{init_dir}"; '
+            '$f.Description = "이미지를 저장할 컴퓨터 폴더를 선택하세요"; '
+            'if ($f.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) { Write-Output $f.SelectedPath }'
+        )
+        res = subprocess.run(["powershell", "-NoProfile", "-Command", ps_cmd], capture_output=True, text=True, timeout=30)
+        chosen = res.stdout.strip()
+        if chosen and os.path.exists(chosen):
+            return chosen
+    except Exception:
+        pass
+
+    # 2. Tkinter 다이얼로그 fallback (libtk 오류 발생 시 조용히 무시)
     try:
         import tkinter as tk
         from tkinter import filedialog
         root = tk.Tk()
         root.withdraw()
         root.attributes("-topmost", True)
-        init_dir = current_path if (current_path and os.path.exists(current_path)) else os.path.join(os.path.expanduser("~"), "Desktop")
-        folder = filedialog.askdirectory(title="저장할 폴더를 선택하세요", initialdir=init_dir)
+        chosen = filedialog.askdirectory(initialdir=init_dir, title="저장할 폴더를 선택하세요")
         root.destroy()
-        if folder:
-            os.makedirs(folder, exist_ok=True)
-            clean_fn = re.sub(r'[\\/*?:"<>|]', "", default_filename).strip()
-            out_path = os.path.join(folder, clean_fn)
-            with open(out_path, "wb") as f:
-                f.write(file_bytes)
-            st.session_state.custom_download_path = folder
-            return True, out_path, folder
-        else:
-            return False, "폴더 선택이 취소되었습니다.", None
+        if chosen and os.path.exists(chosen):
+            return chosen
+    except Exception:
+        pass
+
+    return ""
+
+def save_file_to_directory(file_bytes: bytes, filename: str, target_dir: str) -> tuple[bool, str]:
+    """지정된 폴더 경로에 파일을 직접 저장합니다."""
+    try:
+        if not target_dir or not str(target_dir).strip():
+            target_dir = get_default_download_path()
+        target_dir = os.path.abspath(str(target_dir).strip())
+        os.makedirs(target_dir, exist_ok=True)
+        
+        clean_fn = re.sub(r'[\\/*?:"<>|]', "", filename).strip()
+        if not clean_fn:
+            clean_fn = "thumbnail.png"
+        out_path = os.path.join(target_dir, clean_fn)
+        
+        with open(out_path, "wb") as f:
+            f.write(file_bytes)
+            
+        return True, out_path
     except Exception as e:
-        return False, str(e), None
+        return False, f"저장 중 오류가 발생했습니다: {str(e)}"
 
 def render_download_save_controller(
     file_bytes: bytes,
@@ -233,54 +283,100 @@ def render_download_save_controller(
     print_bg: str = "#1E293B"
 ):
     """
-    1) 포스터인 경우 원클릭 즉시 인쇄 버튼 제공 (선명한 흰색 글씨 & iframe 고화질 출력)
-    2) 클릭 시 폴더를 직접 지정하여 파일 즉시 저장
-    3) 보조 브라우저 다운로드 버튼 제공
+    1) 포스터인 경우 원클릭 즉시 인쇄 버튼 제공
+    2) 사용자가 지정한 다운로드 폴더 경로에 파일 즉시 저장
+    3) 폴더 경로 직접 입력, 폴더 선택창(PowerShell/GUI), 빠른 프리셋 바로가기 제공
     """
-    if "custom_download_path" not in st.session_state:
-        st.session_state.custom_download_path = os.path.join(os.path.expanduser("~"), "Desktop")
+    # 전역 저장 경로 초기화
+    if "custom_download_path" not in st.session_state or not st.session_state.custom_download_path:
+        st.session_state.custom_download_path = get_default_download_path()
 
-    # 1. 인쇄 버튼 (창문부착용 포스터 전용: 이모지 1개, 단정한 라벨, 선명한 화이트 텍스트)
+    # 1. 인쇄 버튼 (창문부착용 포스터 전용)
     if is_poster and print_bytes:
         st.markdown(render_direct_print_button(print_bytes, default_filename, print_label, bg_color=print_bg), unsafe_allow_html=True)
         st.markdown("<div style='height: 4px;'></div>", unsafe_allow_html=True)
 
-    # 2. 버튼 텍스트에서 '(기본 다운로드)' 문구 제거
+    # 2. 다운로드 경로 지정 컨트롤
+    st.markdown("""
+    <div style="font-size: 14px; font-weight: 700; color: #1E293B; margin: 8px 0 4px 0;">
+        📂 파일 저장 폴더 경로 지정
+    </div>
+    """, unsafe_allow_html=True)
+
+    col_path, col_browse = st.columns([3.8, 1.2])
+    with col_path:
+        input_path = st.text_input(
+            "저장 폴더 경로",
+            value=st.session_state.custom_download_path,
+            key=f"{key_prefix}_input_path",
+            label_visibility="collapsed",
+            placeholder="예: C:\\Users\\...\\Desktop 또는 D:\\썸네일저장"
+        )
+        if input_path and input_path.strip() != st.session_state.custom_download_path:
+            st.session_state.custom_download_path = input_path.strip()
+
+    with col_browse:
+        if st.button("📁 폴더 선택", key=f"{key_prefix}_btn_browse", use_container_width=True, help="컴퓨터 탐색기 창을 열어 저장할 폴더를 선택합니다."):
+            chosen = browse_folder_dialog(st.session_state.custom_download_path)
+            if chosen:
+                st.session_state.custom_download_path = chosen
+                st.rerun()
+
+    # 빠른 폴더 바로가기 프리셋 버튼
+    c_pre1, c_pre2, c_pre3 = st.columns(3)
+    user_home = os.environ.get("USERPROFILE") or os.path.expanduser("~")
+    desktop_dir = os.path.join(user_home, "Desktop")
+    down_dir = os.path.join(user_home, "Downloads")
+    proj_dir = os.path.abspath(os.path.dirname(__file__))
+
+    with c_pre1:
+        if st.button("🖥️ 바탕화면으로 지정", key=f"{key_prefix}_btn_pre_desk", use_container_width=True):
+            st.session_state.custom_download_path = desktop_dir
+            st.rerun()
+    with c_pre2:
+        if st.button("📥 다운로드 폴더로 지정", key=f"{key_prefix}_btn_pre_down", use_container_width=True):
+            st.session_state.custom_download_path = down_dir
+            st.rerun()
+    with c_pre3:
+        if st.button("📂 현재 작업폴더로 지정", key=f"{key_prefix}_btn_pre_proj", use_container_width=True):
+            st.session_state.custom_download_path = proj_dir
+            st.rerun()
+
+    st.markdown("<div style='height: 4px;'></div>", unsafe_allow_html=True)
+
+    # 3. 메인 저장 버튼 (지정된 경로로 직접 저장)
     clean_label = label_download.replace("(기본 다운로드)", "").strip()
     if not clean_label.startswith("📥"):
         clean_label = f"📥 {clean_label}"
 
-    # 3. 폴더 지정 및 파일 즉시 저장 버튼
     if st.button(clean_label, type="primary", key=f"{key_prefix}_btn_pick_save", use_container_width=True):
-        ok, res_path, chosen_dir = choose_folder_and_save(
+        ok, res_path = save_file_to_directory(
             file_bytes=file_bytes,
-            default_filename=default_filename,
-            current_path=st.session_state.get("custom_download_path", "")
+            filename=default_filename,
+            target_dir=st.session_state.custom_download_path
         )
         if ok:
             st.session_state[f"{key_prefix}_save_status"] = ("ok", res_path)
         else:
             st.session_state[f"{key_prefix}_save_status"] = ("err", res_path)
 
-    # 저장 성공 알림 또는 취소 시 브라우저 직접 다운로드 링크 안내
+    # 4. 저장 결과 피드백 안내
     status = st.session_state.get(f"{key_prefix}_save_status")
     if status:
         st_type, st_msg = status
         if st_type == "ok":
             st.success(f"🎉 파일이 지정하신 폴더에 성공적으로 저장되었습니다!\n\n📍 **저장 위치:** `{st_msg}`")
+            save_folder = os.path.dirname(st_msg)
+            if st.button("📂 저장된 폴더 열기", key=f"{key_prefix}_btn_open_folder"):
+                try:
+                    if os.name == 'nt':
+                        os.startfile(save_folder)
+                    else:
+                        subprocess.Popen(["xdg-open", save_folder])
+                except Exception:
+                    pass
         else:
-            if "취소" in st_msg:
-                st.info("ℹ️ 폴더 선택이 취소되었습니다. 원하시면 아래 버튼을 눌러 브라우저 다운로드로 저장하세요.")
-            else:
-                st.warning(f"⚠️ 저장 안내: {st_msg}")
-            st.download_button(
-                label="🌐 브라우저 기본 다운로드로 파일 받기",
-                data=file_bytes,
-                file_name=default_filename,
-                mime="image/png",
-                key=f"{key_prefix}_btn_fallback_down",
-                use_container_width=True
-            )
+            st.error(f"⚠️ 저장 오류: {st_msg}")
 
 def render_deal_done_controller(key_prefix: str, default_color: str = "#FF0101"):
     """
@@ -536,94 +632,119 @@ st.markdown("""
     }
     
     /* ==================================================== */
-    /* 🌟 최상위 메인 3대 메뉴 탭: 크기 3배 (32px), 간격 3배 (50px) */
+    /* 🌟 최상위 메인 3대 메뉴 탭: 크기 3배 (38px), 간격 3배 (50px) */
     /* ==================================================== */
-    [data-baseweb="tab-list"] {
+    .block-container > div[data-testid="stVerticalBlock"] > div[data-testid="stTabs"] > div > div[role="tablist"],
+    .block-container > div[data-testid="stVerticalBlock"] > div[data-testid="stTabs"] > div > [data-baseweb="tab-list"] {
         gap: 50px !important;
-        background-color: #F1F5F9 !important;
+        background-color: #F8FAFC !important;
         padding: 14px 24px !important;
         border-radius: 18px !important;
         margin-bottom: 28px !important;
         display: flex !important;
         align-items: center !important;
-        border-bottom: 2px solid #E2E8F0 !important;
+        border: 1.5px solid #E2E8F0 !important;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.04) !important;
     }
-    [data-baseweb="tab"] {
-        height: 72px !important;
-        min-height: 72px !important;
-        padding: 0 36px !important;
+
+    .block-container > div[data-testid="stVerticalBlock"] > div[data-testid="stTabs"] > div > div[role="tablist"] > div[role="tab"],
+    .block-container > div[data-testid="stVerticalBlock"] > div[data-testid="stTabs"] > div > [data-baseweb="tab-list"] > [data-baseweb="tab"] {
+        height: 76px !important;
+        min-height: 76px !important;
+        padding: 0 32px !important;
         border-radius: 14px !important;
         background-color: transparent !important;
-        transition: all 0.2s ease-in-out !important;
-        border: none !important;
+        transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1) !important;
+        border: 2px solid transparent !important;
         cursor: pointer !important;
+        display: flex !important;
+        align-items: center !important;
+        justify-content: center !important;
     }
-    [data-baseweb="tab"],
-    [data-baseweb="tab"] *,
-    [data-baseweb="tab"] p,
-    [data-baseweb="tab"] span,
-    [data-baseweb="tab"] div {
-        font-size: 32px !important;
+
+    .block-container > div[data-testid="stVerticalBlock"] > div[data-testid="stTabs"] > div > div[role="tablist"] > div[role="tab"] *,
+    .block-container > div[data-testid="stVerticalBlock"] > div[data-testid="stTabs"] > div > div[role="tablist"] > div[role="tab"] p,
+    .block-container > div[data-testid="stVerticalBlock"] > div[data-testid="stTabs"] > div > [data-baseweb="tab-list"] > [data-baseweb="tab"] * {
+        font-size: 38px !important;
         font-weight: 800 !important;
         line-height: 1.3 !important;
-        color: #334155 !important;
+        color: #475569 !important;
         letter-spacing: -0.5px !important;
     }
-    [data-baseweb="tab"][aria-selected="true"] {
+
+    .block-container > div[data-testid="stVerticalBlock"] > div[data-testid="stTabs"] > div > div[role="tablist"] > div[role="tab"][aria-selected="true"],
+    .block-container > div[data-testid="stVerticalBlock"] > div[data-testid="stTabs"] > div > [data-baseweb="tab-list"] > [data-baseweb="tab"][aria-selected="true"] {
         background-color: #FFFFFF !important;
-        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12) !important;
-        border-bottom: 4px solid #F48A26 !important;
+        border: 2.5px solid #F48A26 !important;
+        box-shadow: 0 6px 20px rgba(244, 138, 38, 0.18) !important;
     }
-    [data-baseweb="tab"][aria-selected="true"],
-    [data-baseweb="tab"][aria-selected="true"] *,
-    [data-baseweb="tab"][aria-selected="true"] p,
-    [data-baseweb="tab"][aria-selected="true"] span,
-    [data-baseweb="tab"][aria-selected="true"] div {
+
+    .block-container > div[data-testid="stVerticalBlock"] > div[data-testid="stTabs"] > div > div[role="tablist"] > div[role="tab"][aria-selected="true"] *,
+    .block-container > div[data-testid="stVerticalBlock"] > div[data-testid="stTabs"] > div > div[role="tablist"] > div[role="tab"][aria-selected="true"] p,
+    .block-container > div[data-testid="stVerticalBlock"] > div[data-testid="stTabs"] > div > [data-baseweb="tab-list"] > [data-baseweb="tab"][aria-selected="true"] * {
         color: #F48A26 !important;
         font-weight: 900 !important;
     }
-    [data-baseweb="tab-highlight"], [data-baseweb="tab-border"] {
-        display: none !important;
-    }
 
-    /* 📌 하위 서브 탭 (tab-panel 내부: 아파트/주택/상가/공장 등은 단정하고 깔끔한 16px) */
+    /* 📌 하위 서브 탭 (tab-panel 내부: 아파트/주택/상가/공장 등은 단정하고 깔끔한 17px) */
+    div[data-testid="stTabPanel"] div[data-testid="stTabs"] div[role="tablist"],
+    div[role="tabpanel"] div[data-testid="stTabs"] div[role="tablist"],
     [data-baseweb="tab-panel"] [data-baseweb="tab-list"] {
         gap: 12px !important;
         background-color: #EDF2F7 !important;
-        padding: 6px 14px !important;
-        border-radius: 10px !important;
-        margin-bottom: 18px !important;
-        border-bottom: none !important;
+        padding: 8px 14px !important;
+        border-radius: 12px !important;
+        margin-bottom: 20px !important;
+        border: 1px solid #E2E8F0 !important;
+        box-shadow: none !important;
     }
+
+    div[data-testid="stTabPanel"] div[data-testid="stTabs"] div[role="tablist"] div[role="tab"],
+    div[role="tabpanel"] div[data-testid="stTabs"] div[role="tablist"] div[role="tab"],
     [data-baseweb="tab-panel"] [data-baseweb="tab"] {
-        height: 46px !important;
-        min-height: 46px !important;
-        padding: 0 20px !important;
-        border-radius: 8px !important;
+        height: 48px !important;
+        min-height: 48px !important;
+        padding: 0 22px !important;
+        border-radius: 9px !important;
+        background-color: transparent !important;
+        border: 1.5px solid transparent !important;
+        display: flex !important;
+        align-items: center !important;
+        justify-content: center !important;
     }
-    [data-baseweb="tab-panel"] [data-baseweb="tab"],
-    [data-baseweb="tab-panel"] [data-baseweb="tab"] *,
-    [data-baseweb="tab-panel"] [data-baseweb="tab"] p,
-    [data-baseweb="tab-panel"] [data-baseweb="tab"] span,
-    [data-baseweb="tab-panel"] [data-baseweb="tab"] div {
-        font-size: 16px !important;
+
+    div[data-testid="stTabPanel"] div[data-testid="stTabs"] div[role="tablist"] div[role="tab"] *,
+    div[data-testid="stTabPanel"] div[data-testid="stTabs"] div[role="tablist"] div[role="tab"] p,
+    [data-baseweb="tab-panel"] [data-baseweb="tab"] * {
+        font-size: 17px !important;
         font-weight: 700 !important;
         line-height: 1.2 !important;
         color: #4A5568 !important;
         letter-spacing: normal !important;
     }
+
+    div[data-testid="stTabPanel"] div[data-testid="stTabs"] div[role="tablist"] div[role="tab"][aria-selected="true"],
     [data-baseweb="tab-panel"] [data-baseweb="tab"][aria-selected="true"] {
         background-color: #FFFFFF !important;
-        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08) !important;
-        border-bottom: 3px solid #F48A26 !important;
+        border: 1.5px solid #F48A26 !important;
+        box-shadow: 0 2px 8px rgba(244, 138, 38, 0.15) !important;
     }
-    [data-baseweb="tab-panel"] [data-baseweb="tab"][aria-selected="true"],
-    [data-baseweb="tab-panel"] [data-baseweb="tab"][aria-selected="true"] *,
-    [data-baseweb="tab-panel"] [data-baseweb="tab"][aria-selected="true"] p,
-    [data-baseweb="tab-panel"] [data-baseweb="tab"][aria-selected="true"] span,
-    [data-baseweb="tab-panel"] [data-baseweb="tab"][aria-selected="true"] div {
+
+    div[data-testid="stTabPanel"] div[data-testid="stTabs"] div[role="tablist"] div[role="tab"][aria-selected="true"] *,
+    div[data-testid="stTabPanel"] div[data-testid="stTabs"] div[role="tablist"] div[role="tab"][aria-selected="true"] p,
+    [data-baseweb="tab-panel"] [data-baseweb="tab"][aria-selected="true"] * {
         color: #F48A26 !important;
         font-weight: 800 !important;
+    }
+
+    /* 기본 밑줄/인디케이터 완전히 제거 */
+    div[data-testid="stTabs"] .react-aria-SelectionIndicator,
+    [data-baseweb="tab-highlight"],
+    [data-baseweb="tab-border"] {
+        display: none !important;
+    }
+    div[data-testid="stTabs"] div[role="tablist"]::after {
+        display: none !important;
     }
 
     /* 배지 스타일 */
@@ -4052,93 +4173,120 @@ def render_tab_factory_ad():
 # ====================================================
 st.markdown("""
 <style>
-    /* 🌟 최상위 메인 3대 메뉴 탭: 크기 3배 (32px), 간격 3배 (50px), 높이 72px */
-    [data-baseweb="tab-list"] {
+    /* ==================================================== */
+    /* 🌟 최상위 메인 3대 메뉴 탭: 크기 3배 (38px), 간격 3배 (50px) */
+    /* ==================================================== */
+    .block-container > div[data-testid="stVerticalBlock"] > div[data-testid="stTabs"] > div > div[role="tablist"],
+    .block-container > div[data-testid="stVerticalBlock"] > div[data-testid="stTabs"] > div > [data-baseweb="tab-list"] {
         gap: 50px !important;
-        background-color: #F1F5F9 !important;
+        background-color: #F8FAFC !important;
         padding: 14px 24px !important;
         border-radius: 18px !important;
         margin-bottom: 28px !important;
         display: flex !important;
         align-items: center !important;
-        border-bottom: 2px solid #E2E8F0 !important;
+        border: 1.5px solid #E2E8F0 !important;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.04) !important;
     }
-    [data-baseweb="tab"] {
-        height: 72px !important;
-        min-height: 72px !important;
-        padding: 0 36px !important;
+
+    .block-container > div[data-testid="stVerticalBlock"] > div[data-testid="stTabs"] > div > div[role="tablist"] > div[role="tab"],
+    .block-container > div[data-testid="stVerticalBlock"] > div[data-testid="stTabs"] > div > [data-baseweb="tab-list"] > [data-baseweb="tab"] {
+        height: 76px !important;
+        min-height: 76px !important;
+        padding: 0 32px !important;
         border-radius: 14px !important;
         background-color: transparent !important;
-        transition: all 0.2s ease-in-out !important;
-        border: none !important;
+        transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1) !important;
+        border: 2px solid transparent !important;
         cursor: pointer !important;
+        display: flex !important;
+        align-items: center !important;
+        justify-content: center !important;
     }
-    [data-baseweb="tab"],
-    [data-baseweb="tab"] *,
-    [data-baseweb="tab"] p,
-    [data-baseweb="tab"] span,
-    [data-baseweb="tab"] div {
-        font-size: 32px !important;
+
+    .block-container > div[data-testid="stVerticalBlock"] > div[data-testid="stTabs"] > div > div[role="tablist"] > div[role="tab"] *,
+    .block-container > div[data-testid="stVerticalBlock"] > div[data-testid="stTabs"] > div > div[role="tablist"] > div[role="tab"] p,
+    .block-container > div[data-testid="stVerticalBlock"] > div[data-testid="stTabs"] > div > [data-baseweb="tab-list"] > [data-baseweb="tab"] * {
+        font-size: 38px !important;
         font-weight: 800 !important;
         line-height: 1.3 !important;
-        color: #334155 !important;
+        color: #475569 !important;
         letter-spacing: -0.5px !important;
     }
-    [data-baseweb="tab"][aria-selected="true"] {
+
+    .block-container > div[data-testid="stVerticalBlock"] > div[data-testid="stTabs"] > div > div[role="tablist"] > div[role="tab"][aria-selected="true"],
+    .block-container > div[data-testid="stVerticalBlock"] > div[data-testid="stTabs"] > div > [data-baseweb="tab-list"] > [data-baseweb="tab"][aria-selected="true"] {
         background-color: #FFFFFF !important;
-        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12) !important;
-        border-bottom: 4px solid #F48A26 !important;
+        border: 2.5px solid #F48A26 !important;
+        box-shadow: 0 6px 20px rgba(244, 138, 38, 0.18) !important;
     }
-    [data-baseweb="tab"][aria-selected="true"],
-    [data-baseweb="tab"][aria-selected="true"] *,
-    [data-baseweb="tab"][aria-selected="true"] p,
-    [data-baseweb="tab"][aria-selected="true"] span,
-    [data-baseweb="tab"][aria-selected="true"] div {
+
+    .block-container > div[data-testid="stVerticalBlock"] > div[data-testid="stTabs"] > div > div[role="tablist"] > div[role="tab"][aria-selected="true"] *,
+    .block-container > div[data-testid="stVerticalBlock"] > div[data-testid="stTabs"] > div > div[role="tablist"] > div[role="tab"][aria-selected="true"] p,
+    .block-container > div[data-testid="stVerticalBlock"] > div[data-testid="stTabs"] > div > [data-baseweb="tab-list"] > [data-baseweb="tab"][aria-selected="true"] * {
         color: #F48A26 !important;
         font-weight: 900 !important;
     }
-    [data-baseweb="tab-highlight"], [data-baseweb="tab-border"] {
-        display: none !important;
-    }
 
-    /* 📌 하위 서브 탭 (tab-panel 내부: 아파트/주택/상가/공장 등은 단정하고 깔끔한 16px) */
+    /* 📌 하위 서브 탭 (tab-panel 내부: 아파트/주택/상가/공장 등은 단정하고 깔끔한 17px) */
+    div[data-testid="stTabPanel"] div[data-testid="stTabs"] div[role="tablist"],
+    div[role="tabpanel"] div[data-testid="stTabs"] div[role="tablist"],
     [data-baseweb="tab-panel"] [data-baseweb="tab-list"] {
         gap: 12px !important;
         background-color: #EDF2F7 !important;
-        padding: 6px 14px !important;
-        border-radius: 10px !important;
-        margin-bottom: 18px !important;
-        border-bottom: none !important;
+        padding: 8px 14px !important;
+        border-radius: 12px !important;
+        margin-bottom: 20px !important;
+        border: 1px solid #E2E8F0 !important;
+        box-shadow: none !important;
     }
+
+    div[data-testid="stTabPanel"] div[data-testid="stTabs"] div[role="tablist"] div[role="tab"],
+    div[role="tabpanel"] div[data-testid="stTabs"] div[role="tablist"] div[role="tab"],
     [data-baseweb="tab-panel"] [data-baseweb="tab"] {
-        height: 46px !important;
-        min-height: 46px !important;
-        padding: 0 20px !important;
-        border-radius: 8px !important;
+        height: 48px !important;
+        min-height: 48px !important;
+        padding: 0 22px !important;
+        border-radius: 9px !important;
+        background-color: transparent !important;
+        border: 1.5px solid transparent !important;
+        display: flex !important;
+        align-items: center !important;
+        justify-content: center !important;
     }
-    [data-baseweb="tab-panel"] [data-baseweb="tab"],
-    [data-baseweb="tab-panel"] [data-baseweb="tab"] *,
-    [data-baseweb="tab-panel"] [data-baseweb="tab"] p,
-    [data-baseweb="tab-panel"] [data-baseweb="tab"] span,
-    [data-baseweb="tab-panel"] [data-baseweb="tab"] div {
-        font-size: 16px !important;
+
+    div[data-testid="stTabPanel"] div[data-testid="stTabs"] div[role="tablist"] div[role="tab"] *,
+    div[data-testid="stTabPanel"] div[data-testid="stTabs"] div[role="tablist"] div[role="tab"] p,
+    [data-baseweb="tab-panel"] [data-baseweb="tab"] * {
+        font-size: 17px !important;
         font-weight: 700 !important;
         line-height: 1.2 !important;
         color: #4A5568 !important;
         letter-spacing: normal !important;
     }
+
+    div[data-testid="stTabPanel"] div[data-testid="stTabs"] div[role="tablist"] div[role="tab"][aria-selected="true"],
     [data-baseweb="tab-panel"] [data-baseweb="tab"][aria-selected="true"] {
         background-color: #FFFFFF !important;
-        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08) !important;
-        border-bottom: 3px solid #F48A26 !important;
+        border: 1.5px solid #F48A26 !important;
+        box-shadow: 0 2px 8px rgba(244, 138, 38, 0.15) !important;
     }
-    [data-baseweb="tab-panel"] [data-baseweb="tab"][aria-selected="true"],
-    [data-baseweb="tab-panel"] [data-baseweb="tab"][aria-selected="true"] *,
-    [data-baseweb="tab-panel"] [data-baseweb="tab"][aria-selected="true"] p,
-    [data-baseweb="tab-panel"] [data-baseweb="tab"][aria-selected="true"] span,
-    [data-baseweb="tab-panel"] [data-baseweb="tab"][aria-selected="true"] div {
+
+    div[data-testid="stTabPanel"] div[data-testid="stTabs"] div[role="tablist"] div[role="tab"][aria-selected="true"] *,
+    div[data-testid="stTabPanel"] div[data-testid="stTabs"] div[role="tablist"] div[role="tab"][aria-selected="true"] p,
+    [data-baseweb="tab-panel"] [data-baseweb="tab"][aria-selected="true"] * {
         color: #F48A26 !important;
         font-weight: 800 !important;
+    }
+
+    /* 기본 밑줄/인디케이터 완전히 제거 */
+    div[data-testid="stTabs"] .react-aria-SelectionIndicator,
+    [data-baseweb="tab-highlight"],
+    [data-baseweb="tab-border"] {
+        display: none !important;
+    }
+    div[data-testid="stTabs"] div[role="tablist"]::after {
+        display: none !important;
     }
 </style>
 """, unsafe_allow_html=True)
