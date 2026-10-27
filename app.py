@@ -675,22 +675,38 @@ if not st.session_state.authenticated:
             </div>
             """, unsafe_allow_html=True)
             
-            with st.form("login_form"):
-                input_pw = st.text_input(
-                    "접근 비밀번호 입력",
-                    type="password",
-                    placeholder="비밀번호 입력",
-                    help="설정된 접근 비밀번호를 입력해주세요."
-                )
-                submit_btn = st.form_submit_button("🔓 로그인하여 시작하기", use_container_width=True)
-                
-                if submit_btn:
-                    if input_pw.strip() in VALID_PASSWORDS:
-                        st.session_state.authenticated = True
-                        st.success("✅ 인증되었습니다! 메인 화면으로 이동합니다.")
-                        st.rerun()
-                    else:
-                        st.error("비밀번호가 일치하지 않습니다.")
+            import streamlit.components.v1 as components
+            components.html("""
+            <script>
+            setTimeout(function() {
+                try {
+                    var doc = window.parent.document;
+                    var pwInputs = doc.querySelectorAll('input[type="password"]');
+                    pwInputs.forEach(function(el) {
+                        el.setAttribute('autocomplete', 'new-password');
+                        el.setAttribute('data-lpignore', 'true');
+                        el.setAttribute('data-1p-ignore', 'true');
+                    });
+                } catch(e) {}
+            }, 150);
+            </script>
+            """, height=0)
+
+            input_pw = st.text_input(
+                "접근 비밀번호 입력",
+                type="password",
+                placeholder="비밀번호 입력 (예: 4989)",
+                key="login_pw_input",
+                help="설정된 접근 비밀번호를 입력해주세요."
+            )
+            submit_btn = st.button("🔓 로그인하여 시작하기", type="primary", use_container_width=True)
+            
+            if submit_btn or (input_pw and input_pw.strip() in VALID_PASSWORDS):
+                if input_pw.strip() in VALID_PASSWORDS:
+                    st.session_state.authenticated = True
+                    st.rerun()
+                elif submit_btn:
+                    st.error("비밀번호가 일치하지 않습니다.")
             
             st.markdown("""
             <div style="text-align: center; margin-top: 25px; color: #4A5568; font-size: 13px; line-height: 1.5;">

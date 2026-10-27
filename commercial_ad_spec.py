@@ -10,11 +10,13 @@
 import os
 import io
 import re
+import functools
 from PIL import Image, ImageDraw, ImageFont
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 ASSETS_DIR = os.path.join(BASE_DIR, "assets")
 
+@functools.lru_cache(maxsize=128)
 def get_font(font_name: str, size: int) -> ImageFont.FreeTypeFont:
     """폰트를 안전하게 로드합니다."""
     candidates = [

@@ -9,6 +9,7 @@
 
 import os
 import io
+import functools
 from PIL import Image, ImageDraw, ImageFont, ImageFilter, ImageOps, ImageColor
 
 def _to_rgba(c, default=(244, 138, 38, 255)):
@@ -30,6 +31,7 @@ def _to_rgba(c, default=(244, 138, 38, 255)):
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 ASSETS_DIR = os.path.join(BASE_DIR, "assets")
 
+@functools.lru_cache(maxsize=128)
 def get_font(font_name: str, size: int) -> ImageFont.FreeTypeFont:
     """번들된 폰트 및 시스템 폰트를 검색하여 로드하고, 없을 경우 시스템 기본 고딕으로 대체합니다."""
     # 1순위: 리눅스/클라우드 배포를 위해 assets/fonts 에 번들된 폰트
