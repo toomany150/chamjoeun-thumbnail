@@ -90,7 +90,7 @@ def render_direct_download_button(image_bytes: bytes, file_name: str, button_lab
     </div>
     """
 
-def render_direct_print_button(image_bytes: bytes, file_name: str, button_label: str = "🖨️ [원클릭 즉시 인쇄] 창문 부착용 A4 바로 출력 (Ctrl+P)", bg_color: str = "#1E293B") -> str:
+def render_direct_print_button(image_bytes: bytes, file_name: str, button_label: str = "창문부착용A4바로출력", bg_color: str = "#1E293B") -> str:
     """브라우저의 인쇄 대화상자(Ctrl+P)를 즉시 호출하여 A4 용지에 꽉 차게 출력하는 고화질 인쇄 버튼을 생성합니다."""
     clean_name = re.sub(r'[\\/*?:"<>|\'\"]', "", file_name).strip()
     b64_data = base64.b64encode(image_bytes).decode()
@@ -131,11 +131,15 @@ def render_direct_print_button(image_bytes: bytes, file_name: str, button_label:
         "})();"
     )
 
+    clean_text = button_label.replace("🖨️", "").replace("[원클릭 즉시 인쇄]", "").replace("(Ctrl+P)", "").strip()
+    if not clean_text:
+        clean_text = "창문부착용A4바로출력"
+
     return f"""<div style="margin: 8px 0 14px 0;">
 <textarea id="print_data_{uid}" style="display:none;">{b64_data}</textarea>
-<button id="print_btn_{uid}" onclick="{js_code}" style="width: 100%; display: flex; align-items: center; justify-content: center; gap: 10px; text-align: center; background-color: {bg_color}; color: #FFFFFF !important; -webkit-text-fill-color: #FFFFFF !important; padding: 15px 20px; border-radius: 9px; font-weight: 800; border: 1.5px solid #475569; cursor: pointer; font-size: 16px; box-shadow: 0 4px 14px rgba(15,23,42,0.35); transition: all 0.2s ease-in-out;">
-<span style="font-size: 20px;">🖨️</span>
-<span style="color: #FFFFFF !important; -webkit-text-fill-color: #FFFFFF !important; font-weight: 800; font-size: 16px; letter-spacing: -0.3px;">{button_label}</span>
+<button id="print_btn_{uid}" onclick="{js_code}" style="width: 100%; display: flex; align-items: center; justify-content: center; gap: 8px; text-align: center; background-color: {bg_color}; color: #FFFFFF !important; -webkit-text-fill-color: #FFFFFF !important; padding: 15px 20px; border-radius: 9px; font-weight: 800; border: 1.5px solid #475569; cursor: pointer; font-size: 17px; box-shadow: 0 4px 14px rgba(15,23,42,0.35); transition: all 0.2s ease-in-out;">
+<span style="font-size: 20px; color: #FFFFFF !important; -webkit-text-fill-color: #FFFFFF !important;">🖨️</span>
+<span style="color: #FFFFFF !important; -webkit-text-fill-color: #FFFFFF !important; font-weight: 800; font-size: 17px; letter-spacing: -0.3px;">{clean_text}</span>
 </button>
 </div>"""
 
@@ -225,7 +229,7 @@ def render_download_save_controller(
     key_prefix: str,
     is_poster: bool = False,
     print_bytes: bytes = None,
-    print_label: str = "🖨️ [원클릭 즉시 인쇄] 창문 부착용 A4 바로 출력 (Ctrl+P)",
+    print_label: str = "창문부착용A4바로출력",
     print_bg: str = "#1E293B"
 ):
     """
@@ -236,7 +240,7 @@ def render_download_save_controller(
     if "custom_download_path" not in st.session_state:
         st.session_state.custom_download_path = os.path.join(os.path.expanduser("~"), "Desktop")
 
-    # 1. 인쇄 버튼 (창문부착용 포스터 전용)
+    # 1. 인쇄 버튼 (창문부착용 포스터 전용: 이모지 1개, 단정한 라벨, 선명한 화이트 텍스트)
     if is_poster and print_bytes:
         st.markdown(render_direct_print_button(print_bytes, default_filename, print_label, bg_color=print_bg), unsafe_allow_html=True)
         st.markdown("<div style='height: 4px;'></div>", unsafe_allow_html=True)
@@ -277,6 +281,68 @@ def render_download_save_controller(
                 key=f"{key_prefix}_btn_fallback_down",
                 use_container_width=True
             )
+
+def render_deal_done_controller(key_prefix: str, default_color: str = "#FF0101"):
+    """
+    거래완료 표시 체크박스 + 색상 선택 피커 + HEX 코드 직접 입력 칸을 가로로 정돈하여 렌더링하고 동기화합니다.
+    - 기본 색상: #FF0101 (요청하신 선명한 레드)
+    - 색상 피커와 직접 코드 입력 칸 실시간 양방향 연동
+    """
+    deal_done_key = f"{key_prefix}_deal_done"
+    color_key = f"{key_prefix}_deal_color"
+    code_key = f"{key_prefix}_deal_hex_code"
+
+    # 이전 네이비(#1E3A8A) 또는 구버전 레드가 남아있거나 없는 경우 #FF0101로 업데이트
+    if color_key not in st.session_state or st.session_state[color_key] in ["#1E3A8A", "#DC2626"]:
+        st.session_state[color_key] = default_color
+
+    cur_color = st.session_state.get(color_key, default_color)
+    if not str(cur_color).startswith("#"):
+        cur_color = f"#{cur_color}"
+    cur_color = cur_color.upper()
+
+    if code_key not in st.session_state or st.session_state[code_key] in ["#1E3A8A", "#DC2626"]:
+        st.session_state[code_key] = cur_color
+
+    c_deal1, c_deal2, c_deal3 = st.columns([1.1, 0.9, 1.2])
+    with c_deal1:
+        st.checkbox(
+            "거래완료 표시",
+            key=deal_done_key,
+            help="체크 시 썸네일 중앙에 거래완료 배지가 큼직하게 부착됩니다."
+        )
+
+    with c_deal2:
+        picked = st.color_picker(
+            "배지 색상",
+            value=cur_color,
+            key=f"{key_prefix}_picker_ui",
+            help="색상 팔레트에서 선택"
+        )
+        if picked and picked.upper() != cur_color:
+            st.session_state[color_key] = picked.upper()
+            st.session_state[code_key] = picked.upper()
+            st.rerun()
+
+    with c_deal3:
+        typed = st.text_input(
+            "색상 코드(HEX)",
+            value=st.session_state.get(code_key, cur_color),
+            key=f"{key_prefix}_code_ui",
+            placeholder="#FF0101",
+            help="직접 색상 코드 입력 (예: #FF0101 또는 ff0101)"
+        )
+        if typed:
+            norm_code = typed.strip()
+            if not norm_code.startswith("#"):
+                norm_code = f"#{norm_code}"
+            norm_code = norm_code.upper()
+            if re.match(r"^#[0-9A-F]{6}$", norm_code) and norm_code != cur_color:
+                st.session_state[color_key] = norm_code
+                st.session_state[code_key] = norm_code
+                st.rerun()
+
+    return st.session_state.get(deal_done_key, False), st.session_state.get(color_key, default_color)
 
 def render_design_and_layout_controls(key_prefix: str, default_design_name: str = "🍊 참좋은 시그니처 오렌지 (기본)"):
     """
@@ -469,81 +535,95 @@ st.markdown("""
         display: none !important;
     }
     
-    /* 탭 헤더 스타일링 (크고 누르기 쉽게) */
-    .stTabs [data-baseweb="tab-list"] {
-        gap: 10px;
-        background-color: #EDF1F5;
-        padding: 6px;
-        border-radius: 12px;
-        margin-bottom: 20px;
-    }
-    .stTabs [data-baseweb="tab"] {
-        height: 48px;
-        border-radius: 9px;
-        font-size: 16px;
-        font-weight: 700;
-        padding: 0 20px;
-        color: #495057;
-        background-color: transparent;
-        transition: all 0.2s ease-in-out;
-    }
-    .stTabs [aria-selected="true"] {
-        background-color: #FFFFFF !important;
-        color: #F48A26 !important;
-        box-shadow: 0 4px 12px rgba(0,0,0,0.08) !important;
-    }
-
-    /* 🌟 최상위 3대 메인 탭 (🖼️ 썸네일 / 🖨️ 창문부착용A4 / 📋 중개대상물표시): 글자크기 3배 (28px), 간격 3배 (48px) 스타일링 */
-    div[data-testid="stTabs"]:not([data-baseweb="tab-panel"] [data-testid="stTabs"]) > [data-baseweb="tab-list"],
-    div:has(#main-top-tabs-anchor) + div [data-baseweb="tab-list"],
-    div:has(#main-top-tabs-anchor) ~ div [data-testid="stTabs"] > [data-baseweb="tab-list"],
-    div:has(#main-top-tabs-anchor) ~ [data-testid="stElementContainer"] [data-baseweb="tab-list"],
-    .main-top-tabs-container [data-baseweb="tab-list"] {
-        gap: 48px !important;
-        background-color: #EDF2F7 !important;
-        padding: 12px 20px !important;
+    /* ==================================================== */
+    /* 🌟 최상위 메인 3대 메뉴 탭: 크기 3배 (32px), 간격 3배 (50px) */
+    /* ==================================================== */
+    [data-baseweb="tab-list"] {
+        gap: 50px !important;
+        background-color: #F1F5F9 !important;
+        padding: 14px 24px !important;
         border-radius: 18px !important;
-        margin-bottom: 26px !important;
+        margin-bottom: 28px !important;
         display: flex !important;
         align-items: center !important;
+        border-bottom: 2px solid #E2E8F0 !important;
     }
-    div[data-testid="stTabs"]:not([data-baseweb="tab-panel"] [data-testid="stTabs"]) > [data-baseweb="tab-list"] [data-baseweb="tab"],
-    div:has(#main-top-tabs-anchor) + div [data-baseweb="tab-list"] [data-baseweb="tab"],
-    div:has(#main-top-tabs-anchor) ~ div [data-testid="stTabs"] > [data-baseweb="tab-list"] [data-baseweb="tab"],
-    div:has(#main-top-tabs-anchor) ~ [data-testid="stElementContainer"] [data-baseweb="tab-list"] [data-baseweb="tab"],
-    .main-top-tabs-container [data-baseweb="tab-list"] [data-baseweb="tab"] {
-        height: 68px !important;
-        padding: 0 38px !important;
+    [data-baseweb="tab"] {
+        height: 72px !important;
+        min-height: 72px !important;
+        padding: 0 36px !important;
         border-radius: 14px !important;
         background-color: transparent !important;
         transition: all 0.2s ease-in-out !important;
         border: none !important;
+        cursor: pointer !important;
     }
-    div[data-testid="stTabs"]:not([data-baseweb="tab-panel"] [data-testid="stTabs"]) > [data-baseweb="tab-list"] [data-baseweb="tab"] *,
-    div:has(#main-top-tabs-anchor) + div [data-baseweb="tab-list"] [data-baseweb="tab"] *,
-    div:has(#main-top-tabs-anchor) ~ div [data-testid="stTabs"] > [data-baseweb="tab-list"] [data-baseweb="tab"] *,
-    div:has(#main-top-tabs-anchor) ~ [data-testid="stElementContainer"] [data-baseweb="tab-list"] [data-baseweb="tab"] *,
-    .main-top-tabs-container [data-baseweb="tab-list"] [data-baseweb="tab"] * {
-        font-size: 28px !important;
+    [data-baseweb="tab"],
+    [data-baseweb="tab"] *,
+    [data-baseweb="tab"] p,
+    [data-baseweb="tab"] span,
+    [data-baseweb="tab"] div {
+        font-size: 32px !important;
         font-weight: 800 !important;
-        line-height: 1.2 !important;
+        line-height: 1.3 !important;
         color: #334155 !important;
         letter-spacing: -0.5px !important;
     }
-    div[data-testid="stTabs"]:not([data-baseweb="tab-panel"] [data-testid="stTabs"]) > [data-baseweb="tab-list"] [aria-selected="true"],
-    div:has(#main-top-tabs-anchor) + div [data-baseweb="tab-list"] [aria-selected="true"],
-    div:has(#main-top-tabs-anchor) ~ div [data-testid="stTabs"] > [data-baseweb="tab-list"] [aria-selected="true"],
-    div:has(#main-top-tabs-anchor) ~ [data-testid="stElementContainer"] [data-baseweb="tab-list"] [aria-selected="true"],
-    .main-top-tabs-container [data-baseweb="tab-list"] [aria-selected="true"] {
+    [data-baseweb="tab"][aria-selected="true"] {
         background-color: #FFFFFF !important;
-        box-shadow: 0 4px 16px rgba(0,0,0,0.12) !important;
+        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12) !important;
+        border-bottom: 4px solid #F48A26 !important;
     }
-    div[data-testid="stTabs"]:not([data-baseweb="tab-panel"] [data-testid="stTabs"]) > [data-baseweb="tab-list"] [aria-selected="true"] *,
-    div:has(#main-top-tabs-anchor) + div [data-baseweb="tab-list"] [aria-selected="true"] *,
-    div:has(#main-top-tabs-anchor) ~ div [data-testid="stTabs"] > [data-baseweb="tab-list"] [aria-selected="true"] *,
-    div:has(#main-top-tabs-anchor) ~ [data-testid="stElementContainer"] [data-baseweb="tab-list"] [aria-selected="true"] *,
-    .main-top-tabs-container [data-baseweb="tab-list"] [aria-selected="true"] * {
+    [data-baseweb="tab"][aria-selected="true"],
+    [data-baseweb="tab"][aria-selected="true"] *,
+    [data-baseweb="tab"][aria-selected="true"] p,
+    [data-baseweb="tab"][aria-selected="true"] span,
+    [data-baseweb="tab"][aria-selected="true"] div {
         color: #F48A26 !important;
+        font-weight: 900 !important;
+    }
+    [data-baseweb="tab-highlight"], [data-baseweb="tab-border"] {
+        display: none !important;
+    }
+
+    /* 📌 하위 서브 탭 (tab-panel 내부: 아파트/주택/상가/공장 등은 단정하고 깔끔한 16px) */
+    [data-baseweb="tab-panel"] [data-baseweb="tab-list"] {
+        gap: 12px !important;
+        background-color: #EDF2F7 !important;
+        padding: 6px 14px !important;
+        border-radius: 10px !important;
+        margin-bottom: 18px !important;
+        border-bottom: none !important;
+    }
+    [data-baseweb="tab-panel"] [data-baseweb="tab"] {
+        height: 46px !important;
+        min-height: 46px !important;
+        padding: 0 20px !important;
+        border-radius: 8px !important;
+    }
+    [data-baseweb="tab-panel"] [data-baseweb="tab"],
+    [data-baseweb="tab-panel"] [data-baseweb="tab"] *,
+    [data-baseweb="tab-panel"] [data-baseweb="tab"] p,
+    [data-baseweb="tab-panel"] [data-baseweb="tab"] span,
+    [data-baseweb="tab-panel"] [data-baseweb="tab"] div {
+        font-size: 16px !important;
+        font-weight: 700 !important;
+        line-height: 1.2 !important;
+        color: #4A5568 !important;
+        letter-spacing: normal !important;
+    }
+    [data-baseweb="tab-panel"] [data-baseweb="tab"][aria-selected="true"] {
+        background-color: #FFFFFF !important;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08) !important;
+        border-bottom: 3px solid #F48A26 !important;
+    }
+    [data-baseweb="tab-panel"] [data-baseweb="tab"][aria-selected="true"],
+    [data-baseweb="tab-panel"] [data-baseweb="tab"][aria-selected="true"] *,
+    [data-baseweb="tab-panel"] [data-baseweb="tab"][aria-selected="true"] p,
+    [data-baseweb="tab-panel"] [data-baseweb="tab"][aria-selected="true"] span,
+    [data-baseweb="tab-panel"] [data-baseweb="tab"][aria-selected="true"] div {
+        color: #F48A26 !important;
+        font-weight: 800 !important;
     }
 
     /* 배지 스타일 */
@@ -750,28 +830,19 @@ if "thumb_show_footer" not in st.session_state:
 if "thumb_footer_text" not in st.session_state:
     st.session_state.thumb_footer_text = ""
 
-# 거래완료 배지 옵션 상태 (블로그 게재에 부담 없는 품격 있는 클래식 네이비 기본값)
-DEFAULT_DEAL_COLOR = "#1E3A8A"
+# 거래완료 배지 옵션 상태 (기본값: #FF0101)
+DEFAULT_DEAL_COLOR = "#FF0101"
 
-if "apt_deal_done" not in st.session_state:
-    st.session_state.apt_deal_done = False
-if "apt_deal_color" not in st.session_state or st.session_state.apt_deal_color == "#DC2626":
-    st.session_state.apt_deal_color = DEFAULT_DEAL_COLOR
-
-if "house_deal_done" not in st.session_state:
-    st.session_state.house_deal_done = False
-if "house_deal_color" not in st.session_state or st.session_state.house_deal_color == "#DC2626":
-    st.session_state.house_deal_color = DEFAULT_DEAL_COLOR
-
-if "comm_deal_done" not in st.session_state:
-    st.session_state.comm_deal_done = False
-if "comm_deal_color" not in st.session_state or st.session_state.comm_deal_color == "#DC2626":
-    st.session_state.comm_deal_color = DEFAULT_DEAL_COLOR
-
-if "factory_deal_done" not in st.session_state:
-    st.session_state.factory_deal_done = False
-if "factory_deal_color" not in st.session_state or st.session_state.factory_deal_color == "#DC2626":
-    st.session_state.factory_deal_color = DEFAULT_DEAL_COLOR
+for deal_prefix in ["apt", "house", "comm", "factory"]:
+    done_k = f"{deal_prefix}_deal_done"
+    color_k = f"{deal_prefix}_deal_color"
+    hex_k = f"{deal_prefix}_deal_hex_code"
+    if done_k not in st.session_state:
+        st.session_state[done_k] = False
+    if color_k not in st.session_state or st.session_state[color_k] in ["#DC2626", "#1E3A8A"]:
+        st.session_state[color_k] = DEFAULT_DEAL_COLOR
+    if hex_k not in st.session_state or st.session_state[hex_k] in ["#DC2626", "#1E3A8A"]:
+        st.session_state[hex_k] = st.session_state[color_k]
 
 # 2. 네이버 광고 & 대상중개물 표시 16개 점검 항목 상태 (신소장님 사상 중흥S-클래스 세팅값)
 for k, v in DEFAULT_SPEC.items():
@@ -1499,7 +1570,7 @@ def render_tab_apt_thumb():
                 card_bg=selected_design["card_bg"],
                 overlay_image=selected_design.get("overlay_image_path"),
                 deal_done=st.session_state.get("apt_deal_done", False),
-                deal_color=st.session_state.get("apt_deal_color", "#1E3A8A")
+                deal_color=st.session_state.get("apt_deal_color", "#FF0101")
             )
 
         st.image(thumbnail_img, caption="블로그 썸네일 실시간 완성 미리보기 (1080 x 1080 px)", use_container_width=True)
@@ -1528,19 +1599,7 @@ def render_tab_apt_thumb():
         st.text_input("5행: 방향 및 특징", key="spec_line5")
 
         st.markdown("#### 🚩 매물 상태 (거래완료 표시)")
-        c_deal1, c_deal2 = st.columns([1, 1])
-        with c_deal1:
-            st.checkbox(
-                "거래완료 표시",
-                key="apt_deal_done",
-                help="체크 시 썸네일에 거래완료 배지가 부착됩니다."
-            )
-        with c_deal2:
-            st.color_picker(
-                "거래완료 배지 색상",
-                key="apt_deal_color",
-                value=st.session_state.get("apt_deal_color", "#1E3A8A")
-            )
+        render_deal_done_controller("apt")
 
         st.markdown("#### 🏢 하단 띠지 (중개사무소 정보)")
         st.checkbox(
@@ -1714,7 +1773,7 @@ def render_tab_house_thumb():
                 card_bg=selected_design["card_bg"],
                 overlay_image=selected_design.get("overlay_image_path"),
                 deal_done=st.session_state.get("house_deal_done", False),
-                deal_color=st.session_state.get("house_deal_color", "#1E3A8A")
+                deal_color=st.session_state.get("house_deal_color", "#FF0101")
             )
 
         st.image(house_thumb_img, caption="주택 블로그 썸네일 실시간 미리보기 (1080 x 1080 px)", use_container_width=True)
@@ -1743,19 +1802,7 @@ def render_tab_house_thumb():
         st.text_input("5행: 방향 및 주차", key="house_spec5")
 
         st.markdown("#### 🚩 매물 상태 (거래완료 표시)")
-        c_hdeal1, c_hdeal2 = st.columns([1, 1])
-        with c_hdeal1:
-            st.checkbox(
-                "거래완료 표시",
-                key="house_deal_done",
-                help="체크 시 썸네일에 거래완료 배지가 부착됩니다."
-            )
-        with c_hdeal2:
-            st.color_picker(
-                "거래완료 배지 색상",
-                key="house_deal_color",
-                value=st.session_state.get("house_deal_color", "#1E3A8A")
-            )
+        render_deal_done_controller("house")
 
         st.markdown("#### 🏢 하단 띠지 (중개사무소 정보)")
         st.checkbox("하단 띠지 표시 (체크 해제 시 전체 사진 영역 확장)", key="house_show_footer")
@@ -1863,7 +1910,7 @@ def render_tab_comm_thumb():
                     office_name=st.session_state.comm_lease_office,
                     broker_title=st.session_state.comm_lease_broker,
                     deal_done=st.session_state.get("comm_deal_done", False),
-                    deal_color=st.session_state.get("comm_deal_color", "#1E3A8A")
+                    deal_color=st.session_state.get("comm_deal_color", "#FF0101")
                 )
             else:
                 comm_thumb_img = render_commercial_sale_thumbnail(
@@ -1881,7 +1928,7 @@ def render_tab_comm_thumb():
                     office_name=st.session_state.comm_sale_office,
                     broker_title=st.session_state.comm_sale_broker,
                     deal_done=st.session_state.get("comm_deal_done", False),
-                    deal_color=st.session_state.get("comm_deal_color", "#1E3A8A")
+                    deal_color=st.session_state.get("comm_deal_color", "#FF0101")
                 )
 
         caption_title = "실시간 완성 미리보기: 상가 임차 (1080 x 1080 px)" if not is_sale_mode else "실시간 완성 미리보기: 상가 매매 (1080 x 1080 px)"
@@ -1906,19 +1953,7 @@ def render_tab_comm_thumb():
             st.text_input("스펙 2행 (추천 업종 / 특징)", key="comm_lease_spec2")
 
             st.markdown("#### 🚩 매물 상태 (거래완료 표시)")
-            c_cdeal1, c_cdeal2 = st.columns([1, 1])
-            with c_cdeal1:
-                st.checkbox(
-                    "거래완료 표시",
-                    key="comm_deal_done",
-                    help="체크 시 썸네일에 거래완료 배지가 부착됩니다."
-                )
-            with c_cdeal2:
-                st.color_picker(
-                    "거래완료 배지 색상",
-                    key="comm_deal_color",
-                    value=st.session_state.get("comm_deal_color", "#1E3A8A")
-                )
+            render_deal_done_controller("comm")
 
             st.markdown("#### 🏢 하단 띠지 정보")
             st.checkbox("하단 띠지 표시", key="comm_lease_show_footer")
@@ -1945,19 +1980,7 @@ def render_tab_comm_thumb():
             st.text_input("금액 및 투자 스펙 요약", key="comm_sale_price_spec")
 
             st.markdown("#### 🚩 매물 상태 (거래완료 표시)")
-            c_cdeal1, c_cdeal2 = st.columns([1, 1])
-            with c_cdeal1:
-                st.checkbox(
-                    "거래완료 표시",
-                    key="comm_deal_done",
-                    help="체크 시 썸네일에 거래완료 배지가 부착됩니다."
-                )
-            with c_cdeal2:
-                st.color_picker(
-                    "거래완료 배지 색상",
-                    key="comm_deal_color",
-                    value=st.session_state.get("comm_deal_color", "#1E3A8A")
-                )
+            render_deal_done_controller("comm")
 
             st.markdown("#### 🏢 하단 띠지 정보")
             st.checkbox("하단 띠지 표시", key="comm_sale_show_footer")
@@ -2114,7 +2137,7 @@ def render_tab_factory_thumb():
                 card_bg=selected_design["card_bg"],
                 overlay_image=selected_design.get("overlay_image_path"),
                 deal_done=st.session_state.get("factory_deal_done", False),
-                deal_color=st.session_state.get("factory_deal_color", "#1E3A8A")
+                deal_color=st.session_state.get("factory_deal_color", "#FF0101")
             )
 
         st.image(factory_thumb_img, caption="공장 블로그 썸네일 실시간 미리보기 (1080 x 1080 px)", use_container_width=True)
@@ -2143,19 +2166,7 @@ def render_tab_factory_thumb():
         st.text_input("5행: 입주 및 주차", key="factory_spec5")
 
         st.markdown("#### 🚩 매물 상태 (거래완료 표시)")
-        c_fdeal1, c_fdeal2 = st.columns([1, 1])
-        with c_fdeal1:
-            st.checkbox(
-                "거래완료 표시",
-                key="factory_deal_done",
-                help="체크 시 썸네일에 거래완료 배지가 부착됩니다."
-            )
-        with c_fdeal2:
-            st.color_picker(
-                "거래완료 배지 색상",
-                key="factory_deal_color",
-                value=st.session_state.get("factory_deal_color", "#1E3A8A")
-            )
+        render_deal_done_controller("factory")
 
         st.markdown("#### 🏢 하단 띠지 (중개사무소 정보)")
         st.checkbox("하단 띠지 표시 (체크 해제 시 전체 사진 영역 확장)", key="factory_show_footer")
@@ -4039,50 +4050,98 @@ def render_tab_factory_ad():
 # ====================================================
 # 🌟 최상위 3대 메인 메뉴 탭: 썸네일 / 창문부착용A4 / 중개대상물표시
 # ====================================================
-st.markdown('<div id="main-top-tabs-anchor" style="display:none;"></div>', unsafe_allow_html=True)
+st.markdown("""
+<style>
+    /* 🌟 최상위 메인 3대 메뉴 탭: 크기 3배 (32px), 간격 3배 (50px), 높이 72px */
+    [data-baseweb="tab-list"] {
+        gap: 50px !important;
+        background-color: #F1F5F9 !important;
+        padding: 14px 24px !important;
+        border-radius: 18px !important;
+        margin-bottom: 28px !important;
+        display: flex !important;
+        align-items: center !important;
+        border-bottom: 2px solid #E2E8F0 !important;
+    }
+    [data-baseweb="tab"] {
+        height: 72px !important;
+        min-height: 72px !important;
+        padding: 0 36px !important;
+        border-radius: 14px !important;
+        background-color: transparent !important;
+        transition: all 0.2s ease-in-out !important;
+        border: none !important;
+        cursor: pointer !important;
+    }
+    [data-baseweb="tab"],
+    [data-baseweb="tab"] *,
+    [data-baseweb="tab"] p,
+    [data-baseweb="tab"] span,
+    [data-baseweb="tab"] div {
+        font-size: 32px !important;
+        font-weight: 800 !important;
+        line-height: 1.3 !important;
+        color: #334155 !important;
+        letter-spacing: -0.5px !important;
+    }
+    [data-baseweb="tab"][aria-selected="true"] {
+        background-color: #FFFFFF !important;
+        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12) !important;
+        border-bottom: 4px solid #F48A26 !important;
+    }
+    [data-baseweb="tab"][aria-selected="true"],
+    [data-baseweb="tab"][aria-selected="true"] *,
+    [data-baseweb="tab"][aria-selected="true"] p,
+    [data-baseweb="tab"][aria-selected="true"] span,
+    [data-baseweb="tab"][aria-selected="true"] div {
+        color: #F48A26 !important;
+        font-weight: 900 !important;
+    }
+    [data-baseweb="tab-highlight"], [data-baseweb="tab-border"] {
+        display: none !important;
+    }
 
-import streamlit.components.v1 as components
-components.html("""
-<script>
-function syncMainTopTabsFont() {
-    try {
-        var doc = window.parent.document;
-        var tabsContainers = doc.querySelectorAll('[data-testid="stTabs"]');
-        if (tabsContainers && tabsContainers.length > 0) {
-            var topTabs = null;
-            for (var i = 0; i < tabsContainers.length; i++) {
-                if (!tabsContainers[i].closest('[data-baseweb="tab-panel"]')) {
-                    topTabs = tabsContainers[i];
-                    break;
-                }
-            }
-            if (!topTabs) topTabs = tabsContainers[0];
-            var firstTabList = topTabs.querySelector('[data-baseweb="tab-list"]');
-            if (firstTabList) {
-                firstTabList.style.setProperty('gap', '48px', 'important');
-                firstTabList.style.setProperty('padding', '12px 20px', 'important');
-                firstTabList.style.setProperty('margin-bottom', '24px', 'important');
-                var buttons = firstTabList.querySelectorAll('[data-baseweb="tab"]');
-                buttons.forEach(function(btn) {
-                    btn.style.setProperty('height', '68px', 'important');
-                    btn.style.setProperty('padding', '0 38px', 'important');
-                    btn.style.setProperty('border-radius', '14px', 'important');
-                    var targets = btn.querySelectorAll('p, span, div');
-                    targets.forEach(function(el) {
-                        el.style.setProperty('font-size', '28px', 'important');
-                        el.style.setProperty('font-weight', '800', 'important');
-                        el.style.setProperty('line-height', '1.2', 'important');
-                        el.style.setProperty('letter-spacing', '-0.5px', 'important');
-                    });
-                });
-            }
-        }
-    } catch(e) {}
-}
-syncMainTopTabsFont();
-setInterval(syncMainTopTabsFont, 300);
-</script>
-""", height=0)
+    /* 📌 하위 서브 탭 (tab-panel 내부: 아파트/주택/상가/공장 등은 단정하고 깔끔한 16px) */
+    [data-baseweb="tab-panel"] [data-baseweb="tab-list"] {
+        gap: 12px !important;
+        background-color: #EDF2F7 !important;
+        padding: 6px 14px !important;
+        border-radius: 10px !important;
+        margin-bottom: 18px !important;
+        border-bottom: none !important;
+    }
+    [data-baseweb="tab-panel"] [data-baseweb="tab"] {
+        height: 46px !important;
+        min-height: 46px !important;
+        padding: 0 20px !important;
+        border-radius: 8px !important;
+    }
+    [data-baseweb="tab-panel"] [data-baseweb="tab"],
+    [data-baseweb="tab-panel"] [data-baseweb="tab"] *,
+    [data-baseweb="tab-panel"] [data-baseweb="tab"] p,
+    [data-baseweb="tab-panel"] [data-baseweb="tab"] span,
+    [data-baseweb="tab-panel"] [data-baseweb="tab"] div {
+        font-size: 16px !important;
+        font-weight: 700 !important;
+        line-height: 1.2 !important;
+        color: #4A5568 !important;
+        letter-spacing: normal !important;
+    }
+    [data-baseweb="tab-panel"] [data-baseweb="tab"][aria-selected="true"] {
+        background-color: #FFFFFF !important;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08) !important;
+        border-bottom: 3px solid #F48A26 !important;
+    }
+    [data-baseweb="tab-panel"] [data-baseweb="tab"][aria-selected="true"],
+    [data-baseweb="tab-panel"] [data-baseweb="tab"][aria-selected="true"] *,
+    [data-baseweb="tab-panel"] [data-baseweb="tab"][aria-selected="true"] p,
+    [data-baseweb="tab-panel"] [data-baseweb="tab"][aria-selected="true"] span,
+    [data-baseweb="tab-panel"] [data-baseweb="tab"][aria-selected="true"] div {
+        color: #F48A26 !important;
+        font-weight: 800 !important;
+    }
+</style>
+""", unsafe_allow_html=True)
 
 tab_main_thumb, tab_main_poster, tab_main_ad = st.tabs(["🖼️ 썸네일", "🖨️ 창문부착용A4", "📋 중개대상물표시"])
 

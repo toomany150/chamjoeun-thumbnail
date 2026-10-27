@@ -201,7 +201,7 @@ def render_thumbnail(
     card_bg: tuple = None,
     overlay_image = None,
     deal_done: bool = False,
-    deal_color: str = "#1E3A8A",
+    deal_color: str = "#FF0101",
     deal_text: str = "거래완료"
 ) -> Image.Image:
     """1080x1080 썸네일을 생성하여 PIL Image로 반환합니다."""
@@ -668,7 +668,7 @@ def render_commercial_lease_thumbnail(
     office_name: str = "참좋은 공인중개사사무소",
     broker_title: str = "황금터잡이 신소장",
     deal_done: bool = False,
-    deal_color: str = "#1E3A8A",
+    deal_color: str = "#FF0101",
     deal_text: str = "거래완료"
 ) -> Image.Image:
     """[상가 임차 썸네일] - 1080x1080 다크 골드 럭셔리 스타일"""
@@ -926,7 +926,7 @@ def render_commercial_sale_thumbnail(
     office_name: str = "참좋은 공인중개사사무소",
     broker_title: str = "황금터잡이 신소장",
     deal_done: bool = False,
-    deal_color: str = "#1E3A8A",
+    deal_color: str = "#FF0101",
     deal_text: str = "거래완료"
 ) -> Image.Image:
     """[상가 매매 썸네일] - 1080x1080 더블 골드 프레임 & 수익률 하이라이트 스타일"""
