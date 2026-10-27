@@ -92,41 +92,52 @@ def render_direct_download_button(image_bytes: bytes, file_name: str, button_lab
 
 def render_direct_print_button(image_bytes: bytes, file_name: str, button_label: str = "🖨️ [원클릭 즉시 인쇄] 창문 부착용 A4 바로 출력 (Ctrl+P)", bg_color: str = "#1E293B") -> str:
     """브라우저의 인쇄 대화상자(Ctrl+P)를 즉시 호출하여 A4 용지에 꽉 차게 출력하는 고화질 인쇄 버튼을 생성합니다."""
-    clean_name = re.sub(r'[\\/*?:"<>|]', "", file_name).strip()
+    clean_name = re.sub(r'[\\/*?:"<>|\'\"]', "", file_name).strip()
     b64_data = base64.b64encode(image_bytes).decode()
     uid = abs(hash(file_name + str(len(image_bytes)))) % 1000000
 
-    return f"""
-    <div style="margin: 8px 0 14px 0;">
-        <textarea id="print_data_{uid}" style="display:none;">{b64_data}</textarea>
-        <button id="print_btn_{uid}" onclick="(function(){{
-            try {{
-                var ta = document.getElementById('print_data_{uid}');
-                if (!ta) return;
-                var b64 = ta.value;
-                var iframe = document.createElement('iframe');
-                iframe.style.position = 'fixed';
-                iframe.style.right = '0';
-                iframe.style.bottom = '0';
-                iframe.style.width = '0';
-                iframe.style.height = '0';
-                iframe.style.border = '0';
-                document.body.appendChild(iframe);
-                var doc = iframe.contentWindow.document;
-                doc.open();
-                doc.write('<!DOCTYPE html><html><head><title>{clean_name}</title><style>@page {{ size: A4 portrait; margin: 0; }} body {{ margin: 0; padding: 0; display: flex; justify-content: center; align-items: center; background: #fff; }} img {{ width: 100%; height: auto; max-height: 100vh; object-fit: contain; }}</style></head><body><img src=\x22data:image/png;base64,' + b64 + '\x22 onload=\x22setTimeout(function(){{ window.focus(); window.print(); }}, 300);\x22 /></body></html>');
-                doc.close();
-                setTimeout(function(){{ try {{ document.body.removeChild(iframe); }} catch(e){{}} }}, 60000);
-            }} catch(e) {{
-                alert('인쇄 호출 중 오류가 발생했습니다: ' + e);
-            }}
-        }})();" 
-        style="width: 100%; display: flex; align-items: center; justify-content: center; gap: 10px; text-align: center; background-color: {bg_color}; color: #FFFFFF !important; -webkit-text-fill-color: #FFFFFF !important; padding: 15px 20px; border-radius: 9px; font-weight: 800; border: 1.5px solid #475569; cursor: pointer; font-size: 16px; box-shadow: 0 4px 14px rgba(15,23,42,0.35); transition: all 0.2s ease-in-out;">
-            <span style="font-size: 20px;">🖨️</span>
-            <span style="color: #FFFFFF !important; -webkit-text-fill-color: #FFFFFF !important; font-weight: 800; font-size: 16px; letter-spacing: -0.3px;">{button_label}</span>
-        </button>
-    </div>
-    """
+    # inline onclick 에서 큰따옴표 충돌이 전혀 발생하지 않도록 작은따옴표와 DOM 엘리먼트 생성 방식으로 완벽 격리
+    js_code = (
+        "(function(){"
+        "try{"
+        f"var ta=document.getElementById('print_data_{uid}');"
+        "if(!ta)return;"
+        "var b64=ta.value;"
+        "var iframe=document.createElement('iframe');"
+        "iframe.style.position='fixed';"
+        "iframe.style.right='0';"
+        "iframe.style.bottom='0';"
+        "iframe.style.width='0';"
+        "iframe.style.height='0';"
+        "iframe.style.border='0';"
+        "document.body.appendChild(iframe);"
+        "var doc=iframe.contentWindow.document;"
+        "doc.open();"
+        "doc.write('<!DOCTYPE html><html><head><title>Print</title><style>@page{size:A4 portrait;margin:0;}body{margin:0;padding:0;display:flex;justify-content:center;align-items:center;background:#fff;}img{width:100%;height:auto;max-height:100vh;object-fit:contain;}</style></head><body></body></html>');"
+        "doc.close();"
+        "var img=doc.createElement('img');"
+        "img.src='data:image/png;base64,'+b64;"
+        "img.onload=function(){"
+        "setTimeout(function(){"
+        "try{"
+        "iframe.contentWindow.focus();"
+        "iframe.contentWindow.print();"
+        "}catch(err){window.print();}"
+        "},300);"
+        "};"
+        "doc.body.appendChild(img);"
+        "setTimeout(function(){try{document.body.removeChild(iframe);}catch(e){}},60000);"
+        "}catch(e){alert('인쇄 호출 중 오류가 발생했습니다: '+e);}"
+        "})();"
+    )
+
+    return f"""<div style="margin: 8px 0 14px 0;">
+<textarea id="print_data_{uid}" style="display:none;">{b64_data}</textarea>
+<button id="print_btn_{uid}" onclick="{js_code}" style="width: 100%; display: flex; align-items: center; justify-content: center; gap: 10px; text-align: center; background-color: {bg_color}; color: #FFFFFF !important; -webkit-text-fill-color: #FFFFFF !important; padding: 15px 20px; border-radius: 9px; font-weight: 800; border: 1.5px solid #475569; cursor: pointer; font-size: 16px; box-shadow: 0 4px 14px rgba(15,23,42,0.35); transition: all 0.2s ease-in-out;">
+<span style="font-size: 20px;">🖨️</span>
+<span style="color: #FFFFFF !important; -webkit-text-fill-color: #FFFFFF !important; font-weight: 800; font-size: 16px; letter-spacing: -0.3px;">{button_label}</span>
+</button>
+</div>"""
 
 def render_copy_button(text_to_copy: str, button_label: str, btn_id: str = "") -> str:
     """텍스트/HTML을 클립보드로 복사하는 원클릭 복사 버튼 컴포넌트입니다."""
@@ -482,55 +493,56 @@ st.markdown("""
         box-shadow: 0 4px 12px rgba(0,0,0,0.08) !important;
     }
 
-    /* 🌟 최상위 3대 메인 탭 (🖼️ 썸네일 / 🖨️ 창문부착용A4 / 📋 중개대상물표시) 24px 볼드 & 넓은 간격 스타일링 */
-    div[data-testid="stMainBlockContainer"] > div[data-testid="stElementContainer"]:has([data-testid="stTabs"]) > div[data-testid="stTabs"] > [data-baseweb="tab-list"],
+    /* 🌟 최상위 3대 메인 탭 (🖼️ 썸네일 / 🖨️ 창문부착용A4 / 📋 중개대상물표시): 글자크기 3배 (28px), 간격 3배 (48px) 스타일링 */
+    div[data-testid="stTabs"]:not([data-baseweb="tab-panel"] [data-testid="stTabs"]) > [data-baseweb="tab-list"],
     div:has(#main-top-tabs-anchor) + div [data-baseweb="tab-list"],
-    div:has(#main-top-tabs-anchor) ~ div:has([data-testid="stTabs"]) > [data-testid="stTabs"] > [data-baseweb="tab-list"],
+    div:has(#main-top-tabs-anchor) ~ div [data-testid="stTabs"] > [data-baseweb="tab-list"],
+    div:has(#main-top-tabs-anchor) ~ [data-testid="stElementContainer"] [data-baseweb="tab-list"],
     .main-top-tabs-container [data-baseweb="tab-list"] {
-        gap: 22px !important;
+        gap: 48px !important;
         background-color: #EDF2F7 !important;
-        padding: 10px 16px !important;
-        border-radius: 16px !important;
-        margin-bottom: 24px !important;
+        padding: 12px 20px !important;
+        border-radius: 18px !important;
+        margin-bottom: 26px !important;
+        display: flex !important;
+        align-items: center !important;
     }
-    div[data-testid="stMainBlockContainer"] > div[data-testid="stElementContainer"]:has([data-testid="stTabs"]) > div[data-testid="stTabs"] > [data-baseweb="tab-list"] [data-baseweb="tab"],
+    div[data-testid="stTabs"]:not([data-baseweb="tab-panel"] [data-testid="stTabs"]) > [data-baseweb="tab-list"] [data-baseweb="tab"],
     div:has(#main-top-tabs-anchor) + div [data-baseweb="tab-list"] [data-baseweb="tab"],
-    div:has(#main-top-tabs-anchor) ~ div:has([data-testid="stTabs"]) > [data-testid="stTabs"] > [data-baseweb="tab-list"] [data-baseweb="tab"],
+    div:has(#main-top-tabs-anchor) ~ div [data-testid="stTabs"] > [data-baseweb="tab-list"] [data-baseweb="tab"],
+    div:has(#main-top-tabs-anchor) ~ [data-testid="stElementContainer"] [data-baseweb="tab-list"] [data-baseweb="tab"],
     .main-top-tabs-container [data-baseweb="tab-list"] [data-baseweb="tab"] {
-        height: 62px !important;
-        padding: 0 34px !important;
-        border-radius: 12px !important;
+        height: 68px !important;
+        padding: 0 38px !important;
+        border-radius: 14px !important;
+        background-color: transparent !important;
+        transition: all 0.2s ease-in-out !important;
+        border: none !important;
     }
-    div[data-testid="stMainBlockContainer"] > div[data-testid="stElementContainer"]:has([data-testid="stTabs"]) > div[data-testid="stTabs"] > [data-baseweb="tab-list"] [data-baseweb="tab"] p,
-    div[data-testid="stMainBlockContainer"] > div[data-testid="stElementContainer"]:has([data-testid="stTabs"]) > div[data-testid="stTabs"] > [data-baseweb="tab-list"] [data-baseweb="tab"] span,
-    div[data-testid="stMainBlockContainer"] > div[data-testid="stElementContainer"]:has([data-testid="stTabs"]) > div[data-testid="stTabs"] > [data-baseweb="tab-list"] [data-baseweb="tab"] div,
-    div:has(#main-top-tabs-anchor) + div [data-baseweb="tab-list"] [data-baseweb="tab"] p,
-    div:has(#main-top-tabs-anchor) + div [data-baseweb="tab-list"] [data-baseweb="tab"] span,
-    div:has(#main-top-tabs-anchor) ~ div:has([data-testid="stTabs"]) > [data-testid="stTabs"] > [data-baseweb="tab-list"] [data-baseweb="tab"] p,
-    div:has(#main-top-tabs-anchor) ~ div:has([data-testid="stTabs"]) > [data-testid="stTabs"] > [data-baseweb="tab-list"] [data-baseweb="tab"] span,
-    .main-top-tabs-container [data-baseweb="tab-list"] [data-baseweb="tab"] p,
-    .main-top-tabs-container [data-baseweb="tab-list"] [data-baseweb="tab"] span {
-        font-size: 24px !important;
+    div[data-testid="stTabs"]:not([data-baseweb="tab-panel"] [data-testid="stTabs"]) > [data-baseweb="tab-list"] [data-baseweb="tab"] *,
+    div:has(#main-top-tabs-anchor) + div [data-baseweb="tab-list"] [data-baseweb="tab"] *,
+    div:has(#main-top-tabs-anchor) ~ div [data-testid="stTabs"] > [data-baseweb="tab-list"] [data-baseweb="tab"] *,
+    div:has(#main-top-tabs-anchor) ~ [data-testid="stElementContainer"] [data-baseweb="tab-list"] [data-baseweb="tab"] *,
+    .main-top-tabs-container [data-baseweb="tab-list"] [data-baseweb="tab"] * {
+        font-size: 28px !important;
         font-weight: 800 !important;
         line-height: 1.2 !important;
-        color: #1E2022 !important;
+        color: #334155 !important;
         letter-spacing: -0.5px !important;
     }
-    div[data-testid="stMainBlockContainer"] > div[data-testid="stElementContainer"]:has([data-testid="stTabs"]) > div[data-testid="stTabs"] > [data-baseweb="tab-list"] [aria-selected="true"],
+    div[data-testid="stTabs"]:not([data-baseweb="tab-panel"] [data-testid="stTabs"]) > [data-baseweb="tab-list"] [aria-selected="true"],
     div:has(#main-top-tabs-anchor) + div [data-baseweb="tab-list"] [aria-selected="true"],
-    div:has(#main-top-tabs-anchor) ~ div:has([data-testid="stTabs"]) > [data-testid="stTabs"] > [data-baseweb="tab-list"] [aria-selected="true"],
+    div:has(#main-top-tabs-anchor) ~ div [data-testid="stTabs"] > [data-baseweb="tab-list"] [aria-selected="true"],
+    div:has(#main-top-tabs-anchor) ~ [data-testid="stElementContainer"] [data-baseweb="tab-list"] [aria-selected="true"],
     .main-top-tabs-container [data-baseweb="tab-list"] [aria-selected="true"] {
         background-color: #FFFFFF !important;
-        box-shadow: 0 4px 14px rgba(0,0,0,0.12) !important;
+        box-shadow: 0 4px 16px rgba(0,0,0,0.12) !important;
     }
-    div[data-testid="stMainBlockContainer"] > div[data-testid="stElementContainer"]:has([data-testid="stTabs"]) > div[data-testid="stTabs"] > [data-baseweb="tab-list"] [aria-selected="true"] p,
-    div[data-testid="stMainBlockContainer"] > div[data-testid="stElementContainer"]:has([data-testid="stTabs"]) > div[data-testid="stTabs"] > [data-baseweb="tab-list"] [aria-selected="true"] span,
-    div:has(#main-top-tabs-anchor) + div [data-baseweb="tab-list"] [aria-selected="true"] p,
-    div:has(#main-top-tabs-anchor) + div [data-baseweb="tab-list"] [aria-selected="true"] span,
-    div:has(#main-top-tabs-anchor) ~ div:has([data-testid="stTabs"]) > [data-testid="stTabs"] > [data-baseweb="tab-list"] [aria-selected="true"] p,
-    div:has(#main-top-tabs-anchor) ~ div:has([data-testid="stTabs"]) > [data-testid="stTabs"] > [data-baseweb="tab-list"] [aria-selected="true"] span,
-    .main-top-tabs-container [data-baseweb="tab-list"] [aria-selected="true"] p,
-    .main-top-tabs-container [data-baseweb="tab-list"] [aria-selected="true"] span {
+    div[data-testid="stTabs"]:not([data-baseweb="tab-panel"] [data-testid="stTabs"]) > [data-baseweb="tab-list"] [aria-selected="true"] *,
+    div:has(#main-top-tabs-anchor) + div [data-baseweb="tab-list"] [aria-selected="true"] *,
+    div:has(#main-top-tabs-anchor) ~ div [data-testid="stTabs"] > [data-baseweb="tab-list"] [aria-selected="true"] *,
+    div:has(#main-top-tabs-anchor) ~ [data-testid="stElementContainer"] [data-baseweb="tab-list"] [aria-selected="true"] *,
+    .main-top-tabs-container [data-baseweb="tab-list"] [aria-selected="true"] * {
         color: #F48A26 !important;
     }
 
@@ -722,23 +734,28 @@ if "thumb_show_footer" not in st.session_state:
 if "thumb_footer_text" not in st.session_state:
     st.session_state.thumb_footer_text = ""
 
-# 거래완료 배지 옵션 상태
+# 거래완료 배지 옵션 상태 (블로그 게재에 부담 없는 품격 있는 클래식 네이비 기본값)
+DEFAULT_DEAL_COLOR = "#1E3A8A"
+
 if "apt_deal_done" not in st.session_state:
     st.session_state.apt_deal_done = False
-if "apt_deal_color" not in st.session_state:
-    st.session_state.apt_deal_color = "#DC2626"
+if "apt_deal_color" not in st.session_state or st.session_state.apt_deal_color == "#DC2626":
+    st.session_state.apt_deal_color = DEFAULT_DEAL_COLOR
+
 if "house_deal_done" not in st.session_state:
     st.session_state.house_deal_done = False
-if "house_deal_color" not in st.session_state:
-    st.session_state.house_deal_color = "#DC2626"
+if "house_deal_color" not in st.session_state or st.session_state.house_deal_color == "#DC2626":
+    st.session_state.house_deal_color = DEFAULT_DEAL_COLOR
+
 if "comm_deal_done" not in st.session_state:
     st.session_state.comm_deal_done = False
-if "comm_deal_color" not in st.session_state:
-    st.session_state.comm_deal_color = "#DC2626"
+if "comm_deal_color" not in st.session_state or st.session_state.comm_deal_color == "#DC2626":
+    st.session_state.comm_deal_color = DEFAULT_DEAL_COLOR
+
 if "factory_deal_done" not in st.session_state:
     st.session_state.factory_deal_done = False
-if "factory_deal_color" not in st.session_state:
-    st.session_state.factory_deal_color = "#DC2626"
+if "factory_deal_color" not in st.session_state or st.session_state.factory_deal_color == "#DC2626":
+    st.session_state.factory_deal_color = DEFAULT_DEAL_COLOR
 
 # 2. 네이버 광고 & 대상중개물 표시 16개 점검 항목 상태 (신소장님 사상 중흥S-클래스 세팅값)
 for k, v in DEFAULT_SPEC.items():
@@ -1466,7 +1483,7 @@ def render_tab_apt_thumb():
                 card_bg=selected_design["card_bg"],
                 overlay_image=selected_design.get("overlay_image_path"),
                 deal_done=st.session_state.get("apt_deal_done", False),
-                deal_color=st.session_state.get("apt_deal_color", "#DC2626")
+                deal_color=st.session_state.get("apt_deal_color", "#1E3A8A")
             )
 
         st.image(thumbnail_img, caption="블로그 썸네일 실시간 완성 미리보기 (1080 x 1080 px)", use_container_width=True)
@@ -1506,7 +1523,7 @@ def render_tab_apt_thumb():
             st.color_picker(
                 "거래완료 배지 색상",
                 key="apt_deal_color",
-                value=st.session_state.get("apt_deal_color", "#DC2626")
+                value=st.session_state.get("apt_deal_color", "#1E3A8A")
             )
 
         st.markdown("#### 🏢 하단 띠지 (중개사무소 정보)")
@@ -1681,7 +1698,7 @@ def render_tab_house_thumb():
                 card_bg=selected_design["card_bg"],
                 overlay_image=selected_design.get("overlay_image_path"),
                 deal_done=st.session_state.get("house_deal_done", False),
-                deal_color=st.session_state.get("house_deal_color", "#DC2626")
+                deal_color=st.session_state.get("house_deal_color", "#1E3A8A")
             )
 
         st.image(house_thumb_img, caption="주택 블로그 썸네일 실시간 미리보기 (1080 x 1080 px)", use_container_width=True)
@@ -1721,7 +1738,7 @@ def render_tab_house_thumb():
             st.color_picker(
                 "거래완료 배지 색상",
                 key="house_deal_color",
-                value=st.session_state.get("house_deal_color", "#DC2626")
+                value=st.session_state.get("house_deal_color", "#1E3A8A")
             )
 
         st.markdown("#### 🏢 하단 띠지 (중개사무소 정보)")
@@ -1830,7 +1847,7 @@ def render_tab_comm_thumb():
                     office_name=st.session_state.comm_lease_office,
                     broker_title=st.session_state.comm_lease_broker,
                     deal_done=st.session_state.get("comm_deal_done", False),
-                    deal_color=st.session_state.get("comm_deal_color", "#DC2626")
+                    deal_color=st.session_state.get("comm_deal_color", "#1E3A8A")
                 )
             else:
                 comm_thumb_img = render_commercial_sale_thumbnail(
@@ -1848,7 +1865,7 @@ def render_tab_comm_thumb():
                     office_name=st.session_state.comm_sale_office,
                     broker_title=st.session_state.comm_sale_broker,
                     deal_done=st.session_state.get("comm_deal_done", False),
-                    deal_color=st.session_state.get("comm_deal_color", "#DC2626")
+                    deal_color=st.session_state.get("comm_deal_color", "#1E3A8A")
                 )
 
         caption_title = "실시간 완성 미리보기: 상가 임차 (1080 x 1080 px)" if not is_sale_mode else "실시간 완성 미리보기: 상가 매매 (1080 x 1080 px)"
@@ -1884,7 +1901,7 @@ def render_tab_comm_thumb():
                 st.color_picker(
                     "거래완료 배지 색상",
                     key="comm_deal_color",
-                    value=st.session_state.get("comm_deal_color", "#DC2626")
+                    value=st.session_state.get("comm_deal_color", "#1E3A8A")
                 )
 
             st.markdown("#### 🏢 하단 띠지 정보")
@@ -1923,7 +1940,7 @@ def render_tab_comm_thumb():
                 st.color_picker(
                     "거래완료 배지 색상",
                     key="comm_deal_color",
-                    value=st.session_state.get("comm_deal_color", "#DC2626")
+                    value=st.session_state.get("comm_deal_color", "#1E3A8A")
                 )
 
             st.markdown("#### 🏢 하단 띠지 정보")
@@ -2081,7 +2098,7 @@ def render_tab_factory_thumb():
                 card_bg=selected_design["card_bg"],
                 overlay_image=selected_design.get("overlay_image_path"),
                 deal_done=st.session_state.get("factory_deal_done", False),
-                deal_color=st.session_state.get("factory_deal_color", "#DC2626")
+                deal_color=st.session_state.get("factory_deal_color", "#1E3A8A")
             )
 
         st.image(factory_thumb_img, caption="공장 블로그 썸네일 실시간 미리보기 (1080 x 1080 px)", use_container_width=True)
@@ -2121,7 +2138,7 @@ def render_tab_factory_thumb():
             st.color_picker(
                 "거래완료 배지 색상",
                 key="factory_deal_color",
-                value=st.session_state.get("factory_deal_color", "#DC2626")
+                value=st.session_state.get("factory_deal_color", "#1E3A8A")
             )
 
         st.markdown("#### 🏢 하단 띠지 (중개사무소 정보)")
@@ -2241,7 +2258,7 @@ def render_tab_apt_poster():
             print_bytes=a4_bytes
         )
 
-        with st.expander("🛠️ 포스터 주요 문구 및 중개사무소 정보 간편 수정", expanded=False):
+        with st.expander("🛠️ 포스터 주요 문구 및 중개사무소 정보 간편 수정", expanded=True):
             st.text_input("🏷️ 물건 번호", key="poster_apt_item_no", value=st.session_state.item_no)
             st.text_input("🏢 메인 타이틀 (아파트명)", key="poster_apt_main_title", value=st.session_state.main_title)
             st.text_input("📍 서브 타이틀 (동/단지명)", key="poster_apt_sub_title", value=st.session_state.sub_title)
@@ -2348,7 +2365,7 @@ def render_tab_house_poster():
             print_bytes=house_a4_bytes
         )
 
-        with st.expander("🛠️ 포스터 주요 문구 및 중개사무소 정보 간편 수정", expanded=False):
+        with st.expander("🛠️ 포스터 주요 문구 및 중개사무소 정보 간편 수정", expanded=True):
             st.text_input("🏷️ 물건 번호", key="poster_house_item_no", value=st.session_state.house_item_no)
             st.text_input("🏡 메인 타이틀 (주택명)", key="poster_house_main_title", value=st.session_state.house_main_title)
             st.text_input("📍 서브 타이틀 (동/층/구조)", key="poster_house_sub_title", value=st.session_state.house_sub_title)
@@ -2478,7 +2495,7 @@ def render_tab_comm_poster():
             print_bytes=comm_a4_bytes
         )
 
-        with st.expander("🛠️ 상가 포스터 주요 문구 간편 수정", expanded=False):
+        with st.expander("🛠️ 상가 포스터 주요 문구 간편 수정", expanded=True):
             if not is_comm_sale:
                 st.text_input("🏢 상가 메인 타이틀", key="poster_comm_l_title", value=st.session_state.get("comm_lease_main_title", "코너 상가 임차"))
                 st.text_input("📍 상단 강조 카피", key="poster_comm_l_sub", value=st.session_state.get("comm_lease_cp_top", "유동인구 1등! 대로변 1층"))
@@ -2587,7 +2604,7 @@ def render_tab_factory_poster():
             print_bytes=factory_a4_bytes
         )
 
-        with st.expander("🛠️ 공장 포스터 주요 문구 간편 수정", expanded=False):
+        with st.expander("🛠️ 공장 포스터 주요 문구 간편 수정", expanded=True):
             st.text_input("🏷️ 물건 번호", key="poster_factory_item_no", value=st.session_state.factory_item_no)
             st.text_input("🏭 메인 타이틀 (공장명)", key="poster_factory_main_title", value=st.session_state.factory_main_title)
             st.text_input("📍 서브 타이틀 (위치/도로)", key="poster_factory_sub_title", value=st.session_state.factory_sub_title)
@@ -4014,26 +4031,32 @@ components.html("""
 function syncMainTopTabsFont() {
     try {
         var doc = window.parent.document;
-        // 메인 상단 3대 메뉴 탭 찾기
         var tabsContainers = doc.querySelectorAll('[data-testid="stTabs"]');
         if (tabsContainers && tabsContainers.length > 0) {
-            var firstTabList = tabsContainers[0].querySelector('[data-baseweb="tab-list"]');
+            var topTabs = null;
+            for (var i = 0; i < tabsContainers.length; i++) {
+                if (!tabsContainers[i].closest('[data-baseweb="tab-panel"]')) {
+                    topTabs = tabsContainers[i];
+                    break;
+                }
+            }
+            if (!topTabs) topTabs = tabsContainers[0];
+            var firstTabList = topTabs.querySelector('[data-baseweb="tab-list"]');
             if (firstTabList) {
-                firstTabList.style.gap = '24px';
-                firstTabList.style.padding = '8px 12px';
-                firstTabList.style.marginBottom = '18px';
+                firstTabList.style.setProperty('gap', '48px', 'important');
+                firstTabList.style.setProperty('padding', '12px 20px', 'important');
+                firstTabList.style.setProperty('margin-bottom', '24px', 'important');
                 var buttons = firstTabList.querySelectorAll('[data-baseweb="tab"]');
                 buttons.forEach(function(btn) {
-                    btn.style.height = '58px';
-                    btn.style.padding = '0 28px';
-                    btn.style.borderRadius = '10px';
-                    btn.style.marginRight = '8px';
+                    btn.style.setProperty('height', '68px', 'important');
+                    btn.style.setProperty('padding', '0 38px', 'important');
+                    btn.style.setProperty('border-radius', '14px', 'important');
                     var targets = btn.querySelectorAll('p, span, div');
                     targets.forEach(function(el) {
-                        el.style.fontSize = '24px';
-                        el.style.fontWeight = '800';
-                        el.style.lineHeight = '1.2';
-                        el.style.letterSpacing = '-0.5px';
+                        el.style.setProperty('font-size', '28px', 'important');
+                        el.style.setProperty('font-weight', '800', 'important');
+                        el.style.setProperty('line-height', '1.2', 'important');
+                        el.style.setProperty('letter-spacing', '-0.5px', 'important');
                     });
                 });
             }
@@ -4041,7 +4064,7 @@ function syncMainTopTabsFont() {
     } catch(e) {}
 }
 syncMainTopTabsFont();
-setInterval(syncMainTopTabsFont, 400);
+setInterval(syncMainTopTabsFont, 300);
 </script>
 """, height=0)
 

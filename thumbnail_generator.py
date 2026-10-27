@@ -14,10 +14,12 @@ from PIL import Image, ImageDraw, ImageFont, ImageFilter, ImageOps, ImageColor
 def _to_rgba(c, default=(244, 138, 38, 255)):
     if c is None:
         return default
-    if isinstance(c, tuple):
+    if isinstance(c, (tuple, list)):
         if len(c) == 3:
-            return (c[0], c[1], c[2], 255)
-        return c
+            return (int(c[0]), int(c[1]), int(c[2]), 255)
+        elif len(c) >= 4:
+            return (int(c[0]), int(c[1]), int(c[2]), int(c[3]))
+        return default
     if isinstance(c, str):
         try:
             return ImageColor.getcolor(c, "RGBA")
@@ -107,11 +109,14 @@ def _load_bg_image(bg_image, target_w: int, target_h: int, zoom: float, offset_x
 def draw_deal_done_badge(
     image: Image.Image,
     badge_text: str = "거래완료",
-    badge_color = "#DC2626",
+    badge_color = "#1E3A8A",
     pos: tuple = None
 ) -> Image.Image:
     """
     썸네일 이미지 위에 세련되고 선명한 '거래완료' 배지(스탬프)를 렌더링합니다.
+    - 블로그 가독성과 세련미를 위해 기본 색상을 눈에 부담 없는 고급 클래식 네이비(#1E3A8A)로 제공
+    - 크기 2배 확대 (대형 72px 폰트, 여백 56px/28px)
+    - 썸네일 정중앙 배치
     """
     if image is None:
         return image
@@ -120,20 +125,21 @@ def draw_deal_done_badge(
     W, H = res.size
     
     clean_text = (badge_text or "거래완료").strip()
-    font_badge = get_font("NanumGothicExtraBold.ttf", 36)
+    font_badge = get_font("NanumGothicExtraBold.ttf", 72)
     
     bbox = font_badge.getbbox(clean_text)
     tw = bbox[2] - bbox[0]
     th = bbox[3] - bbox[1]
     
-    pad_x = 28
-    pad_y = 15
+    pad_x = 56
+    pad_y = 28
     bw = tw + pad_x * 2
     bh = th + pad_y * 2
     
     if pos is None:
-        bx = W - bw - 40
-        by = 38
+        # 썸네일 가로/세로 정중앙 배치
+        bx = (W - bw) // 2
+        by = (H - bh) // 2
     else:
         bx, by = pos
         
@@ -141,27 +147,27 @@ def draw_deal_done_badge(
     b_draw = ImageDraw.Draw(badge_layer)
     
     # 1. 부드러운 드롭 섀도우 (입체감 부여)
-    shadow_offset = 5
+    shadow_offset = 8
     b_draw.rounded_rectangle(
         [(bx + shadow_offset, by + shadow_offset), (bx + bw + shadow_offset, by + bh + shadow_offset)],
-        radius=14,
-        fill=(0, 0, 0, 110)
+        radius=24,
+        fill=(0, 0, 0, 130)
     )
     
     # 2. 메인 배지 본체
-    rgba_col = _to_rgba(badge_color, default=(220, 38, 38, 255))
+    rgba_col = _to_rgba(badge_color, default=(30, 58, 138, 255))
     b_draw.rounded_rectangle(
         [(bx, by), (bx + bw, by + bh)],
-        radius=14,
+        radius=24,
         fill=rgba_col
     )
     
-    # 3. 화이트 이너/아웃라인 보더 (3px)
+    # 3. 화이트 이너/아웃라인 보더 (5px)
     b_draw.rounded_rectangle(
         [(bx, by), (bx + bw, by + bh)],
-        radius=14,
-        outline=(255, 255, 255, 235),
-        width=3
+        radius=24,
+        outline=(255, 255, 255, 240),
+        width=5
     )
     
     # 4. 텍스트 중앙 배치
@@ -193,7 +199,7 @@ def render_thumbnail(
     card_bg: tuple = None,
     overlay_image = None,
     deal_done: bool = False,
-    deal_color: str = "#DC2626",
+    deal_color: str = "#1E3A8A",
     deal_text: str = "거래완료"
 ) -> Image.Image:
     """1080x1080 썸네일을 생성하여 PIL Image로 반환합니다."""
@@ -660,7 +666,7 @@ def render_commercial_lease_thumbnail(
     office_name: str = "참좋은 공인중개사사무소",
     broker_title: str = "황금터잡이 신소장",
     deal_done: bool = False,
-    deal_color: str = "#DC2626",
+    deal_color: str = "#1E3A8A",
     deal_text: str = "거래완료"
 ) -> Image.Image:
     """[상가 임차 썸네일] - 1080x1080 다크 골드 럭셔리 스타일"""
@@ -918,7 +924,7 @@ def render_commercial_sale_thumbnail(
     office_name: str = "참좋은 공인중개사사무소",
     broker_title: str = "황금터잡이 신소장",
     deal_done: bool = False,
-    deal_color: str = "#DC2626",
+    deal_color: str = "#1E3A8A",
     deal_text: str = "거래완료"
 ) -> Image.Image:
     """[상가 매매 썸네일] - 1080x1080 더블 골드 프레임 & 수익률 하이라이트 스타일"""
