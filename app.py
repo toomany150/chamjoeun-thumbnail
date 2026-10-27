@@ -90,20 +90,40 @@ def render_direct_download_button(image_bytes: bytes, file_name: str, button_lab
     </div>
     """
 
-def render_direct_print_button(image_bytes: bytes, file_name: str, button_label: str = "🖨️ [원클릭 즉시 인쇄] 창문 부착용 A4 바로 출력", bg_color: str = "#1A202C") -> str:
-    """브라우저의 인쇄 대화상자(Ctrl+P)를 즉시 호출하여 A4 용지에 꽉 차게 출력하는 버튼을 생성합니다."""
+def render_direct_print_button(image_bytes: bytes, file_name: str, button_label: str = "🖨️ [원클릭 즉시 인쇄] 창문 부착용 A4 바로 출력 (Ctrl+P)", bg_color: str = "#1E293B") -> str:
+    """브라우저의 인쇄 대화상자(Ctrl+P)를 즉시 호출하여 A4 용지에 꽉 차게 출력하는 고화질 인쇄 버튼을 생성합니다."""
+    clean_name = re.sub(r'[\\/*?:"<>|]', "", file_name).strip()
     b64_data = base64.b64encode(image_bytes).decode()
+    uid = abs(hash(file_name + str(len(image_bytes)))) % 1000000
+
     return f"""
     <div style="margin: 8px 0 14px 0;">
-        <button onclick="
-            var printWin = window.open('', '_blank');
-            printWin.document.write('<!DOCTYPE html><html><head><title>{file_name}</title><style>@page {{ size: A4 portrait; margin: 0; }} body {{ margin: 0; padding: 0; display: flex; justify-content: center; align-items: center; background: #fff; }} img {{ width: 100%; height: auto; max-width: 100vw; max-height: 100vh; object-fit: contain; }}</style></head><body><img src=\\'data:image/png;base64,{b64_data}\\' onload=\\'setTimeout(function(){{ window.print(); window.close(); }}, 300);\\' /></body></html>');
-            printWin.document.close();
-        " 
-        style="width: 100%; display: block; text-align: center; background-color: {bg_color}; color: #FFFFFF !important; 
-               padding: 15px 20px; border-radius: 9px; font-weight: 800; border: none; cursor: pointer;
-               font-size: 16px; box-shadow: 0 4px 14px rgba(26,32,44,0.35); transition: all 0.2s ease-in-out;">
-           {button_label}
+        <textarea id="print_data_{uid}" style="display:none;">{b64_data}</textarea>
+        <button id="print_btn_{uid}" onclick="(function(){{
+            try {{
+                var ta = document.getElementById('print_data_{uid}');
+                if (!ta) return;
+                var b64 = ta.value;
+                var iframe = document.createElement('iframe');
+                iframe.style.position = 'fixed';
+                iframe.style.right = '0';
+                iframe.style.bottom = '0';
+                iframe.style.width = '0';
+                iframe.style.height = '0';
+                iframe.style.border = '0';
+                document.body.appendChild(iframe);
+                var doc = iframe.contentWindow.document;
+                doc.open();
+                doc.write('<!DOCTYPE html><html><head><title>{clean_name}</title><style>@page {{ size: A4 portrait; margin: 0; }} body {{ margin: 0; padding: 0; display: flex; justify-content: center; align-items: center; background: #fff; }} img {{ width: 100%; height: auto; max-height: 100vh; object-fit: contain; }}</style></head><body><img src=\x22data:image/png;base64,' + b64 + '\x22 onload=\x22setTimeout(function(){{ window.focus(); window.print(); }}, 300);\x22 /></body></html>');
+                doc.close();
+                setTimeout(function(){{ try {{ document.body.removeChild(iframe); }} catch(e){{}} }}, 60000);
+            }} catch(e) {{
+                alert('인쇄 호출 중 오류가 발생했습니다: ' + e);
+            }}
+        }})();" 
+        style="width: 100%; display: flex; align-items: center; justify-content: center; gap: 10px; text-align: center; background-color: {bg_color}; color: #FFFFFF !important; -webkit-text-fill-color: #FFFFFF !important; padding: 15px 20px; border-radius: 9px; font-weight: 800; border: 1.5px solid #475569; cursor: pointer; font-size: 16px; box-shadow: 0 4px 14px rgba(15,23,42,0.35); transition: all 0.2s ease-in-out;">
+            <span style="font-size: 20px;">🖨️</span>
+            <span style="color: #FFFFFF !important; -webkit-text-fill-color: #FFFFFF !important; font-weight: 800; font-size: 16px; letter-spacing: -0.3px;">{button_label}</span>
         </button>
     </div>
     """
@@ -163,6 +183,30 @@ def render_copy_button(text_to_copy: str, button_label: str, btn_id: str = "") -
     </div>
     """
 
+def choose_folder_and_save(file_bytes: bytes, default_filename: str, current_path: str = ""):
+    """Windows GUI 폴더 선택 다이얼로그를 띄워 파일 즉시 저장"""
+    try:
+        import tkinter as tk
+        from tkinter import filedialog
+        root = tk.Tk()
+        root.withdraw()
+        root.attributes("-topmost", True)
+        init_dir = current_path if (current_path and os.path.exists(current_path)) else os.path.join(os.path.expanduser("~"), "Desktop")
+        folder = filedialog.askdirectory(title="저장할 폴더를 선택하세요", initialdir=init_dir)
+        root.destroy()
+        if folder:
+            os.makedirs(folder, exist_ok=True)
+            clean_fn = re.sub(r'[\\/*?:"<>|]', "", default_filename).strip()
+            out_path = os.path.join(folder, clean_fn)
+            with open(out_path, "wb") as f:
+                f.write(file_bytes)
+            st.session_state.custom_download_path = folder
+            return True, out_path, folder
+        else:
+            return False, "폴더 선택이 취소되었습니다.", None
+    except Exception as e:
+        return False, str(e), None
+
 def render_download_save_controller(
     file_bytes: bytes,
     default_filename: str,
@@ -171,62 +215,57 @@ def render_download_save_controller(
     is_poster: bool = False,
     print_bytes: bytes = None,
     print_label: str = "🖨️ [원클릭 즉시 인쇄] 창문 부착용 A4 바로 출력 (Ctrl+P)",
-    print_bg: str = "#1A202C"
+    print_bg: str = "#1E293B"
 ):
     """
-    1) 포스터인 경우 원클릭 즉시 인쇄 버튼 제공
-    2) 사용자가 직접 PC 내 저장 폴더 경로를 지정하여 즉시 저장
-    3) 기본 브라우저 1080x1080 썸네일 / 300DPI 포스터 다운로드 버튼 제공
+    1) 포스터인 경우 원클릭 즉시 인쇄 버튼 제공 (선명한 흰색 글씨 & iframe 고화질 출력)
+    2) 클릭 시 폴더를 직접 지정하여 파일 즉시 저장
+    3) 보조 브라우저 다운로드 버튼 제공
     """
     if "custom_download_path" not in st.session_state:
         st.session_state.custom_download_path = os.path.join(os.path.expanduser("~"), "Desktop")
 
-    cur_path = st.session_state.custom_download_path
-
-    # 인쇄 버튼 (창문부착용 옵션 전용)
+    # 1. 인쇄 버튼 (창문부착용 포스터 전용)
     if is_poster and print_bytes:
         st.markdown(render_direct_print_button(print_bytes, default_filename, print_label, bg_color=print_bg), unsafe_allow_html=True)
         st.markdown("<div style='height: 4px;'></div>", unsafe_allow_html=True)
 
-    # 기본 다운로드 버튼 (요구사항 3번 & 4번: 기본 다운로드 옵션)
-    st.download_button(
-        label=label_download,
-        data=file_bytes,
-        file_name=default_filename,
-        mime="image/png",
-        key=f"{key_prefix}_btn_std_down",
-        use_container_width=True
-    )
+    # 2. 버튼 텍스트에서 '(기본 다운로드)' 문구 제거
+    clean_label = label_download.replace("(기본 다운로드)", "").strip()
+    if not clean_label.startswith("📥"):
+        clean_label = f"📥 {clean_label}"
 
-    # 다운로드 받을 경로 지정 및 로컬 직접 저장 (요구사항 3번 & 4번)
-    with st.expander("📁 다운로드 받을 경로(폴더) 지정 및 PC 직접 저장", expanded=False):
-        c_p1, c_p2 = st.columns([2.8, 1.2])
-        with c_p1:
-            dest_dir = st.text_input(
-                "저장 대상 폴더 경로",
-                value=cur_path,
-                key=f"{key_prefix}_input_path",
-                help="원하시는 PC 폴더 경로(예: D:\\매물사진, C:\\Users\\...\\Desktop 등)를 직접 입력하세요."
+    # 3. 폴더 지정 및 파일 즉시 저장 버튼
+    if st.button(clean_label, type="primary", key=f"{key_prefix}_btn_pick_save", use_container_width=True):
+        ok, res_path, chosen_dir = choose_folder_and_save(
+            file_bytes=file_bytes,
+            default_filename=default_filename,
+            current_path=st.session_state.get("custom_download_path", "")
+        )
+        if ok:
+            st.session_state[f"{key_prefix}_save_status"] = ("ok", res_path)
+        else:
+            st.session_state[f"{key_prefix}_save_status"] = ("err", res_path)
+
+    # 저장 성공 알림 또는 취소 시 브라우저 직접 다운로드 링크 안내
+    status = st.session_state.get(f"{key_prefix}_save_status")
+    if status:
+        st_type, st_msg = status
+        if st_type == "ok":
+            st.success(f"🎉 파일이 지정하신 폴더에 성공적으로 저장되었습니다!\n\n📍 **저장 위치:** `{st_msg}`")
+        else:
+            if "취소" in st_msg:
+                st.info("ℹ️ 폴더 선택이 취소되었습니다. 원하시면 아래 버튼을 눌러 브라우저 다운로드로 저장하세요.")
+            else:
+                st.warning(f"⚠️ 저장 안내: {st_msg}")
+            st.download_button(
+                label="🌐 브라우저 기본 다운로드로 파일 받기",
+                data=file_bytes,
+                file_name=default_filename,
+                mime="image/png",
+                key=f"{key_prefix}_btn_fallback_down",
+                use_container_width=True
             )
-        with c_p2:
-            st.markdown("<div style='height: 28px;'></div>", unsafe_allow_html=True)
-            if st.button("🖥️ 바탕화면으로", key=f"{key_prefix}_btn_desktop_set", use_container_width=True):
-                desktop_p = os.path.join(os.path.expanduser("~"), "Desktop")
-                st.session_state.custom_download_path = desktop_p
-                st.session_state[f"{key_prefix}_input_path"] = desktop_p
-                st.rerun()
-
-        target_dir = (dest_dir or cur_path).strip()
-        if st.button(f"💾 지정한 폴더로 파일 즉시 저장 ({default_filename})", type="secondary", key=f"{key_prefix}_btn_direct_save", use_container_width=True):
-            try:
-                os.makedirs(target_dir, exist_ok=True)
-                out_path = os.path.join(target_dir, default_filename)
-                with open(out_path, "wb") as f:
-                    f.write(file_bytes)
-                st.session_state.custom_download_path = target_dir
-                st.success(f"🎉 파일이 지정 경로에 성공적으로 저장되었습니다!\n\n📍 **저장 위치:** `{out_path}`")
-            except Exception as e:
-                st.error(f"⚠️ 저장 오류: {e}")
 
 def render_design_and_layout_controls(key_prefix: str, default_design_name: str = "🍊 참좋은 시그니처 오렌지 (기본)"):
     """
@@ -355,8 +394,8 @@ def render_design_and_layout_controls(key_prefix: str, default_design_name: str 
     with col_ly:
         st.markdown("<b style='font-size:15px; color:#1E2022;'>📐 레이아웃 모드</b>", unsafe_allow_html=True)
         layout_options = {
-            "와이드 사선형 (실내 추천)": "side_wide",
             "상하 파노라마형 (전경 극대화)": "top_panoramic",
+            "와이드 사선형 (실내 추천)": "side_wide",
             "표준 사선형 (외관 5:5)": "side_standard",
         }
         selected_layout_label = st.radio(
@@ -387,7 +426,7 @@ def render_design_and_layout_controls(key_prefix: str, default_design_name: str 
 
 # 페이지 설정
 st.set_page_config(
-    page_title="부동산 블로그 썸네일 & 네이버광고 대상중개물표시 올인원 마스터",
+    page_title="부동산 블로그 썸네일 & 네이버광고",
     page_icon="🏢",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -443,23 +482,32 @@ st.markdown("""
         box-shadow: 0 4px 12px rgba(0,0,0,0.08) !important;
     }
 
-    /* 🌟 최상위 3대 메인 탭 (썸네일 / 창문부착용A4 / 중개대상물표시) 24px 볼드 스타일링 */
-    div:has(> #main-top-tabs-anchor) + div[data-testid="stTabs"] > [data-baseweb="tab-list"],
+    /* 🌟 최상위 3대 메인 탭 (🖼️ 썸네일 / 🖨️ 창문부착용A4 / 📋 중개대상물표시) 24px 볼드 & 넓은 간격 스타일링 */
+    div[data-testid="stMainBlockContainer"] > div[data-testid="stElementContainer"]:has([data-testid="stTabs"]) > div[data-testid="stTabs"] > [data-baseweb="tab-list"],
+    div:has(#main-top-tabs-anchor) + div [data-baseweb="tab-list"],
+    div:has(#main-top-tabs-anchor) ~ div:has([data-testid="stTabs"]) > [data-testid="stTabs"] > [data-baseweb="tab-list"],
     .main-top-tabs-container [data-baseweb="tab-list"] {
-        gap: 14px !important;
-        background-color: #E2E8F0 !important;
-        padding: 8px 12px !important;
-        border-radius: 14px !important;
+        gap: 22px !important;
+        background-color: #EDF2F7 !important;
+        padding: 10px 16px !important;
+        border-radius: 16px !important;
         margin-bottom: 24px !important;
     }
-    div:has(> #main-top-tabs-anchor) + div[data-testid="stTabs"] > [data-baseweb="tab-list"] [data-baseweb="tab"],
+    div[data-testid="stMainBlockContainer"] > div[data-testid="stElementContainer"]:has([data-testid="stTabs"]) > div[data-testid="stTabs"] > [data-baseweb="tab-list"] [data-baseweb="tab"],
+    div:has(#main-top-tabs-anchor) + div [data-baseweb="tab-list"] [data-baseweb="tab"],
+    div:has(#main-top-tabs-anchor) ~ div:has([data-testid="stTabs"]) > [data-testid="stTabs"] > [data-baseweb="tab-list"] [data-baseweb="tab"],
     .main-top-tabs-container [data-baseweb="tab-list"] [data-baseweb="tab"] {
-        height: 56px !important;
-        padding: 0 28px !important;
-        border-radius: 10px !important;
+        height: 62px !important;
+        padding: 0 34px !important;
+        border-radius: 12px !important;
     }
-    div:has(> #main-top-tabs-anchor) + div[data-testid="stTabs"] > [data-baseweb="tab-list"] [data-baseweb="tab"] p,
-    div:has(> #main-top-tabs-anchor) + div[data-testid="stTabs"] > [data-baseweb="tab-list"] [data-baseweb="tab"] span,
+    div[data-testid="stMainBlockContainer"] > div[data-testid="stElementContainer"]:has([data-testid="stTabs"]) > div[data-testid="stTabs"] > [data-baseweb="tab-list"] [data-baseweb="tab"] p,
+    div[data-testid="stMainBlockContainer"] > div[data-testid="stElementContainer"]:has([data-testid="stTabs"]) > div[data-testid="stTabs"] > [data-baseweb="tab-list"] [data-baseweb="tab"] span,
+    div[data-testid="stMainBlockContainer"] > div[data-testid="stElementContainer"]:has([data-testid="stTabs"]) > div[data-testid="stTabs"] > [data-baseweb="tab-list"] [data-baseweb="tab"] div,
+    div:has(#main-top-tabs-anchor) + div [data-baseweb="tab-list"] [data-baseweb="tab"] p,
+    div:has(#main-top-tabs-anchor) + div [data-baseweb="tab-list"] [data-baseweb="tab"] span,
+    div:has(#main-top-tabs-anchor) ~ div:has([data-testid="stTabs"]) > [data-testid="stTabs"] > [data-baseweb="tab-list"] [data-baseweb="tab"] p,
+    div:has(#main-top-tabs-anchor) ~ div:has([data-testid="stTabs"]) > [data-testid="stTabs"] > [data-baseweb="tab-list"] [data-baseweb="tab"] span,
     .main-top-tabs-container [data-baseweb="tab-list"] [data-baseweb="tab"] p,
     .main-top-tabs-container [data-baseweb="tab-list"] [data-baseweb="tab"] span {
         font-size: 24px !important;
@@ -468,13 +516,19 @@ st.markdown("""
         color: #1E2022 !important;
         letter-spacing: -0.5px !important;
     }
-    div:has(> #main-top-tabs-anchor) + div[data-testid="stTabs"] > [data-baseweb="tab-list"] [aria-selected="true"],
+    div[data-testid="stMainBlockContainer"] > div[data-testid="stElementContainer"]:has([data-testid="stTabs"]) > div[data-testid="stTabs"] > [data-baseweb="tab-list"] [aria-selected="true"],
+    div:has(#main-top-tabs-anchor) + div [data-baseweb="tab-list"] [aria-selected="true"],
+    div:has(#main-top-tabs-anchor) ~ div:has([data-testid="stTabs"]) > [data-testid="stTabs"] > [data-baseweb="tab-list"] [aria-selected="true"],
     .main-top-tabs-container [data-baseweb="tab-list"] [aria-selected="true"] {
         background-color: #FFFFFF !important;
         box-shadow: 0 4px 14px rgba(0,0,0,0.12) !important;
     }
-    div:has(> #main-top-tabs-anchor) + div[data-testid="stTabs"] > [data-baseweb="tab-list"] [aria-selected="true"] p,
-    div:has(> #main-top-tabs-anchor) + div[data-testid="stTabs"] > [data-baseweb="tab-list"] [aria-selected="true"] span,
+    div[data-testid="stMainBlockContainer"] > div[data-testid="stElementContainer"]:has([data-testid="stTabs"]) > div[data-testid="stTabs"] > [data-baseweb="tab-list"] [aria-selected="true"] p,
+    div[data-testid="stMainBlockContainer"] > div[data-testid="stElementContainer"]:has([data-testid="stTabs"]) > div[data-testid="stTabs"] > [data-baseweb="tab-list"] [aria-selected="true"] span,
+    div:has(#main-top-tabs-anchor) + div [data-baseweb="tab-list"] [aria-selected="true"] p,
+    div:has(#main-top-tabs-anchor) + div [data-baseweb="tab-list"] [aria-selected="true"] span,
+    div:has(#main-top-tabs-anchor) ~ div:has([data-testid="stTabs"]) > [data-testid="stTabs"] > [data-baseweb="tab-list"] [aria-selected="true"] p,
+    div:has(#main-top-tabs-anchor) ~ div:has([data-testid="stTabs"]) > [data-testid="stTabs"] > [data-baseweb="tab-list"] [aria-selected="true"] span,
     .main-top-tabs-container [data-baseweb="tab-list"] [aria-selected="true"] p,
     .main-top-tabs-container [data-baseweb="tab-list"] [aria-selected="true"] span {
         color: #F48A26 !important;
@@ -648,7 +702,7 @@ if "main_title" not in st.session_state:
 if "sub_title" not in st.session_state:
     st.session_state.sub_title = "그랜드센트럴"
 if "feature_text" not in st.session_state:
-    st.session_state.feature_text = "1572세대 대단지 아파트"
+    st.session_state.feature_text = ""
 if "thumb_trade_type" not in st.session_state:
     st.session_state.thumb_trade_type = "매매"
 if "thumb_price_text" not in st.session_state:
@@ -667,6 +721,24 @@ if "thumb_show_footer" not in st.session_state:
     st.session_state.thumb_show_footer = True
 if "thumb_footer_text" not in st.session_state:
     st.session_state.thumb_footer_text = ""
+
+# 거래완료 배지 옵션 상태
+if "apt_deal_done" not in st.session_state:
+    st.session_state.apt_deal_done = False
+if "apt_deal_color" not in st.session_state:
+    st.session_state.apt_deal_color = "#DC2626"
+if "house_deal_done" not in st.session_state:
+    st.session_state.house_deal_done = False
+if "house_deal_color" not in st.session_state:
+    st.session_state.house_deal_color = "#DC2626"
+if "comm_deal_done" not in st.session_state:
+    st.session_state.comm_deal_done = False
+if "comm_deal_color" not in st.session_state:
+    st.session_state.comm_deal_color = "#DC2626"
+if "factory_deal_done" not in st.session_state:
+    st.session_state.factory_deal_done = False
+if "factory_deal_color" not in st.session_state:
+    st.session_state.factory_deal_color = "#DC2626"
 
 # 2. 네이버 광고 & 대상중개물 표시 16개 점검 항목 상태 (신소장님 사상 중흥S-클래스 세팅값)
 for k, v in DEFAULT_SPEC.items():
@@ -813,11 +885,15 @@ OFFICE_REFRESH_MAP = {
 }
 for ok, ov in OFFICE_REFRESH_MAP.items():
     cur_val = str(st.session_state.get(f"ad_{ok}", ""))
-    if not cur_val or "2021-00045" in cur_val or "사상로 200" in cur_val:
+    if not cur_val or "2021-00045" in cur_val or "사상로 200" in cur_val or "051-911-8249" in cur_val:
         st.session_state[f"ad_{ok}"] = ov
     cur_comm = str(st.session_state.get(f"comm_ad_{ok}", ""))
-    if not cur_comm or "2021-00045" in cur_comm or "사상로 200" in cur_comm:
+    if not cur_comm or "2021-00045" in cur_comm or "사상로 200" in cur_comm or "051-911-8249" in cur_comm:
         st.session_state[f"comm_ad_{ok}"] = ov
+
+for tel_k in ["office_tel_input", "comm_office_tel_input", "house_office_tel", "factory_office_tel"]:
+    if st.session_state.get(tel_k) in [None, "", "051-911-8249"]:
+        st.session_state[tel_k] = "010-9667-4201"
 
 # 5. 주택 세션 상태 (썸네일 & 중개대상물)
 if "house_item_no" not in st.session_state:
@@ -827,7 +903,7 @@ if "house_main_title" not in st.session_state:
 if "house_sub_title" not in st.session_state:
     st.session_state.house_sub_title = "마당 넓은 올수리 2층 주택"
 if "house_feature_text" not in st.session_state:
-    st.session_state.house_feature_text = "대지 45평 · 올리모델링 첫입주"
+    st.session_state.house_feature_text = ""
 if "house_trade_type" not in st.session_state:
     st.session_state.house_trade_type = "매매"
 if "house_price_text" not in st.session_state:
@@ -849,7 +925,7 @@ if "house_footer_text" not in st.session_state:
 if "house_assistant_phone" not in st.session_state:
     st.session_state.house_assistant_phone = ""
 if "house_office_tel" not in st.session_state:
-    st.session_state.house_office_tel = "051-911-8249"
+    st.session_state.house_office_tel = "010-9667-4201"
 
 # 6. 공장/창고 세션 상태 (썸네일 & 중개대상물)
 if "factory_item_no" not in st.session_state:
@@ -859,7 +935,7 @@ if "factory_main_title" not in st.session_state:
 if "factory_sub_title" not in st.session_state:
     st.session_state.factory_sub_title = "트레일러 진입 최상 / 역세권"
 if "factory_feature_text" not in st.session_state:
-    st.session_state.factory_feature_text = "호이스트 5톤 + 전력 150kW 완비"
+    st.session_state.factory_feature_text = ""
 if "factory_trade_type" not in st.session_state:
     st.session_state.factory_trade_type = "월세"
 if "factory_price_text" not in st.session_state:
@@ -881,15 +957,15 @@ if "factory_footer_text" not in st.session_state:
 if "factory_assistant_phone" not in st.session_state:
     st.session_state.factory_assistant_phone = ""
 if "factory_office_tel" not in st.session_state:
-    st.session_state.factory_office_tel = "051-911-8249"
+    st.session_state.factory_office_tel = "010-9667-4201"
 
 # 아파트 및 상가 사무실/담당자 연락처 기본 세션
 if "office_tel_input" not in st.session_state:
-    st.session_state.office_tel_input = "051-911-8249"
+    st.session_state.office_tel_input = "010-9667-4201"
 if "assistant_phone_input" not in st.session_state:
     st.session_state.assistant_phone_input = ""
 if "comm_office_tel_input" not in st.session_state:
-    st.session_state.comm_office_tel_input = "051-911-8249"
+    st.session_state.comm_office_tel_input = "010-9667-4201"
 if "comm_assistant_phone_input" not in st.session_state:
     st.session_state.comm_assistant_phone_input = ""
 
@@ -1163,7 +1239,7 @@ with col_h1:
     <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 5px;">
         <span style="font-size: 32px;">🏢</span>
         <div>
-            <h2 style="margin: 0; font-weight: 800; color: #1E2022; font-size: 24px;">부동산 블로그 썸네일 & 네이버광고 올인원 마스터</h2>
+            <h2 style="margin: 0; font-weight: 800; color: #1E2022; font-size: 24px;">부동산 블로그 썸네일 & 네이버광고</h2>
             <p style="margin: 3px 0 0 0; color: #2D3748; font-size: 13.5px; line-height: 1.5;">
                 🏢 <b>참좋은공인중개사사무소</b> (대표: 신제환 ☎ 010-9667-4201) &nbsp;|&nbsp; 📍 <b>소재지:</b> 부산광역시 사상구 강선로 9, 1층 &nbsp;|&nbsp; 📜 <b>등록번호:</b> 제 26530-2026-00009 호
             </p>
@@ -1388,52 +1464,19 @@ def render_tab_apt_thumb():
                 primary_color=selected_design["primary_color"],
                 accent_color=selected_design["accent_color"],
                 card_bg=selected_design["card_bg"],
-                overlay_image=selected_design.get("overlay_image_path")
+                overlay_image=selected_design.get("overlay_image_path"),
+                deal_done=st.session_state.get("apt_deal_done", False),
+                deal_color=st.session_state.get("apt_deal_color", "#DC2626")
             )
 
-        # 🌟 썸네일 & 창문 부착용 A4 포스터 출력 2대 옵션
-        tab_view_thumb, tab_view_a4 = st.tabs([
-            "🖼️ 1. 블로그 썸네일 (1080x1080 정방형)",
-            "🖨️ 2. 중개사무소 창문 부착용 A4 포스터"
-        ])
-
-        with tab_view_thumb:
-            st.image(thumbnail_img, caption="블로그 썸네일 실시간 완성 미리보기 (1080 x 1080 px)", use_container_width=True)
-
-        with tab_view_a4:
-            with st.spinner("창문 부착용 300DPI 초고화질 A4 포스터 렌더링 중..."):
-                a4_poster_img = render_a4_window_poster(
-                    thumbnail_img=thumbnail_img,
-                    bg_image=uploaded_bg,
-                    item_no=st.session_state.item_no,
-                    main_title=st.session_state.main_title,
-                    sub_title=st.session_state.sub_title,
-                    feature_text=st.session_state.feature_text,
-                    trade_type=st.session_state.thumb_trade_type,
-                    price_text=st.session_state.thumb_price_text,
-                    spec_lines=spec_lines,
-                    office_name=st.session_state.get("ad_office_name", "참좋은공인중개사사무소"),
-                    office_owner=st.session_state.get("ad_office_owner", "신제환"),
-                    office_phone=st.session_state.get("ad_office_phone", "010-9667-4201"),
-                    office_reg_no=st.session_state.get("ad_office_reg_no", "제 26530-2026-00009 호"),
-                    office_address=st.session_state.get("ad_office_address", "부산광역시 사상구 강선로 9, 1층"),
-                    is_commercial=False,
-                    bg_offset_x=bg_offset_x,
-                    bg_offset_y=bg_offset_y,
-                    bg_zoom=bg_zoom,
-                    office_tel=st.session_state.get("office_tel_input", "051-911-8249"),
-                    assistant_phone=st.session_state.get("assistant_phone_input", ""),
-                    primary_color_override=selected_design["primary_color"],
-                    accent_color_override=selected_design["accent_color"]
-                )
-            st.image(a4_poster_img, caption="중개사무소 유리창 부착용 A4 브리핑 포스터 (초고화질 300 DPI)", use_container_width=True)
+        st.image(thumbnail_img, caption="블로그 썸네일 실시간 완성 미리보기 (1080 x 1080 px)", use_container_width=True)
 
     with col_t_right:
         st.markdown("### 🛠️ 썸네일 텍스트 수정")
         st.text_input("🏷️ 물건 번호", key="item_no")
         st.text_input("🏢 메인 타이틀 (아파트명)", key="main_title")
         st.text_input("📍 서브 타이틀 (동/단지명)", key="sub_title")
-        st.text_input("✨ 매물 핵심 특징", key="feature_text")
+        st.text_input("✨ 매물 핵심 특징", key="feature_text", placeholder="직접 입력하세요 (예: 1572세대 대단지 아파트)")
         
         c_tr1, c_tr2 = st.columns([1, 1.3])
         with c_tr1:
@@ -1450,6 +1493,21 @@ def render_tab_apt_thumb():
         st.text_input("3행: 방/욕실 수", key="spec_line3")
         st.text_input("4행: 입주시기", key="spec_line4")
         st.text_input("5행: 방향 및 특징", key="spec_line5")
+
+        st.markdown("#### 🚩 매물 상태 (거래완료 표시)")
+        c_deal1, c_deal2 = st.columns([1, 1])
+        with c_deal1:
+            st.checkbox(
+                "거래완료 표시",
+                key="apt_deal_done",
+                help="체크 시 썸네일에 거래완료 배지가 부착됩니다."
+            )
+        with c_deal2:
+            st.color_picker(
+                "거래완료 배지 색상",
+                key="apt_deal_color",
+                value=st.session_state.get("apt_deal_color", "#DC2626")
+            )
 
         st.markdown("#### 🏢 하단 띠지 (중개사무소 정보)")
         st.checkbox(
@@ -1468,7 +1526,7 @@ def render_tab_apt_thumb():
                 st.text_input(
                     "사무실 연락처 (창문 전단지용)",
                     key="office_tel_input",
-                    value=st.session_state.get("office_tel_input", "051-911-8249"),
+                    value=st.session_state.get("office_tel_input", "010-9667-4201"),
                     help="창문 포스터 하단 띠지에 '사무실 연락처 : [번호]' 로 표시됩니다."
                 )
             with c_f_tel2:
@@ -1489,47 +1547,17 @@ def render_tab_apt_thumb():
         clean_price = re.sub(r'[^\w\s-]', '', (st.session_state.thumb_price_text or "")).strip().replace(" ", "")
         download_filename = f"부동산썸네일_{clean_title}_{st.session_state.thumb_trade_type}_{clean_price}.png"
 
-        # 2. A4 창문 포스터 다운로드 및 인쇄 바이트
-        a4_byte_arr = io.BytesIO()
-        a4_poster_img.save(a4_byte_arr, format="PNG", quality=98)
-        a4_bytes = a4_byte_arr.getvalue()
-        a4_download_filename = f"창문부착용_A4포스터_{clean_title}_{clean_price}.png"
-
         st.markdown("<hr style='margin: 15px 0 12px 0;'/>", unsafe_allow_html=True)
         st.markdown("### 📥 출력 및 저장 옵션")
 
-        tab_down_thumb, tab_down_a4 = st.tabs([
-            "🖼️ 1. 블로그 썸네일 저장",
-            "🖨️ 2. 창문 부착용 A4 바로 출력/저장"
-        ])
+        render_download_save_controller(
+            file_bytes=img_bytes,
+            default_filename=download_filename,
+            label_download="📥 1080x1080 썸네일 저장",
+            key_prefix="apt_thumb_down"
+        )
 
-        with tab_down_thumb:
-            render_download_save_controller(
-                file_bytes=img_bytes,
-                default_filename=download_filename,
-                label_download="📥 1080x1080 썸네일 저장 (기본 다운로드)",
-                key_prefix="apt_thumb_down"
-            )
-
-        with tab_down_a4:
-            render_download_save_controller(
-                file_bytes=a4_bytes,
-                default_filename=a4_download_filename,
-                label_download="📥 300DPI 초고화질 A4 포스터 파일 저장",
-                key_prefix="apt_a4_down",
-                is_poster=True,
-                print_bytes=a4_bytes
-            )
-            st.markdown("""
-            <div style="font-size:12.5px; color:#2D3748; background:#F8FAFC; border:1px solid #CBD5E0; padding:10px 14px; border-radius:8px; margin-top:6px; line-height:1.5;">
-                💡 <b>창문 부착 인쇄 팁:</b><br/>
-                1. 상단의 <b>[🖨️ 원클릭 즉시 인쇄]</b>를 누르시면 프린터 인쇄창이 바로 열립니다.<br/>
-                2. 인쇄 설정에서 용지 방향을 <b>'세로'</b>로 하시고 <b>'용지에 맞춤'</b>을 선택하시면 A4 용지에 여백 없이 칼같이 선명하게 출력됩니다!<br/>
-                3. 출력 후 중개사무소 창문(유리창) 안쪽에 부착하시면 지나가는 고객의 시선을 100% 사로잡습니다.
-            </div>
-            """, unsafe_allow_html=True)
-
-        st.info("💡 아파트 썸네일과 포스터를 만드셨다면, 상단의 **'📝 ③ 아파트 중개대상물 표시'** 탭을 클릭하여 네이버 부동산 광고 및 블로그 본문 서식을 바로 확인하세요!")
+        st.info("💡 아파트 썸네일을 만드셨다면, 상단의 **'🖨️ 창문부착용A4'** 또는 **'📋 중개대상물표시'** 탭을 클릭하여 포스터 출력과 네이버 광고 서식을 바로 확인하세요!")
 
 
 # ====================================================
@@ -1651,51 +1679,19 @@ def render_tab_house_thumb():
                 primary_color=selected_design["primary_color"],
                 accent_color=selected_design["accent_color"],
                 card_bg=selected_design["card_bg"],
-                overlay_image=selected_design.get("overlay_image_path")
+                overlay_image=selected_design.get("overlay_image_path"),
+                deal_done=st.session_state.get("house_deal_done", False),
+                deal_color=st.session_state.get("house_deal_color", "#DC2626")
             )
 
-        tab_h_view_thumb, tab_h_view_a4 = st.tabs([
-            "🖼️ 1. 주택 블로그 썸네일 (1080x1080)",
-            "🖨️ 2. 중개사무소 창문 부착용 A4 포스터"
-        ])
-
-        with tab_h_view_thumb:
-            st.image(house_thumb_img, caption="주택 블로그 썸네일 실시간 미리보기 (1080 x 1080 px)", use_container_width=True)
-
-        with tab_h_view_a4:
-            with st.spinner("창문 부착용 300DPI 초고화질 A4 포스터 렌더링 중..."):
-                house_a4_img = render_a4_window_poster(
-                    thumbnail_img=house_thumb_img,
-                    bg_image=uploaded_house_bg,
-                    item_no=st.session_state.house_item_no,
-                    main_title=st.session_state.house_main_title,
-                    sub_title=st.session_state.house_sub_title,
-                    feature_text=st.session_state.house_feature_text,
-                    trade_type=st.session_state.house_trade_type,
-                    price_text=st.session_state.house_price_text,
-                    spec_lines=house_specs,
-                    office_name=st.session_state.get("ad_office_name", "참좋은공인중개사사무소"),
-                    office_owner=st.session_state.get("ad_office_owner", "신제환"),
-                    office_phone=st.session_state.get("ad_office_phone", "010-9667-4201"),
-                    office_reg_no=st.session_state.get("ad_office_reg_no", "제 26530-2026-00009 호"),
-                    office_address=st.session_state.get("ad_office_address", "부산광역시 사상구 강선로 9, 1층"),
-                    is_commercial=False,
-                    bg_offset_x=house_bg_ox,
-                    bg_offset_y=house_bg_oy,
-                    bg_zoom=house_bg_zoom,
-                    office_tel=st.session_state.get("house_office_tel", "051-911-8249"),
-                    assistant_phone=st.session_state.get("house_assistant_phone", ""),
-                    primary_color_override=selected_design["primary_color"],
-                    accent_color_override=selected_design["accent_color"]
-                )
-            st.image(house_a4_img, caption="중개사무소 유리창 부착용 주택 브리핑 포스터 (초고화질 300 DPI)", use_container_width=True)
+        st.image(house_thumb_img, caption="주택 블로그 썸네일 실시간 미리보기 (1080 x 1080 px)", use_container_width=True)
 
     with col_t_right:
         st.markdown("### 🛠️ 주택 썸네일 텍스트 수정")
         st.text_input("🏷️ 물건 번호", key="house_item_no")
         st.text_input("🏡 메인 타이틀 (주택명)", key="house_main_title")
         st.text_input("📍 서브 타이틀 (동/지역명)", key="house_sub_title")
-        st.text_input("✨ 매물 핵심 특징", key="house_feature_text")
+        st.text_input("✨ 매물 핵심 특징", key="house_feature_text", placeholder="직접 입력하세요 (예: 대지 45평 · 올리모델링 첫입주)")
 
         c_ht1, c_ht2 = st.columns([1, 1.3])
         with c_ht1:
@@ -1713,13 +1709,28 @@ def render_tab_house_thumb():
         st.text_input("4행: 입주시기", key="house_spec4")
         st.text_input("5행: 방향 및 주차", key="house_spec5")
 
+        st.markdown("#### 🚩 매물 상태 (거래완료 표시)")
+        c_hdeal1, c_hdeal2 = st.columns([1, 1])
+        with c_hdeal1:
+            st.checkbox(
+                "거래완료 표시",
+                key="house_deal_done",
+                help="체크 시 썸네일에 거래완료 배지가 부착됩니다."
+            )
+        with c_hdeal2:
+            st.color_picker(
+                "거래완료 배지 색상",
+                key="house_deal_color",
+                value=st.session_state.get("house_deal_color", "#DC2626")
+            )
+
         st.markdown("#### 🏢 하단 띠지 (중개사무소 정보)")
         st.checkbox("하단 띠지 표시 (체크 해제 시 전체 사진 영역 확장)", key="house_show_footer")
         if st.session_state.house_show_footer:
             st.text_input("띠지 문구 (소공/직원 커스텀 가능)", key="house_footer_text", placeholder="미입력 시: 참좋은공인중개사사무소 (대표 신제환) ☎ 010-9667-4201")
             c_hf1, c_hf2 = st.columns(2)
             with c_hf1:
-                st.text_input("사무실 연락처 (창문 전단지용)", key="house_office_tel", value=st.session_state.get("house_office_tel", "051-911-8249"))
+                st.text_input("사무실 연락처 (창문 전단지용)", key="house_office_tel", value=st.session_state.get("house_office_tel", "010-9667-4201"))
             with c_hf2:
                 st.text_input("📱 담당자 연락처 (창문 전단지용)", key="house_assistant_phone", value=st.session_state.get("house_assistant_phone", ""), placeholder="예: 010-9667-4201")
 
@@ -1732,31 +1743,15 @@ def render_tab_house_thumb():
         clean_h_price = re.sub(r'[^\w\s-]', '', (st.session_state.house_price_text or "")).strip().replace(" ", "")
         h_down_name = f"주택썸네일_{clean_h_title}_{st.session_state.house_trade_type}_{clean_h_price}.png"
 
-        h_a4_io = io.BytesIO()
-        house_a4_img.save(h_a4_io, format="PNG", quality=98)
-        h_a4_bytes = h_a4_io.getvalue()
-        h_a4_name = f"창문부착용_주택포스터_{clean_h_title}_{clean_h_price}.png"
-
         st.markdown("<hr style='margin: 15px 0 12px 0;'/>", unsafe_allow_html=True)
         st.markdown("### 📥 출력 및 저장 옵션")
 
-        t_h_down, t_h_a4 = st.tabs(["🖼️ 1. 주택 썸네일 저장", "🖨️ 2. 창문 포스터 즉시 출력/저장"])
-        with t_h_down:
-            render_download_save_controller(
-                file_bytes=h_thumb_bytes,
-                default_filename=h_down_name,
-                label_download="📥 1080x1080 썸네일 저장 (기본 다운로드)",
-                key_prefix="house_thumb_down"
-            )
-        with t_h_a4:
-            render_download_save_controller(
-                file_bytes=h_a4_bytes,
-                default_filename=h_a4_name,
-                label_download="📥 300DPI 초고화질 A4 포스터 파일 저장",
-                key_prefix="house_a4_down",
-                is_poster=True,
-                print_bytes=h_a4_bytes
-            )
+        render_download_save_controller(
+            file_bytes=h_thumb_bytes,
+            default_filename=h_down_name,
+            label_download="📥 1080x1080 주택 썸네일 저장",
+            key_prefix="house_thumb_down"
+        )
 
 
 # ====================================================
@@ -1833,7 +1828,9 @@ def render_tab_comm_thumb():
                     bg_zoom=comm_bg_zoom,
                     show_footer=st.session_state.comm_lease_show_footer,
                     office_name=st.session_state.comm_lease_office,
-                    broker_title=st.session_state.comm_lease_broker
+                    broker_title=st.session_state.comm_lease_broker,
+                    deal_done=st.session_state.get("comm_deal_done", False),
+                    deal_color=st.session_state.get("comm_deal_color", "#DC2626")
                 )
             else:
                 comm_thumb_img = render_commercial_sale_thumbnail(
@@ -1849,71 +1846,13 @@ def render_tab_comm_thumb():
                     bg_zoom=comm_bg_zoom,
                     show_footer=st.session_state.comm_sale_show_footer,
                     office_name=st.session_state.comm_sale_office,
-                    broker_title=st.session_state.comm_sale_broker
+                    broker_title=st.session_state.comm_sale_broker,
+                    deal_done=st.session_state.get("comm_deal_done", False),
+                    deal_color=st.session_state.get("comm_deal_color", "#DC2626")
                 )
 
-        # 🌟 상가 썸네일 & 창문 부착용 A4 포스터 출력 2대 옵션
-        tab_comm_view_thumb, tab_comm_view_a4 = st.tabs([
-            "🖼️ 1. 상가 블로그 썸네일 (1080x1080)",
-            "🖨️ 2. 중개사무소 창문 부착용 A4 포스터"
-        ])
-
-        with tab_comm_view_thumb:
-            caption_title = "실시간 완성 미리보기: 상가 임차 (1080 x 1080 px)" if not is_sale_mode else "실시간 완성 미리보기: 상가 매매 (1080 x 1080 px)"
-            st.image(comm_thumb_img, caption=caption_title, use_container_width=True)
-
-        with tab_comm_view_a4:
-            # 상가 포스터에 전달할 파라미터 조합
-            if not is_sale_mode:
-                comm_a4_title = st.session_state.comm_lease_main_title or "상가 임대"
-                comm_a4_sub = st.session_state.comm_lease_cp_top or st.session_state.comm_lease_cp_bot or "역세권 특급 상권"
-                comm_a4_feature = st.session_state.comm_lease_top_badge or "추천 매물"
-                comm_a4_trade = "임대"
-                comm_a4_price = st.session_state.comm_lease_spec1.split("|")[-1].strip() if "|" in st.session_state.comm_lease_spec1 else st.session_state.comm_lease_spec1
-                comm_a4_specs = [
-                    st.session_state.comm_lease_spec1,
-                    st.session_state.comm_lease_spec2,
-                    st.session_state.comm_lease_pin_bubble if st.session_state.comm_lease_show_pin else "유동인구 풍부",
-                    "즉시입점 협의가능",
-                    "도로변 가시성 우수"
-                ]
-            else:
-                comm_a4_title = st.session_state.comm_sale_main_sub or "수익형 상가 매매"
-                comm_a4_sub = st.session_state.comm_sale_top_left or "급매 / 고수익률"
-                comm_a4_feature = st.session_state.comm_sale_top_right or "특급 투자처"
-                comm_a4_trade = "매매"
-                comm_a4_price = st.session_state.comm_sale_main_hl or st.session_state.comm_sale_price_spec or "수익률 7.2%"
-                comm_a4_specs = [
-                    st.session_state.comm_sale_price_spec,
-                    st.session_state.comm_sale_main_hl,
-                    "자주식 주차 및 승강기 완비",
-                    "안정적인 임대수익 보장",
-                    "사상 역세권 핵심 상권"
-                ]
-
-            with st.spinner("상가 창문 부착용 300DPI 초고화질 A4 포스터 렌더링 중..."):
-                comm_a4_poster_img = render_a4_window_poster(
-                    thumbnail_img=comm_thumb_img,
-                    bg_image=uploaded_comm_bg,
-                    item_no=st.session_state.get("comm_item_no", "No. COMM-01"),
-                    main_title=comm_a4_title,
-                    sub_title=comm_a4_sub,
-                    feature_text=comm_a4_feature,
-                    trade_type=comm_a4_trade,
-                    price_text=comm_a4_price,
-                    spec_lines=comm_a4_specs,
-                    office_name=st.session_state.get("comm_ad_office_name", "참좋은공인중개사사무소"),
-                    office_owner=st.session_state.get("comm_ad_office_owner", "신제환"),
-                    office_phone=st.session_state.get("comm_ad_office_phone", "010-9667-4201"),
-                    office_reg_no=st.session_state.get("comm_ad_office_reg_no", "제 26530-2026-00009 호"),
-                    office_address=st.session_state.get("comm_ad_office_address", "부산광역시 사상구 강선로 9, 1층"),
-                    is_commercial=True,
-                    office_tel=st.session_state.get("comm_office_tel_input", "051-911-8249"),
-                    assistant_phone=st.session_state.get("comm_assistant_phone_input", ""),
-                    primary_color_override=selected_comm_design["primary_color"],
-                    accent_color_override=selected_comm_design["accent_color"]
-                )
-            st.image(comm_a4_poster_img, caption="상가 유리창 부착용 A4 브리핑 포스터 (초고화질 300 DPI)", use_container_width=True)
+        caption_title = "실시간 완성 미리보기: 상가 임차 (1080 x 1080 px)" if not is_sale_mode else "실시간 완성 미리보기: 상가 매매 (1080 x 1080 px)"
+        st.image(comm_thumb_img, caption=caption_title, use_container_width=True)
 
     with col_ct_right:
         st.text_input("🏷️ 물건 번호 (매물번호)", key="comm_item_no")
@@ -1932,6 +1871,21 @@ def render_tab_comm_thumb():
             st.markdown("#### 📋 다크 글래스모피즘 스펙 박스")
             st.text_input("스펙 1행 (전용면적 | 보증금/월세)", key="comm_lease_spec1")
             st.text_input("스펙 2행 (추천 업종 / 특징)", key="comm_lease_spec2")
+
+            st.markdown("#### 🚩 매물 상태 (거래완료 표시)")
+            c_cdeal1, c_cdeal2 = st.columns([1, 1])
+            with c_cdeal1:
+                st.checkbox(
+                    "거래완료 표시",
+                    key="comm_deal_done",
+                    help="체크 시 썸네일에 거래완료 배지가 부착됩니다."
+                )
+            with c_cdeal2:
+                st.color_picker(
+                    "거래완료 배지 색상",
+                    key="comm_deal_color",
+                    value=st.session_state.get("comm_deal_color", "#DC2626")
+                )
 
             st.markdown("#### 🏢 하단 띠지 정보")
             st.checkbox("하단 띠지 표시", key="comm_lease_show_footer")
@@ -1957,6 +1911,21 @@ def render_tab_comm_thumb():
             st.markdown("#### 📊 하단 스펙 인포 바")
             st.text_input("금액 및 투자 스펙 요약", key="comm_sale_price_spec")
 
+            st.markdown("#### 🚩 매물 상태 (거래완료 표시)")
+            c_cdeal1, c_cdeal2 = st.columns([1, 1])
+            with c_cdeal1:
+                st.checkbox(
+                    "거래완료 표시",
+                    key="comm_deal_done",
+                    help="체크 시 썸네일에 거래완료 배지가 부착됩니다."
+                )
+            with c_cdeal2:
+                st.color_picker(
+                    "거래완료 배지 색상",
+                    key="comm_deal_color",
+                    value=st.session_state.get("comm_deal_color", "#DC2626")
+                )
+
             st.markdown("#### 🏢 하단 띠지 정보")
             st.checkbox("하단 띠지 표시", key="comm_sale_show_footer")
             if st.session_state.comm_sale_show_footer:
@@ -1975,47 +1944,15 @@ def render_tab_comm_thumb():
         comm_clean_title = re.sub(r'[^\w\s-]', '', (st.session_state.comm_lease_main_title if not is_sale_mode else st.session_state.comm_sale_main_sub)).strip().replace(" ", "_")
         comm_filename = f"{mode_tag}_{comm_clean_title}.png"
 
-        # 2. 상가 A4 창문 포스터 다운로드 및 인쇄 바이트
-        comm_a4_byte_arr = io.BytesIO()
-        comm_a4_poster_img.save(comm_a4_byte_arr, format="PNG", quality=98)
-        comm_a4_bytes = comm_a4_byte_arr.getvalue()
-        comm_a4_download_filename = f"창문부착용_상가_{mode_tag}_{comm_clean_title}_A4포스터.png"
-
         st.markdown("<hr style='margin: 15px 0 12px 0;'/>", unsafe_allow_html=True)
         st.markdown("### 📥 출력 및 저장 옵션")
 
-        tab_comm_down_thumb, tab_comm_down_a4 = st.tabs([
-            f"🖼️ 1. {mode_tag} 썸네일 저장",
-            "🖨️ 2. 창문 부착용 A4 바로 출력/저장"
-        ])
-
-        with tab_comm_down_thumb:
-            render_download_save_controller(
-                file_bytes=img_bytes,
-                default_filename=comm_filename,
-                label_download=f"📥 1080x1080 {mode_tag} 썸네일 저장 (기본 다운로드)",
-                key_prefix="comm_thumb_down"
-            )
-
-        with tab_comm_down_a4:
-            render_download_save_controller(
-                file_bytes=comm_a4_bytes,
-                default_filename=comm_a4_download_filename,
-                label_download="📥 300DPI 초고화질 A4 포스터 파일 저장",
-                key_prefix="comm_a4_down",
-                is_poster=True,
-                print_bytes=comm_a4_bytes,
-                print_label="🖨️ [원클릭 즉시 인쇄] 상가 창문용 A4 바로 출력 (Ctrl+P)",
-                print_bg="#B7791F"
-            )
-            st.markdown("""
-            <div style="font-size:12.5px; color:#2D3748; background:#F8FAFC; border:1px solid #CBD5E0; padding:10px 14px; border-radius:8px; margin-top:6px; line-height:1.5;">
-                💡 <b>상가 매물 창문 부착 팁:</b><br/>
-                1. 상단의 <b>[🖨️ 원클릭 즉시 인쇄]</b>를 누르시면 프린터 인쇄창이 바로 뜹니다.<br/>
-                2. 용지 방향을 <b>'세로'</b>, 배율을 <b>'용지에 맞춤'</b>으로 선택하시면 A4 용지에 선명하고 꽉 차게 인쇄됩니다.<br/>
-                3. 상가 매물은 골드 톤 디자인으로 유리창에 부착 시 고급스럽고 매물 문의율이 매우 높습니다!
-            </div>
-            """, unsafe_allow_html=True)
+        render_download_save_controller(
+            file_bytes=img_bytes,
+            default_filename=comm_filename,
+            label_download=f"📥 1080x1080 {mode_tag} 썸네일 저장",
+            key_prefix="comm_thumb_down"
+        )
 
         st.info("💡 상가 썸네일과 포스터를 만드셨다면, 상단의 **'🏪 ④ 상가 중개대상물 표시'** 탭을 클릭하여 상가 전용 네이버 광고 체크리스트 및 블로그 서식을 확인하세요!")
 
@@ -2142,51 +2079,19 @@ def render_tab_factory_thumb():
                 primary_color=selected_design["primary_color"],
                 accent_color=selected_design["accent_color"],
                 card_bg=selected_design["card_bg"],
-                overlay_image=selected_design.get("overlay_image_path")
+                overlay_image=selected_design.get("overlay_image_path"),
+                deal_done=st.session_state.get("factory_deal_done", False),
+                deal_color=st.session_state.get("factory_deal_color", "#DC2626")
             )
 
-        tab_f_view_thumb, tab_f_view_a4 = st.tabs([
-            "🖼️ 1. 공장 블로그 썸네일 (1080x1080)",
-            "🖨️ 2. 중개사무소 창문 부착용 A4 포스터"
-        ])
-
-        with tab_f_view_thumb:
-            st.image(factory_thumb_img, caption="공장 블로그 썸네일 실시간 미리보기 (1080 x 1080 px)", use_container_width=True)
-
-        with tab_f_view_a4:
-            with st.spinner("창문 부착용 300DPI 초고화질 A4 포스터 렌더링 중..."):
-                factory_a4_img = render_a4_window_poster(
-                    thumbnail_img=factory_thumb_img,
-                    bg_image=uploaded_factory_bg,
-                    item_no=st.session_state.factory_item_no,
-                    main_title=st.session_state.factory_main_title,
-                    sub_title=st.session_state.factory_sub_title,
-                    feature_text=st.session_state.factory_feature_text,
-                    trade_type=st.session_state.factory_trade_type,
-                    price_text=st.session_state.factory_price_text,
-                    spec_lines=factory_specs,
-                    office_name=st.session_state.get("ad_office_name", "참좋은공인중개사사무소"),
-                    office_owner=st.session_state.get("ad_office_owner", "신제환"),
-                    office_phone=st.session_state.get("ad_office_phone", "010-9667-4201"),
-                    office_reg_no=st.session_state.get("ad_office_reg_no", "제 26530-2026-00009 호"),
-                    office_address=st.session_state.get("ad_office_address", "부산광역시 사상구 강선로 9, 1층"),
-                    is_commercial=False,
-                    bg_offset_x=factory_bg_ox,
-                    bg_offset_y=factory_bg_oy,
-                    bg_zoom=factory_bg_zoom,
-                    office_tel=st.session_state.get("factory_office_tel", "051-911-8249"),
-                    assistant_phone=st.session_state.get("factory_assistant_phone", ""),
-                    primary_color_override=selected_design["primary_color"],
-                    accent_color_override=selected_design["accent_color"]
-                )
-            st.image(factory_a4_img, caption="중개사무소 유리창 부착용 공장 브리핑 포스터 (초고화질 300 DPI)", use_container_width=True)
+        st.image(factory_thumb_img, caption="공장 블로그 썸네일 실시간 미리보기 (1080 x 1080 px)", use_container_width=True)
 
     with col_t_right:
         st.markdown("### 🛠️ 공장 썸네일 텍스트 수정")
         st.text_input("🏷️ 물건 번호", key="factory_item_no")
         st.text_input("🏭 메인 타이틀 (공장/창고명)", key="factory_main_title")
         st.text_input("📍 서브 타이틀 (동/공단명)", key="factory_sub_title")
-        st.text_input("✨ 매물 핵심 특징", key="factory_feature_text")
+        st.text_input("✨ 매물 핵심 특징", key="factory_feature_text", placeholder="직접 입력하세요 (예: 호이스트 5톤 + 전력 150kW 완비)")
 
         c_ft1, c_ft2 = st.columns([1, 1.3])
         with c_ft1:
@@ -2204,13 +2109,28 @@ def render_tab_factory_thumb():
         st.text_input("4행: 동력 / 진입도로", key="factory_spec4")
         st.text_input("5행: 입주 및 주차", key="factory_spec5")
 
+        st.markdown("#### 🚩 매물 상태 (거래완료 표시)")
+        c_fdeal1, c_fdeal2 = st.columns([1, 1])
+        with c_fdeal1:
+            st.checkbox(
+                "거래완료 표시",
+                key="factory_deal_done",
+                help="체크 시 썸네일에 거래완료 배지가 부착됩니다."
+            )
+        with c_fdeal2:
+            st.color_picker(
+                "거래완료 배지 색상",
+                key="factory_deal_color",
+                value=st.session_state.get("factory_deal_color", "#DC2626")
+            )
+
         st.markdown("#### 🏢 하단 띠지 (중개사무소 정보)")
         st.checkbox("하단 띠지 표시 (체크 해제 시 전체 사진 영역 확장)", key="factory_show_footer")
         if st.session_state.factory_show_footer:
             st.text_input("띠지 문구 (소공/직원 커스텀 가능)", key="factory_footer_text", placeholder="미입력 시: 참좋은공인중개사사무소 (대표 신제환) ☎ 010-9667-4201")
             c_ff1, c_ff2 = st.columns(2)
             with c_ff1:
-                st.text_input("사무실 연락처 (창문 전단지용)", key="factory_office_tel", value=st.session_state.get("factory_office_tel", "051-911-8249"))
+                st.text_input("사무실 연락처 (창문 전단지용)", key="factory_office_tel", value=st.session_state.get("factory_office_tel", "010-9667-4201"))
             with c_ff2:
                 st.text_input("📱 담당자 연락처 (창문 전단지용)", key="factory_assistant_phone", value=st.session_state.get("factory_assistant_phone", ""), placeholder="예: 010-9667-4201")
 
@@ -2223,31 +2143,15 @@ def render_tab_factory_thumb():
         clean_f_price = re.sub(r'[^\w\s-]', '', (st.session_state.factory_price_text or "")).strip().replace(" ", "")
         f_down_name = f"공장썸네일_{clean_f_title}_{st.session_state.factory_trade_type}_{clean_f_price}.png"
 
-        f_a4_io = io.BytesIO()
-        factory_a4_img.save(f_a4_io, format="PNG", quality=98)
-        f_a4_bytes = f_a4_io.getvalue()
-        f_a4_name = f"창문부착용_공장포스터_{clean_f_title}_{clean_f_price}.png"
-
         st.markdown("<hr style='margin: 15px 0 12px 0;'/>", unsafe_allow_html=True)
         st.markdown("### 📥 출력 및 저장 옵션")
 
-        t_f_down, t_f_a4 = st.tabs(["🖼️ 1. 공장 썸네일 저장", "🖨️ 2. 창문 포스터 즉시 출력/저장"])
-        with t_f_down:
-            render_download_save_controller(
-                file_bytes=f_thumb_bytes,
-                default_filename=f_down_name,
-                label_download="📥 1080x1080 썸네일 저장 (기본 다운로드)",
-                key_prefix="factory_thumb_down"
-            )
-        with t_f_a4:
-            render_download_save_controller(
-                file_bytes=f_a4_bytes,
-                default_filename=f_a4_name,
-                label_download="📥 300DPI 초고화질 A4 포스터 파일 저장",
-                key_prefix="factory_a4_down",
-                is_poster=True,
-                print_bytes=f_a4_bytes
-            )
+        render_download_save_controller(
+            file_bytes=f_thumb_bytes,
+            default_filename=f_down_name,
+            label_download="📥 1080x1080 공장 썸네일 저장",
+            key_prefix="factory_thumb_down"
+        )
 
 
 # ====================================================
@@ -2302,7 +2206,7 @@ def render_tab_apt_poster():
                 office_reg_no=st.session_state.get("ad_office_reg_no", "제 26530-2026-00009 호"),
                 office_address=st.session_state.get("ad_office_address", "부산광역시 사상구 강선로 9, 1층"),
                 is_commercial=False,
-                office_tel=st.session_state.get("office_tel_input", "051-911-8249"),
+                office_tel=st.session_state.get("office_tel_input", "010-9667-4201"),
                 assistant_phone=st.session_state.get("assistant_phone_input", ""),
                 primary_color_override=selected_design.get("primary_color", "#F48A26"),
                 accent_color_override=selected_design.get("accent_color", "#EB5E28")
@@ -2409,7 +2313,7 @@ def render_tab_house_poster():
                 office_reg_no=st.session_state.get("ad_office_reg_no", "제 26530-2026-00009 호"),
                 office_address=st.session_state.get("ad_office_address", "부산광역시 사상구 강선로 9, 1층"),
                 is_commercial=False,
-                office_tel=st.session_state.get("house_office_tel", "051-911-8249"),
+                office_tel=st.session_state.get("house_office_tel", "010-9667-4201"),
                 assistant_phone=st.session_state.get("house_assistant_phone", ""),
                 primary_color_override=selected_design.get("primary_color", "#38A169"),
                 accent_color_override=selected_design.get("accent_color", "#276749")
@@ -2539,7 +2443,7 @@ def render_tab_comm_poster():
                 office_reg_no=st.session_state.get("comm_ad_office_reg_no", "제 26530-2026-00009 호"),
                 office_address=st.session_state.get("comm_ad_office_address", "부산광역시 사상구 강선로 9, 1층"),
                 is_commercial=True,
-                office_tel=st.session_state.get("comm_office_tel_input", "051-911-8249"),
+                office_tel=st.session_state.get("comm_office_tel_input", "010-9667-4201"),
                 assistant_phone=st.session_state.get("comm_assistant_phone_input", ""),
                 primary_color_override=selected_comm_design.get("primary_color", "#DAA844"),
                 accent_color_override=selected_comm_design.get("accent_color", "#B8860B")
@@ -2648,7 +2552,7 @@ def render_tab_factory_poster():
                 office_reg_no=st.session_state.get("ad_office_reg_no", "제 26530-2026-00009 호"),
                 office_address=st.session_state.get("ad_office_address", "부산광역시 사상구 강선로 9, 1층"),
                 is_commercial=False,
-                office_tel=st.session_state.get("factory_office_tel", "051-911-8249"),
+                office_tel=st.session_state.get("factory_office_tel", "010-9667-4201"),
                 assistant_phone=st.session_state.get("factory_assistant_phone", ""),
                 primary_color_override=selected_design.get("primary_color", "#3182CE"),
                 accent_color_override=selected_design.get("accent_color", "#2B6CB0")
@@ -3208,12 +3112,17 @@ def render_tab_apt_ad():
                 st.text_input("중개등록번호", key="ad_office_reg_no")
                 st.text_input("사무소 소재지", key="ad_office_address")
 
-            st.markdown("<b>👤 소속공인중개사(소공) 담당자 정보 (선택 입력)</b>", unsafe_allow_html=True)
+            st.markdown("""
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-top: 15px; margin-bottom: 5px;">
+                <b>17. 소속공인중개사(소공) 담당자 정보</b>
+                <span class="spec-badge badge-gray">선택 입력</span>
+            </div>
+            """, unsafe_allow_html=True)
             c_as1, c_as2 = st.columns(2)
             with c_as1:
-                st.text_input("소공/담당자 성명", key="ad_assistant_name", placeholder="예: 김소공 소속공인중개사")
+                st.text_input("소공/담당자 성명", key="ad_assistant_name", placeholder="예: 하승원 소속공인중개사")
             with c_as2:
-                st.text_input("담당자 직통 연락처", key="ad_assistant_phone", placeholder="예: 010-1234-5678")
+                st.text_input("담당자 직통 연락처", key="ad_assistant_phone", placeholder="예: 010-5552-5265")
         else:
             st.info("ℹ️ 중개사무소 정보가 제외되었습니다. 순수 매물 스펙(01~15번 항목)만 출력됩니다. (소공 및 협력 중개사 활용 가능)")
 
@@ -4110,13 +4019,15 @@ function syncMainTopTabsFont() {
         if (tabsContainers && tabsContainers.length > 0) {
             var firstTabList = tabsContainers[0].querySelector('[data-baseweb="tab-list"]');
             if (firstTabList) {
-                firstTabList.style.gap = '14px';
+                firstTabList.style.gap = '24px';
                 firstTabList.style.padding = '8px 12px';
+                firstTabList.style.marginBottom = '18px';
                 var buttons = firstTabList.querySelectorAll('[data-baseweb="tab"]');
                 buttons.forEach(function(btn) {
-                    btn.style.height = '56px';
-                    btn.style.padding = '0 26px';
+                    btn.style.height = '58px';
+                    btn.style.padding = '0 28px';
                     btn.style.borderRadius = '10px';
+                    btn.style.marginRight = '8px';
                     var targets = btn.querySelectorAll('p, span, div');
                     targets.forEach(function(el) {
                         el.style.fontSize = '24px';
@@ -4130,11 +4041,11 @@ function syncMainTopTabsFont() {
     } catch(e) {}
 }
 syncMainTopTabsFont();
-setInterval(syncMainTopTabsFont, 500);
+setInterval(syncMainTopTabsFont, 400);
 </script>
 """, height=0)
 
-tab_main_thumb, tab_main_poster, tab_main_ad = st.tabs(["썸네일", "창문부착용A4", "중개대상물표시"])
+tab_main_thumb, tab_main_poster, tab_main_ad = st.tabs(["🖼️ 썸네일", "🖨️ 창문부착용A4", "📋 중개대상물표시"])
 
 with tab_main_thumb:
     thumb_sub_apt, thumb_sub_house, thumb_sub_comm, thumb_sub_factory = st.tabs([

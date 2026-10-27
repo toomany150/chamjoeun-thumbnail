@@ -104,16 +104,84 @@ def _load_bg_image(bg_image, target_w: int, target_h: int, zoom: float, offset_x
 
     return resized.crop((crop_x, crop_y, crop_x + target_w, crop_y + target_h))
 
+def draw_deal_done_badge(
+    image: Image.Image,
+    badge_text: str = "거래완료",
+    badge_color = "#DC2626",
+    pos: tuple = None
+) -> Image.Image:
+    """
+    썸네일 이미지 위에 세련되고 선명한 '거래완료' 배지(스탬프)를 렌더링합니다.
+    """
+    if image is None:
+        return image
+    
+    res = image.copy().convert("RGBA")
+    W, H = res.size
+    
+    clean_text = (badge_text or "거래완료").strip()
+    font_badge = get_font("NanumGothicExtraBold.ttf", 36)
+    
+    bbox = font_badge.getbbox(clean_text)
+    tw = bbox[2] - bbox[0]
+    th = bbox[3] - bbox[1]
+    
+    pad_x = 28
+    pad_y = 15
+    bw = tw + pad_x * 2
+    bh = th + pad_y * 2
+    
+    if pos is None:
+        bx = W - bw - 40
+        by = 38
+    else:
+        bx, by = pos
+        
+    badge_layer = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+    b_draw = ImageDraw.Draw(badge_layer)
+    
+    # 1. 부드러운 드롭 섀도우 (입체감 부여)
+    shadow_offset = 5
+    b_draw.rounded_rectangle(
+        [(bx + shadow_offset, by + shadow_offset), (bx + bw + shadow_offset, by + bh + shadow_offset)],
+        radius=14,
+        fill=(0, 0, 0, 110)
+    )
+    
+    # 2. 메인 배지 본체
+    rgba_col = _to_rgba(badge_color, default=(220, 38, 38, 255))
+    b_draw.rounded_rectangle(
+        [(bx, by), (bx + bw, by + bh)],
+        radius=14,
+        fill=rgba_col
+    )
+    
+    # 3. 화이트 이너/아웃라인 보더 (3px)
+    b_draw.rounded_rectangle(
+        [(bx, by), (bx + bw, by + bh)],
+        radius=14,
+        outline=(255, 255, 255, 235),
+        width=3
+    )
+    
+    # 4. 텍스트 중앙 배치
+    tx = bx + (bw - tw) / 2 - bbox[0]
+    ty = by + (bh - th) / 2 - bbox[1]
+    b_draw.text((tx, ty), clean_text, font=font_badge, fill=(255, 255, 255, 255))
+    
+    return Image.alpha_composite(res, badge_layer)
+
+
 def render_thumbnail(
     bg_image=None,
     item_no: str = "No. APT001",
     main_title: str = "사상 중흥S-클래스",
     sub_title: str = "그랜드센트럴",
-    feature_text: str = "1572세대 대단지 아파트",
+    feature_text: str = "",
     trade_type: str = "매매",
     price_text: str = "6억2천",
     spec_lines: list = None,
-    layout_mode: str = "side_wide",  # "side_wide", "top_panoramic", "side_standard"
+    layout_mode: str = "top_panoramic",  # "top_panoramic", "side_wide", "side_standard"
     photo_width_ratio: float = 0.65,  # 좌우 모드에서 사진이 차지하는 가로 비율 (0.45 ~ 0.75)
     bg_offset_x: int = 0,
     bg_offset_y: int = 0,
@@ -123,7 +191,10 @@ def render_thumbnail(
     primary_color: tuple = None,
     accent_color: tuple = None,
     card_bg: tuple = None,
-    overlay_image = None
+    overlay_image = None,
+    deal_done: bool = False,
+    deal_color: str = "#DC2626",
+    deal_text: str = "거래완료"
 ) -> Image.Image:
     """1080x1080 썸네일을 생성하여 PIL Image로 반환합니다."""
     primary_color = _to_rgba(primary_color, (244, 138, 38, 255))
@@ -199,6 +270,9 @@ def render_thumbnail(
                 res_img = Image.alpha_composite(res_img.convert("RGBA"), ov_resized)
         except Exception:
             pass
+
+    if deal_done:
+        res_img = draw_deal_done_badge(res_img, badge_text=deal_text, badge_color=deal_color)
 
     return res_img
 
@@ -585,6 +659,9 @@ def render_commercial_lease_thumbnail(
     show_footer: bool = True,
     office_name: str = "참좋은 공인중개사사무소",
     broker_title: str = "황금터잡이 신소장",
+    deal_done: bool = False,
+    deal_color: str = "#DC2626",
+    deal_text: str = "거래완료"
 ) -> Image.Image:
     """[상가 임차 썸네일] - 1080x1080 다크 골드 럭셔리 스타일"""
     W, H = 1080, 1080
@@ -820,6 +897,9 @@ def render_commercial_lease_thumbnail(
         br_w = b_box[2] - b_box[0]
         draw.text((W - 55 - br_w, footer_y + 31), broker_txt, fill=(235, 182, 75, 255), font=font_broker)
 
+    if deal_done:
+        canvas = draw_deal_done_badge(canvas, badge_text=deal_text, badge_color=deal_color)
+
     return canvas.convert("RGB")
 
 
@@ -837,6 +917,9 @@ def render_commercial_sale_thumbnail(
     show_footer: bool = True,
     office_name: str = "참좋은 공인중개사사무소",
     broker_title: str = "황금터잡이 신소장",
+    deal_done: bool = False,
+    deal_color: str = "#DC2626",
+    deal_text: str = "거래완료"
 ) -> Image.Image:
     """[상가 매매 썸네일] - 1080x1080 더블 골드 프레임 & 수익률 하이라이트 스타일"""
     W, H = 1080, 1080
@@ -1016,6 +1099,9 @@ def render_commercial_sale_thumbnail(
         br_w = b_box[2] - b_box[0]
         draw.text((W - 75 - br_w, footer_y + 27), broker_txt, fill=(235, 182, 75, 255), font=font_broker)
 
+    if deal_done:
+        canvas = draw_deal_done_badge(canvas, badge_text=deal_text, badge_color=deal_color)
+
     return canvas.convert("RGB")
 
 
@@ -1036,7 +1122,7 @@ def render_a4_window_poster(
     office_name: str = "참좋은공인중개사사무소",
     office_owner: str = "신제환",
     office_phone: str = "010-9667-4201",
-    office_tel: str = "051-911-8249",
+    office_tel: str = "010-9667-4201",
     office_reg_no: str = "제 26530-2026-00009 호",
     office_address: str = "부산광역시 사상구 강선로 9, 1층",
     assistant_phone: str = "",
@@ -1438,7 +1524,7 @@ def render_a4_window_poster(
     draw.line([(150, footer_y + 175), (W - 150, footer_y + 175)], fill=(51, 65, 85, 255), width=2)
 
     # 요구사항: "사무실 연락처:" 삭제! 051-911-8249와 담당자 직통번호의 글자 크기를 동일하게 일치(84px)하여 균형 배치
-    tel_clean = (office_tel or "051-911-8249").strip()
+    tel_clean = (office_tel or "010-9667-4201").strip()
     ast_clean = (assistant_phone or "").strip()
 
     phone_font_size = 84

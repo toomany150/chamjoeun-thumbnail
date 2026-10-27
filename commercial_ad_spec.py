@@ -216,13 +216,17 @@ def get_commercial_spec_table_data(data: dict) -> list[dict]:
             f"• 소재지: {data.get('office_address', '부산광역시 사상구 강선로 9, 1층')}",
             f"• 직통전화: {data.get('office_phone', '010-9667-4201')}"
         ]
+        items.append({"num": 18, "name": "중개사무소 정보", "val": "\n".join(office_lines), "guide": "상호, 소재지, 연락처, 등록번호, 대표자 성명 5대 항목 필수"})
+
         as_name = data.get("assistant_name", "").strip()
         as_phone = data.get("assistant_phone", "").strip()
-        if as_name or as_phone:
-            as_info = f"{as_name} ({as_phone})".strip() if as_phone else as_name
-            office_lines.append(f"• 담당(소공): {as_info}")
-        office_full = "\n".join(office_lines)
-        items.append({"num": 18, "name": "중개사무소 정보", "val": office_full, "guide": "상호, 소재지, 연락처, 등록번호, 대표자 성명 5대 항목 필수"})
+        if as_name:
+            as_phone_val = as_phone if as_phone else data.get('office_phone', '010-9667-4201')
+            as_lines = [
+                f"• 소속공인중개사: {as_name}",
+                f"• 연락처: {as_phone_val}"
+            ]
+            items.append({"num": 19, "name": "소속공인중개사", "val": "\n".join(as_lines), "guide": "소속공인중개사 성명 및 직통 연락처"})
 
     return items
 

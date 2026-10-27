@@ -220,6 +220,13 @@ SPEC_ITEMS_META = [
         "title": "중개사무소 정보",
         "guide": "상호, 소재지, 연락처, 등록번호, 대표자 성명 5대 항목 필수",
         "badge": "법정필수"
+    },
+    {
+        "id": "assistant_info",
+        "num": 17,
+        "title": "소속공인중개사",
+        "guide": "소속공인중개사 성명 및 직통 연락처",
+        "badge": "선택입력"
     }
 ]
 
@@ -284,13 +291,18 @@ def get_ordered_spec_table_data(data: dict) -> list[dict]:
             f"• 소재지: {data.get('office_address', '부산광역시 사상구 강선로 9, 1층')}",
             f"• 연락처: {data.get('office_phone', '010-9667-4201')}"
         ]
-        as_name = data.get("assistant_name", "").strip()
-        as_phone = data.get("assistant_phone", "").strip()
-        if as_name or as_phone:
-            as_info = f"{as_name} ({as_phone})".strip() if as_phone else as_name
-            office_lines.append(f"• 담당(소공): {as_info}")
         office_full = "\n".join(office_lines)
         items.append({"num": 16, "name": "중개사무소 정보", "val": office_full, "guide": "상호, 소재지, 연락처, 등록번호, 대표자 5대 항목 필수"})
+
+        as_name = data.get("assistant_name", "").strip()
+        as_phone = data.get("assistant_phone", "").strip()
+        if as_name:
+            as_phone_val = as_phone if as_phone else data.get('office_phone', '010-9667-4201')
+            as_lines = [
+                f"• 소속공인중개사: {as_name}",
+                f"• 연락처: {as_phone_val}"
+            ]
+            items.append({"num": 17, "name": "소속공인중개사", "val": "\n".join(as_lines), "guide": "소속공인중개사 성명 및 직통 연락처"})
 
     return items
 
@@ -328,13 +340,18 @@ def get_house_spec_table_data(data: dict) -> list[dict]:
             f"• 소재지: {data.get('office_address', '부산광역시 사상구 강선로 9, 1층')}",
             f"• 연락처: {data.get('office_phone', '010-9667-4201')}"
         ]
-        as_name = data.get("assistant_name", "").strip()
-        as_phone = data.get("assistant_phone", "").strip()
-        if as_name or as_phone:
-            as_info = f"{as_name} ({as_phone})".strip() if as_phone else as_name
-            office_lines.append(f"• 담당(소공): {as_info}")
         office_full = "\n".join(office_lines)
         items.append({"num": 16, "name": "중개사무소 정보", "val": office_full, "guide": "5대 필수 명시"})
+
+        as_name = data.get("assistant_name", "").strip()
+        as_phone = data.get("assistant_phone", "").strip()
+        if as_name:
+            as_phone_val = as_phone if as_phone else data.get('office_phone', '010-9667-4201')
+            as_lines = [
+                f"• 소속공인중개사: {as_name}",
+                f"• 연락처: {as_phone_val}"
+            ]
+            items.append({"num": 17, "name": "소속공인중개사", "val": "\n".join(as_lines), "guide": "소속공인중개사 성명 및 직통 연락처"})
 
     return items
 
@@ -372,13 +389,18 @@ def get_factory_spec_table_data(data: dict) -> list[dict]:
             f"• 소재지: {data.get('office_address', '부산광역시 사상구 강선로 9, 1층')}",
             f"• 연락처: {data.get('office_phone', '010-9667-4201')}"
         ]
-        as_name = data.get("assistant_name", "").strip()
-        as_phone = data.get("assistant_phone", "").strip()
-        if as_name or as_phone:
-            as_info = f"{as_name} ({as_phone})".strip() if as_phone else as_name
-            office_lines.append(f"• 담당(소공): {as_info}")
         office_full = "\n".join(office_lines)
         items.append({"num": 16, "name": "중개사무소 정보", "val": office_full, "guide": "5대 필수 명시"})
+
+        as_name = data.get("assistant_name", "").strip()
+        as_phone = data.get("assistant_phone", "").strip()
+        if as_name:
+            as_phone_val = as_phone if as_phone else data.get('office_phone', '010-9667-4201')
+            as_lines = [
+                f"• 소속공인중개사: {as_name}",
+                f"• 연락처: {as_phone_val}"
+            ]
+            items.append({"num": 17, "name": "소속공인중개사", "val": "\n".join(as_lines), "guide": "소속공인중개사 성명 및 직통 연락처"})
 
     return items
 
@@ -489,8 +511,8 @@ def render_spec_table_image(data: dict, items: list = None) -> Image.Image:
         items = get_ordered_spec_table_data(data)
     
     img_w = 1080
-    # 높이 계산 (여유 있게 1600px로 잡고 마지막에 크롭)
-    estimated_h = 1750
+    # 높이 계산 (여유 있게 2200px로 잡고 마지막에 크롭)
+    estimated_h = 2200
     img = Image.new("RGBA", (img_w, estimated_h), (255, 255, 255, 255))
     draw = ImageDraw.Draw(img)
 
