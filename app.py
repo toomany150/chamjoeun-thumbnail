@@ -201,8 +201,8 @@ def render_copy_button(text_to_copy: str, button_label: str, btn_id: str = "") -
 
 def render_pc_save_button(file_bytes: bytes, filename: str, label: str, uid_key: str, bg_color: str = "#FF4B4B") -> str:
     """
-    클릭 시 PC의 저장 위치(경로)를 직접 지정할 수 있는 네이티브 파일 저장 다이얼로그(showSaveFilePicker)를 호출하고,
-    미지원 브라우저에서는 표준 다운로드로 안전하게 자동 전환되는 스마트 다운로드 버튼입니다.
+    클릭 시 100% 안정적으로 PC에 즉시 저장되는 고화질 다운로드 버튼입니다.
+    브라우저 설정(다운로드 전 각 파일의 저장 위치 확인)에 따라 원하는 폴더(바탕화면, 내문서 등)를 직접 지정하여 저장할 수 있습니다.
     """
     clean_name = re.sub(r'[\\/*?:"<>|\'\"]', '', filename).strip()
     if not clean_name:
@@ -211,76 +211,21 @@ def render_pc_save_button(file_bytes: bytes, filename: str, label: str, uid_key:
         clean_name += ".png"
     
     b64_data = base64.b64encode(file_bytes).decode("ascii")
-    uid = abs(hash(f"{uid_key}_{filename}_{len(file_bytes)}")) % 10000000
 
     clean_label = label.replace("(기본 다운로드)", "").strip()
     if not (clean_label.startswith("📥") or clean_label.startswith("💾")):
         clean_label = f"💾 {clean_label}"
 
-    box_shadow = "0 4px 14px rgba(255, 75, 75, 0.35)" if bg_color == "#FF4B4B" else "0 4px 14px rgba(37, 99, 235, 0.35)"
+    box_shadow = "0 4px 14px rgba(255, 75, 75, 0.35)" if bg_color == "#FF4B4B" else ("0 4px 14px rgba(37, 99, 235, 0.35)" if bg_color in ["#2563EB", "#3182CE"] else "0 4px 14px rgba(244, 138, 38, 0.35)")
 
     return f"""<div style="margin: 8px 0 10px 0;">
-<textarea id="save_data_{uid}" style="display:none;">{b64_data}</textarea>
-<script>
-window["savePcFile_{uid}"] = async function() {{
-    var btn = document.getElementById("save_btn_{uid}");
-    if (!btn || btn.disabled) return;
-    var origHtml = btn.innerHTML;
-    var origBg = btn.style.backgroundColor;
-    btn.disabled = true;
-    btn.innerHTML = '<span style="color:#FFF!important;font-weight:800;font-size:16px;">⏳ 저장 위치 선택 중...</span>';
-    try {{
-        var ta = document.getElementById("save_data_{uid}");
-        if (!ta) throw new Error("Data not found");
-        var b64 = ta.value;
-        var byteChars = atob(b64);
-        var byteNums = new Array(byteChars.length);
-        for (var i = 0; i < byteChars.length; i++) {{ byteNums[i] = byteChars.charCodeAt(i); }}
-        var byteArray = new Uint8Array(byteNums);
-        var blob = new Blob([byteArray], {{type: "image/png"}});
-        var fname = "{clean_name}";
-        if (window.showSaveFilePicker) {{
-            try {{
-                var handle = await window.showSaveFilePicker({{
-                    suggestedName: fname,
-                    types: [{{description: "PNG 이미지 파일 (*.png)", accept: {{"image/png": [".png"]}}}}]
-                }});
-                var writable = await handle.createWritable();
-                await writable.write(blob);
-                await writable.close();
-                btn.innerHTML = '<span style="color:#FFF!important;font-weight:800;font-size:16px;">✅ PC 지정 폴더에 저장 완료!</span>';
-                btn.style.backgroundColor = "#10B981";
-                setTimeout(function(){{ btn.innerHTML = origHtml; btn.style.backgroundColor = origBg; btn.disabled = false; }}, 3000);
-                return;
-            }} catch(pickerErr) {{
-                if (pickerErr.name === "AbortError") {{
-                    btn.innerHTML = origHtml; btn.style.backgroundColor = origBg; btn.disabled = false;
-                    return;
-                }}
-            }}
-        }}
-        var url = URL.createObjectURL(blob);
-        var a = document.createElement("a");
-        a.href = url;
-        a.download = fname;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        setTimeout(function(){{ URL.revokeObjectURL(url); }}, 15000);
-        btn.innerHTML = '<span style="color:#FFF!important;font-weight:800;font-size:16px;">📥 PC 다운로드 완료!</span>';
-        btn.style.backgroundColor = "#10B981";
-        setTimeout(function(){{ btn.innerHTML = origHtml; btn.style.backgroundColor = origBg; btn.disabled = false; }}, 3000);
-    }} catch(err) {{
-        alert("저장 중 오류가 발생했습니다: " + err);
-        btn.innerHTML = origHtml; btn.style.backgroundColor = origBg; btn.disabled = false;
-    }}
-}};
-</script>
-<button id="save_btn_{uid}" onclick='window["savePcFile_{uid}"]()' style="width: 100%; display: flex; align-items: center; justify-content: center; gap: 8px; background-color: {bg_color}; color: #FFFFFF !important; -webkit-text-fill-color: #FFFFFF !important; padding: 14px 20px; border-radius: 9px; font-weight: 800; border: none; cursor: pointer; font-size: 16px; box-shadow: {box_shadow}; transition: all 0.2s ease-in-out;">
-<span style="color: #FFFFFF !important; -webkit-text-fill-color: #FFFFFF !important; font-weight: 800; font-size: 16px; letter-spacing: -0.3px;">{clean_label}</span>
-</button>
+<a href="data:image/png;base64,{b64_data}" download="{clean_name}" style="text-decoration: none; display: block; width: 100%;">
+    <div style="width: 100%; box-sizing: border-box; display: flex; align-items: center; justify-content: center; gap: 8px; background-color: {bg_color}; color: #FFFFFF !important; -webkit-text-fill-color: #FFFFFF !important; padding: 15px 20px; border-radius: 9px; font-weight: 800; border: none; cursor: pointer; font-size: 16px; box-shadow: {box_shadow}; transition: all 0.2s ease-in-out;">
+        <span style="color: #FFFFFF !important; -webkit-text-fill-color: #FFFFFF !important; font-weight: 800; font-size: 16.5px; letter-spacing: -0.3px;">{clean_label}</span>
+    </div>
+</a>
 <div style="font-size: 12.5px; color: #64748B; margin-top: 6px; text-align: center; line-height: 1.4;">
-💡 클릭 시 내 컴퓨터의 원하는 폴더(바탕화면, 내문서 등)를 직접 지정하여 저장할 수 있습니다.
+💡 클릭 시 내 컴퓨터의 다운로드 폴더 또는 지정 폴더(바탕화면, 내문서 등)로 즉시 저장됩니다.
 </div>
 </div>"""
 
@@ -294,8 +239,8 @@ def render_poster_action_bar(
     포스터 전용 가로형 통합 액션 바:
     - 좌측: '300dpi 초고화질 A4포스터 파일저장' 타이틀 라벨
     - 우측: [출력] 버튼 및 [저장] 버튼 나란히 배치
-    - [저장] 클릭 시: 브라우저 showSaveFilePicker API로 PC 내 저장 폴더를 직접 지정하여 파일 저장
-    - [출력] 클릭 시: 창문부착용 즉시 인쇄(A4 세로 맞춤) 대화상자 호출
+    - [저장] 클릭 시: 100% 즉시 다운로드 (PC 저장 폴더 직접 지정 가능)
+    - [출력] 클릭 시: 새 창을 열어 A4 맞춤형 브라우저 인쇄(Ctrl+P) 즉시 호출
     """
     clean_name = re.sub(r'[\\/*?:"<>|\'\"]', '', filename).strip()
     if not clean_name:
@@ -306,115 +251,40 @@ def render_poster_action_bar(
     b64_data = base64.b64encode(file_bytes).decode("ascii")
     uid = abs(hash(f"{key_prefix}_{filename}_{len(file_bytes)}")) % 10000000
 
-    return f"""<div style="background: #FFFFFF; border: 1.5px solid #CBD5E1; border-radius: 12px; padding: 14px 18px; margin: 8px 0 14px 0; box-shadow: 0 3px 10px rgba(0,0,0,0.04);">
-<textarea id="poster_data_{uid}" style="display:none;">{b64_data}</textarea>
-<script>
-window["printPoster_{uid}"] = function() {{
-    try {{
-        var ta = document.getElementById("poster_data_{uid}");
-        if (!ta) return;
-        var b64 = ta.value;
-        var iframe = document.createElement("iframe");
-        iframe.style.position = "fixed";
-        iframe.style.right = "0";
-        iframe.style.bottom = "0";
-        iframe.style.width = "0";
-        iframe.style.height = "0";
-        iframe.style.border = "0";
-        document.body.appendChild(iframe);
-        var doc = iframe.contentWindow.document;
-        doc.open();
-        doc.write('<!DOCTYPE html><html><head><title>포스터 인쇄</title><style>@page{{size:A4 portrait;margin:0;}}body{{margin:0;padding:0;display:flex;justify-content:center;align-items:center;background:#fff;}}img{{width:100%;height:auto;max-height:100vh;object-fit:contain;}}</style></head><body></body></html>');
-        doc.close();
-        var img = doc.createElement("img");
-        img.src = "data:image/png;base64," + b64;
-        img.onload = function() {{
-            setTimeout(function() {{
-                try {{
-                    iframe.contentWindow.focus();
-                    iframe.contentWindow.print();
-                }} catch(err) {{ window.print(); }}
-            }}, 300);
-        }};
-        doc.body.appendChild(img);
-        setTimeout(function() {{ try {{ document.body.removeChild(iframe); }} catch(e){{}} }}, 60000);
-    }} catch(e) {{
-        alert("인쇄 호출 중 오류가 발생했습니다: " + e);
-    }}
-}};
+    js_print = (
+        "(function(){"
+        "try{"
+        "var w=window.open('about:blank','_blank','width=900,height=1200');"
+        "if(!w){alert('브라우저에서 팝업이 차단되었습니다. 주소창 우측에서 팝업 허용을 눌러주세요.');return;}"
+        f"var b64='{b64_data}';"
+        "w.document.open();"
+        "w.document.write('<!DOCTYPE html><html><head><title>A4 포스터 인쇄</title><style>@page{size:A4 portrait;margin:0;}body{margin:0;padding:0;display:flex;justify-content:center;align-items:center;background:#fff;}img{width:100%;height:auto;max-height:100vh;object-fit:contain;}</style></head><body><img src=\"data:image/png;base64,'+b64+'\" onload=\"setTimeout(function(){window.print();},300);\"/></body></html>');"
+        "w.document.close();"
+        "}catch(e){alert('인쇄 창 호출 중 오류가 발생했습니다: '+e);}"
+        "})();"
+    )
 
-window["savePoster_{uid}"] = async function() {{
-    var btn = document.getElementById("poster_save_btn_{uid}");
-    if (!btn || btn.disabled) return;
-    var origHtml = btn.innerHTML;
-    var origBg = btn.style.backgroundColor;
-    btn.disabled = true;
-    btn.innerHTML = '<span style="color:#FFF!important;font-weight:800;font-size:15px;">⏳ 폴더 선택 중...</span>';
-    try {{
-        var ta = document.getElementById("poster_data_{uid}");
-        if (!ta) throw new Error("Data not found");
-        var b64 = ta.value;
-        var byteChars = atob(b64);
-        var byteNums = new Array(byteChars.length);
-        for (var i = 0; i < byteChars.length; i++) {{ byteNums[i] = byteChars.charCodeAt(i); }}
-        var byteArray = new Uint8Array(byteNums);
-        var blob = new Blob([byteArray], {{type: "image/png"}});
-        var fname = "{clean_name}";
-        if (window.showSaveFilePicker) {{
-            try {{
-                var handle = await window.showSaveFilePicker({{
-                    suggestedName: fname,
-                    types: [{{description: "PNG 이미지 파일 (*.png)", accept: {{"image/png": [".png"]}}}}]
-                }});
-                var writable = await handle.createWritable();
-                await writable.write(blob);
-                await writable.close();
-                btn.innerHTML = '<span style="color:#FFF!important;font-weight:800;font-size:15px;">✅ 저장 완료!</span>';
-                btn.style.backgroundColor = "#10B981";
-                setTimeout(function(){{ btn.innerHTML = origHtml; btn.style.backgroundColor = origBg; btn.disabled = false; }}, 3000);
-                return;
-            }} catch(pickerErr) {{
-                if (pickerErr.name === "AbortError") {{
-                    btn.innerHTML = origHtml; btn.style.backgroundColor = origBg; btn.disabled = false;
-                    return;
-                }}
-            }}
-        }}
-        var url = URL.createObjectURL(blob);
-        var a = document.createElement("a");
-        a.href = url;
-        a.download = fname;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        setTimeout(function(){{ URL.revokeObjectURL(url); }}, 15000);
-        btn.innerHTML = '<span style="color:#FFF!important;font-weight:800;font-size:15px;">📥 다운로드 완료!</span>';
-        btn.style.backgroundColor = "#10B981";
-        setTimeout(function(){{ btn.innerHTML = origHtml; btn.style.backgroundColor = origBg; btn.disabled = false; }}, 3000);
-    }} catch(err) {{
-        alert("저장 중 오류가 발생했습니다: " + err);
-        btn.innerHTML = origHtml; btn.style.backgroundColor = origBg; btn.disabled = false;
-    }}
-}};
-</script>
+    return f"""<div style="background: #FFFFFF; border: 1.5px solid #CBD5E1; border-radius: 12px; padding: 14px 18px; margin: 8px 0 14px 0; box-shadow: 0 3px 10px rgba(0,0,0,0.04);">
 <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px;">
 <div style="display: flex; align-items: center; gap: 8px;">
 <span style="font-size: 20px;">📄</span>
 <span style="font-size: 16.5px; font-weight: 800; color: #1E293B; letter-spacing: -0.3px;">{title_label}</span>
 </div>
 <div style="display: flex; align-items: center; gap: 10px;">
-<button id="poster_print_btn_{uid}" onclick='window["printPoster_{uid}"]()' style="display: inline-flex; align-items: center; justify-content: center; gap: 6px; background-color: #1E293B; color: #FFFFFF !important; -webkit-text-fill-color: #FFFFFF !important; padding: 10px 22px; border-radius: 8px; font-weight: 800; font-size: 15px; border: none; cursor: pointer; box-shadow: 0 3px 10px rgba(30,41,59,0.25); transition: all 0.2s ease-in-out;">
+<button id="poster_print_btn_{uid}" onclick='{js_print}' style="display: inline-flex; align-items: center; justify-content: center; gap: 6px; background-color: #1E293B; color: #FFFFFF !important; -webkit-text-fill-color: #FFFFFF !important; padding: 10px 22px; border-radius: 8px; font-weight: 800; font-size: 15px; border: none; cursor: pointer; box-shadow: 0 3px 10px rgba(30,41,59,0.25); transition: all 0.2s ease-in-out;">
 <span style="font-size: 16px;">🖨️</span>
 <span style="color: #FFFFFF !important; -webkit-text-fill-color: #FFFFFF !important; font-weight: 800;">출력</span>
 </button>
-<button id="poster_save_btn_{uid}" onclick='window["savePoster_{uid}"]()' style="display: inline-flex; align-items: center; justify-content: center; gap: 6px; background-color: #2563EB; color: #FFFFFF !important; -webkit-text-fill-color: #FFFFFF !important; padding: 10px 22px; border-radius: 8px; font-weight: 800; font-size: 15px; border: none; cursor: pointer; box-shadow: 0 3px 10px rgba(37,99,235,0.3); transition: all 0.2s ease-in-out;">
+<a href="data:image/png;base64,{b64_data}" download="{clean_name}" style="text-decoration: none; display: inline-flex;">
+<div style="display: inline-flex; align-items: center; justify-content: center; gap: 6px; background-color: #2563EB; color: #FFFFFF !important; -webkit-text-fill-color: #FFFFFF !important; padding: 10px 22px; border-radius: 8px; font-weight: 800; font-size: 15px; border: none; cursor: pointer; box-shadow: 0 3px 10px rgba(37,99,235,0.3); transition: all 0.2s ease-in-out;">
 <span style="font-size: 16px;">💾</span>
 <span style="color: #FFFFFF !important; -webkit-text-fill-color: #FFFFFF !important; font-weight: 800;">저장</span>
-</button>
+</div>
+</a>
 </div>
 </div>
 <div style="font-size: 12.5px; color: #64748B; margin-top: 8px; line-height: 1.4;">
-💡 <b>출력</b> 클릭 시 창문부착용 즉시 인쇄(A4 세로 맞춤), <b>저장</b> 클릭 시 내 컴퓨터에서 다운로드 받을 폴더를 직접 지정하여 저장합니다.
+💡 <b>출력</b> 클릭 시 창문부착용 즉시 인쇄(A4 세로 맞춤), <b>저장</b> 클릭 시 내 컴퓨터의 지정 폴더로 즉시 저장됩니다.
 </div>
 </div>"""
 
@@ -3398,66 +3268,62 @@ def render_tab_apt_ad():
             "assistant_phone": st.session_state.ad_assistant_phone,
         }
 
-        tab_ad_chk, tab_ad_blog = st.tabs([
-            "📋 네이버광고 점검표 (대조용)",
-            "📝 블로그용 본문 서식 (텍스트 / HTML 표)"
-        ])
+        # 1. 1080px 고화질 표시 카드 이미지 (최우선 표시 및 100% 저장)
+        with st.spinner("표시 카드 렌더링 중..."):
+            spec_card_img = render_spec_table_image(current_spec_data)
+        card_byte_arr = io.BytesIO()
+        spec_card_img.save(card_byte_arr, format="PNG", quality=95)
+        card_bytes = card_byte_arr.getvalue()
 
-        with tab_ad_chk:
-            st.caption("네이버 부동산 매물 등록창을 띄워두고 위에서부터 순서대로 보며 입력하세요.")
-            # 16개 항목 카드 리스트 (코드 노출 없는 안전한 인라인 렌더링)
-            items_list = get_ordered_spec_table_data(current_spec_data)
-            
-            rows_html = []
-            for it in items_list:
-                num_str = f"{it['num']:02d}"
-                val_formatted = it['val'].replace('\n', '<br/>')
-                row_markup = f'<div style="border-bottom:1px solid #E9ECEF; padding:11px 6px;"><div style="display:flex; justify-content:space-between; margin-bottom:4px;"><span style="font-size:14px; font-weight:700; color:#333D4B;"><span style="color:#F48A26;">[{num_str}]</span> {it["name"]}</span><span style="font-size:12px; color:#8B95A1;">{it["guide"]}</span></div><div style="font-size:15px; color:#191F28; font-weight:600; line-height:1.6; background:#F8F9FB; padding:8px 12px; border-radius:6px; margin-top:4px;">{val_formatted}</div></div>'
-                rows_html.append(row_markup)
+        clean_loc = re.sub(r'[^\w\s-]', '', (st.session_state.ad_location.split(" ")[-1] if st.session_state.ad_location else "매물")).strip()
+        clean_trade = re.sub(r'[^\w\s-]', '', (st.session_state.ad_trade_type or "매매")).strip()
+        card_filename = f"중개대상물표시_{clean_loc}_{clean_trade}.png"
 
-            full_table_html = f'<div style="background:#FFFFFF; border:1.5px solid #CBD5E0; border-radius:12px; padding:14px 18px; box-shadow:0 2px 8px rgba(0,0,0,0.04); max-height:560px; overflow-y:auto;">{"".join(rows_html)}</div>'
-            st.markdown(full_table_html, unsafe_allow_html=True)
+        st.markdown(render_pc_save_button(
+            file_bytes=card_bytes,
+            filename=card_filename,
+            label="💾 1080px 중개대상물 표시 카드 저장",
+            uid_key="apt_ad_card_pc_save",
+            bg_color="#2563EB"
+        ), unsafe_allow_html=True)
 
-            st.markdown("<div style='height:8px;'></div>", unsafe_allow_html=True)
-            ad_guide_txt = generate_naver_ad_guide_text(current_spec_data)
-            st.text_area("📋 [네이버 광고 대조용] 전체 텍스트 복사", value=ad_guide_txt, height=120)
+        # 2. 부가 서식 (네이버광고 대조 체크리스트 및 블로그 서식은 접어두어 간소화)
+        with st.expander("📋 [참고용] 네이버광고 점검표 & 블로그 서식(텍스트/HTML)", expanded=False):
+            tab_ad_chk, tab_ad_blog = st.tabs([
+                "📋 네이버광고 점검표 (대조용)",
+                "📝 블로그용 본문 서식 (텍스트 / HTML 표)"
+            ])
 
-        with tab_ad_blog:
-            st.caption("네이버 블로그 스마트에디터에 바로 붙여넣는 세련된 표 및 텍스트입니다.")
-            
-            # HTML 표 렌더링
-            blog_html = generate_blog_html_table(current_spec_data)
-            st.markdown(blog_html, unsafe_allow_html=True)
+            with tab_ad_chk:
+                st.caption("네이버 부동산 매물 등록창을 띄워두고 위에서부터 순서대로 보며 입력하세요.")
+                items_list = get_ordered_spec_table_data(current_spec_data)
+                
+                rows_html = []
+                for it in items_list:
+                    num_str = f"{it['num']:02d}"
+                    val_formatted = it['val'].replace('\n', '<br/>')
+                    row_markup = f'<div style="border-bottom:1px solid #E9ECEF; padding:11px 6px;"><div style="display:flex; justify-content:space-between; margin-bottom:4px;"><span style="font-size:14px; font-weight:700; color:#333D4B;"><span style="color:#F48A26;">[{num_str}]</span> {it["name"]}</span><span style="font-size:12px; color:#8B95A1;">{it["guide"]}</span></div><div style="font-size:15px; color:#191F28; font-weight:600; line-height:1.6; background:#F8F9FB; padding:8px 12px; border-radius:6px; margin-top:4px;">{val_formatted}</div></div>'
+                    rows_html.append(row_markup)
 
-            # 원클릭 HTML 복사 버튼
-            st.markdown(render_copy_button(blog_html, "📋 블로그용 HTML 서식 원클릭 복사", "btn_copy_apt_blog_html"), unsafe_allow_html=True)
+                full_table_html = f'<div style="background:#FFFFFF; border:1.5px solid #CBD5E0; border-radius:12px; padding:14px 18px; box-shadow:0 2px 8px rgba(0,0,0,0.04); max-height:560px; overflow-y:auto;">{"".join(rows_html)}</div>'
+                st.markdown(full_table_html, unsafe_allow_html=True)
 
-            # 클립보드 텍스트 복사 영역
-            clip_text = generate_clipboard_text(current_spec_data)
-            st.text_area("📋 블로그 본문용 일반 텍스트 (Ctrl+C 복사)", value=clip_text, height=180)
+                st.markdown("<div style='height:8px;'></div>", unsafe_allow_html=True)
+                ad_guide_txt = generate_naver_ad_guide_text(current_spec_data)
+                st.text_area("📋 [네이버 광고 대조용] 전체 텍스트 복사", value=ad_guide_txt, height=120)
 
-            with st.expander("💻 스마트에디터용 HTML 소스코드 보기"):
-                st.code(blog_html, language="html")
+            with tab_ad_blog:
+                st.caption("네이버 블로그 스마트에디터에 바로 붙여넣는 세련된 표 및 텍스트입니다.")
+                
+                blog_html = generate_blog_html_table(current_spec_data)
+                st.markdown(blog_html, unsafe_allow_html=True)
+                st.markdown(render_copy_button(blog_html, "📋 블로그용 HTML 서식 원클릭 복사", "btn_copy_apt_blog_html"), unsafe_allow_html=True)
 
-        # 1080px 고화질 표시 카드 이미지 다운로드 (PC 저장 폴더 직접 지정)
-        with st.expander("🖼️ [다운로드] 1080px 중개대상물 표시 카드 저장하기", expanded=True):
-            with st.spinner("표시 카드 렌더링 중..."):
-                spec_card_img = render_spec_table_image(current_spec_data)
-            card_byte_arr = io.BytesIO()
-            spec_card_img.save(card_byte_arr, format="PNG", quality=95)
-            card_bytes = card_byte_arr.getvalue()
+                clip_text = generate_clipboard_text(current_spec_data)
+                st.text_area("📋 블로그 본문용 일반 텍스트 (Ctrl+C 복사)", value=clip_text, height=180)
 
-            clean_loc = re.sub(r'[^\w\s-]', '', (st.session_state.ad_location.split(" ")[-1] if st.session_state.ad_location else "매물")).strip()
-            clean_trade = re.sub(r'[^\w\s-]', '', (st.session_state.ad_trade_type or "매매")).strip()
-            card_filename = f"중개대상물표시_{clean_loc}_{clean_trade}.png"
-
-            st.markdown(render_pc_save_button(
-                file_bytes=card_bytes,
-                filename=card_filename,
-                label="💾 1080px 표시 카드 저장",
-                uid_key="apt_ad_card_pc_save",
-                bg_color="#1E293B"
-            ), unsafe_allow_html=True)
+                with st.expander("💻 스마트에디터용 HTML 소스코드 보기"):
+                    st.code(blog_html, language="html")
 
 
 # ====================================================
@@ -3569,40 +3435,41 @@ def render_tab_house_ad():
         house_txt = generate_clipboard_text(house_dict, items=house_items)
         house_guide = generate_naver_ad_guide_text(house_dict, items=house_items)
 
-        tab_hov1, tab_hov2, tab_hov3, tab_hov4 = st.tabs([
-            "📋 1. 스마트에디터 HTML 표 복사",
-            "📄 2. 네이버광고 등록 체크리스트",
-            "💬 3. 텍스트 복사 (카톡/본문)",
-            "🖼️ 4. 고화질 카드 이미지 저장"
-        ])
+        # 1. 1080px 고화질 주택 표시 카드 이미지 (최우선 표시 및 100% 저장)
+        with st.spinner("주택 점검표 카드 이미지 생성 중..."):
+            h_card_img = render_spec_table_image(house_dict, items=house_items)
+        st.image(h_card_img, caption="1080px 정방형 주택 중개대상물 표시 카드", use_container_width=True)
+        h_card_io = io.BytesIO()
+        h_card_img.save(h_card_io, format="PNG", quality=98)
+        h_card_bytes = h_card_io.getvalue()
+        h_card_name = f"중개대상물표시_주택_{st.session_state.house_ad_trade_type}.png"
+        st.markdown(render_pc_save_button(
+            file_bytes=h_card_bytes,
+            filename=h_card_name,
+            label="💾 1080px 주택 표시 카드 저장",
+            uid_key="house_ad_card_pc_save",
+            bg_color="#2563EB"
+        ), unsafe_allow_html=True)
 
-        with tab_hov1:
-            st.markdown(house_html, unsafe_allow_html=True)
-            st.markdown(render_copy_button(house_html, "📋 [원클릭 복사] 블로그 스마트에디터 표 서식 복사", "btn_copy_h_html"), unsafe_allow_html=True)
+        # 2. 부가 서식 (1~3번 텍스트 및 HTML 표는 참고용으로 간편 접기)
+        with st.expander("📋 [참고용] 블로그 HTML 표 / 네이버 등록 체크리스트 / 텍스트 복사", expanded=False):
+            tab_hov1, tab_hov2, tab_hov3 = st.tabs([
+                "📋 블로그 스마트에디터 HTML 표",
+                "📄 네이버광고 등록 체크리스트",
+                "💬 텍스트 복사 (카톡/본문)"
+            ])
 
-        with tab_hov2:
-            st.text_area("네이버 광고 등록용", value=house_guide, height=350, key="txt_h_guide")
-            st.markdown(render_copy_button(house_guide, "📄 [원클릭 복사] 네이버 등록 가이드 복사", "btn_copy_h_guide"), unsafe_allow_html=True)
+            with tab_hov1:
+                st.markdown(house_html, unsafe_allow_html=True)
+                st.markdown(render_copy_button(house_html, "📋 [원클릭 복사] 블로그 스마트에디터 표 서식 복사", "btn_copy_h_html"), unsafe_allow_html=True)
 
-        with tab_hov3:
-            st.text_area("텍스트 양식", value=house_txt, height=350, key="txt_h_clip")
-            st.markdown(render_copy_button(house_txt, "💬 [원클릭 복사] 일반 텍스트 복사", "btn_copy_h_txt"), unsafe_allow_html=True)
+            with tab_hov2:
+                st.text_area("네이버 광고 등록용", value=house_guide, height=300, key="txt_h_guide")
+                st.markdown(render_copy_button(house_guide, "📄 [원클릭 복사] 네이버 등록 가이드 복사", "btn_copy_h_guide"), unsafe_allow_html=True)
 
-        with tab_hov4:
-            with st.spinner("주택 점검표 카드 이미지 생성 중..."):
-                h_card_img = render_spec_table_image(house_dict, items=house_items)
-            st.image(h_card_img, caption="1080px 정방형 중개대상물 표시 카드", use_container_width=True)
-            h_card_io = io.BytesIO()
-            h_card_img.save(h_card_io, format="PNG", quality=98)
-            h_card_bytes = h_card_io.getvalue()
-            h_card_name = f"중개대상물표시_주택_{st.session_state.house_ad_trade_type}.png"
-            st.markdown(render_pc_save_button(
-                file_bytes=h_card_bytes,
-                filename=h_card_name,
-                label="💾 1080px 주택 표시 카드 저장",
-                uid_key="house_ad_card_pc_save",
-                bg_color="#1E293B"
-            ), unsafe_allow_html=True)
+            with tab_hov3:
+                st.text_area("텍스트 양식", value=house_txt, height=300, key="txt_h_clip")
+                st.markdown(render_copy_button(house_txt, "💬 [원클릭 복사] 일반 텍스트 복사", "btn_copy_h_txt"), unsafe_allow_html=True)
 
 
 # ====================================================
@@ -4095,45 +3962,46 @@ def render_tab_comm_ad():
             "assistant_phone": st.session_state.get("comm_ad_assistant_phone", ""),
         }
 
-        comm_items_list = get_commercial_spec_table_data(current_comm_spec_data)
-        c_rows_html = []
-        for it in comm_items_list:
-            num_str = f"{it['num']:02d}"
-            val_formatted = it['val'].replace('\n', '<br/>')
-            row_markup = f'<div style="border-bottom:1px solid #E9ECEF; padding:11px 6px;"><div style="display:flex; justify-content:space-between; margin-bottom:4px;"><span style="font-size:14px; font-weight:700; color:#333D4B;"><span style="color:#DAA844;">[{num_str}]</span> {it["name"]}</span><span style="font-size:12px; color:#8B95A1;">{it["guide"]}</span></div><div style="font-size:15px; color:#191F28; font-weight:600; line-height:1.6; background:#F8F9FB; padding:8px 12px; border-radius:6px; margin-top:4px;">{val_formatted}</div></div>'
-            c_rows_html.append(row_markup)
+        # 1. 1080px 고화질 상가 카드 (최우선 표시 및 100% 저장)
+        with st.spinner("상가 표시 카드 렌더링 중..."):
+            comm_card_img = render_commercial_spec_table_image(current_comm_spec_data)
+        comm_card_byte_arr = io.BytesIO()
+        comm_card_img.save(comm_card_byte_arr, format="PNG", quality=95)
+        comm_card_bytes = comm_card_byte_arr.getvalue()
 
-        full_comm_table_html = f'<div style="background:#FFFFFF; border:1.5px solid #CBD5E0; border-radius:12px; padding:14px 18px; box-shadow:0 2px 8px rgba(0,0,0,0.04); max-height:680px; overflow-y:auto;">{"".join(c_rows_html)}</div>'
-        st.markdown(full_comm_table_html, unsafe_allow_html=True)
+        clean_comm_loc = re.sub(r'[^\w\s-]', '', (st.session_state.comm_ad_location.split(" ")[-1] if st.session_state.comm_ad_location else "상가매물")).strip()
+        comm_card_filename = f"상가중개대상물표시_{clean_comm_loc}_{'매매' if is_comm_ad_sale else '임차'}.png"
 
-        st.markdown("<br/>", unsafe_allow_html=True)
-        comm_guide_txt = generate_commercial_naver_ad_guide_text(current_comm_spec_data)
-        st.text_area("📋 [네이버 부동산 광고 대조용] 상가 전체 텍스트 복사", value=comm_guide_txt, height=130)
+        st.markdown(render_pc_save_button(
+            file_bytes=comm_card_bytes,
+            filename=comm_card_filename,
+            label="💾 1080px 상가 중개대상물 표시 카드 저장",
+            uid_key="comm_ad_card_pc_save",
+            bg_color="#2563EB"
+        ), unsafe_allow_html=True)
 
-        comm_clip_txt = generate_commercial_clipboard_text(current_comm_spec_data)
-        st.text_area("💬 [카카오톡 / 블로그 본문용] 상가 일반 텍스트 복사", value=comm_clip_txt, height=110)
+        # 2. 부가 서식 (상가 체크리스트 및 텍스트/HTML 복사 접기)
+        with st.expander("📋 [참고용] 상가 네이버광고 점검표 & 블로그 표 서식", expanded=False):
+            comm_items_list = get_commercial_spec_table_data(current_comm_spec_data)
+            c_rows_html = []
+            for it in comm_items_list:
+                num_str = f"{it['num']:02d}"
+                val_formatted = it['val'].replace('\n', '<br/>')
+                row_markup = f'<div style="border-bottom:1px solid #E9ECEF; padding:11px 6px;"><div style="display:flex; justify-content:space-between; margin-bottom:4px;"><span style="font-size:14px; font-weight:700; color:#333D4B;"><span style="color:#DAA844;">[{num_str}]</span> {it["name"]}</span><span style="font-size:12px; color:#8B95A1;">{it["guide"]}</span></div><div style="font-size:15px; color:#191F28; font-weight:600; line-height:1.6; background:#F8F9FB; padding:8px 12px; border-radius:6px; margin-top:4px;">{val_formatted}</div></div>'
+                c_rows_html.append(row_markup)
 
-        comm_blog_html = generate_commercial_blog_html_table(current_comm_spec_data)
-        st.text_area("📝 [네이버 블로그용] 스마트에디터 다크골드 HTML 표 서식", value=comm_blog_html, height=110)
+            full_comm_table_html = f'<div style="background:#FFFFFF; border:1.5px solid #CBD5E0; border-radius:12px; padding:14px 18px; box-shadow:0 2px 8px rgba(0,0,0,0.04); max-height:680px; overflow-y:auto;">{"".join(c_rows_html)}</div>'
+            st.markdown(full_comm_table_html, unsafe_allow_html=True)
 
-        # 1080px 고화질 상가 카드 다운로드
-        with st.expander("🖼️ [다운로드] 1080px 상가 중개대상물 표시 카드 저장하기", expanded=False):
-            with st.spinner("상가 표시 카드 렌더링 중..."):
-                comm_card_img = render_commercial_spec_table_image(current_comm_spec_data)
-            comm_card_byte_arr = io.BytesIO()
-            comm_card_img.save(comm_card_byte_arr, format="PNG", quality=95)
-            comm_card_bytes = comm_card_byte_arr.getvalue()
+            st.markdown("<br/>", unsafe_allow_html=True)
+            comm_guide_txt = generate_commercial_naver_ad_guide_text(current_comm_spec_data)
+            st.text_area("📋 [네이버 부동산 광고 대조용] 상가 전체 텍스트 복사", value=comm_guide_txt, height=130)
 
-            clean_comm_loc = re.sub(r'[^\w\s-]', '', (st.session_state.comm_ad_location.split(" ")[-1] if st.session_state.comm_ad_location else "상가매물")).strip()
-            comm_card_filename = f"상가중개대상물표시_{clean_comm_loc}_{'매매' if is_comm_ad_sale else '임차'}.png"
+            comm_clip_txt = generate_commercial_clipboard_text(current_comm_spec_data)
+            st.text_area("💬 [카카오톡 / 블로그 본문용] 상가 일반 텍스트 복사", value=comm_clip_txt, height=110)
 
-            st.markdown(render_pc_save_button(
-                file_bytes=comm_card_bytes,
-                filename=comm_card_filename,
-                label="💾 1080px 상가 표시 카드 저장",
-                uid_key="comm_ad_card_pc_save",
-                bg_color="#1E293B"
-            ), unsafe_allow_html=True)
+            comm_blog_html = generate_commercial_blog_html_table(current_comm_spec_data)
+            st.text_area("📝 [네이버 블로그용] 스마트에디터 다크골드 HTML 표 서식", value=comm_blog_html, height=110)
 
 
 # ====================================================
@@ -4245,40 +4113,41 @@ def render_tab_factory_ad():
         factory_txt = generate_clipboard_text(factory_dict, items=factory_items)
         factory_guide = generate_naver_ad_guide_text(factory_dict, items=factory_items)
 
-        tab_fov1, tab_fov2, tab_fov3, tab_fov4 = st.tabs([
-            "📋 1. 스마트에디터 HTML 표 복사",
-            "📄 2. 네이버광고 등록 체크리스트",
-            "💬 3. 텍스트 복사 (카톡/본문)",
-            "🖼️ 4. 고화질 카드 이미지 저장"
-        ])
+        # 1. 1080px 고화질 공장 표시 카드 이미지 (최우선 표시 및 100% 저장)
+        with st.spinner("공장 점검표 카드 이미지 생성 중..."):
+            f_card_img = render_spec_table_image(factory_dict, items=factory_items)
+        st.image(f_card_img, caption="1080px 정방형 공장 중개대상물 표시 카드", use_container_width=True)
+        f_card_io = io.BytesIO()
+        f_card_img.save(f_card_io, format="PNG", quality=98)
+        f_card_bytes = f_card_io.getvalue()
+        f_card_name = f"중개대상물표시_공장_{st.session_state.factory_ad_trade_type}.png"
+        st.markdown(render_pc_save_button(
+            file_bytes=f_card_bytes,
+            filename=f_card_name,
+            label="💾 1080px 공장 표시 카드 저장",
+            uid_key="factory_ad_card_pc_save",
+            bg_color="#2563EB"
+        ), unsafe_allow_html=True)
 
-        with tab_fov1:
-            st.markdown(factory_html, unsafe_allow_html=True)
-            st.markdown(render_copy_button(factory_html, "📋 [원클릭 복사] 블로그 스마트에디터 표 서식 복사", "btn_copy_f_html"), unsafe_allow_html=True)
+        # 2. 부가 서식 (1~3번 텍스트 및 HTML 표는 참고용으로 간편 접기)
+        with st.expander("📋 [참고용] 블로그 HTML 표 / 네이버 등록 체크리스트 / 텍스트 복사", expanded=False):
+            tab_fov1, tab_fov2, tab_fov3 = st.tabs([
+                "📋 블로그 스마트에디터 HTML 표",
+                "📄 네이버광고 등록 체크리스트",
+                "💬 텍스트 복사 (카톡/본문)"
+            ])
 
-        with tab_fov2:
-            st.text_area("네이버 광고 등록용", value=factory_guide, height=350, key="txt_f_guide")
-            st.markdown(render_copy_button(factory_guide, "📄 [원클릭 복사] 네이버 등록 가이드 복사", "btn_copy_f_guide"), unsafe_allow_html=True)
+            with tab_fov1:
+                st.markdown(factory_html, unsafe_allow_html=True)
+                st.markdown(render_copy_button(factory_html, "📋 [원클릭 복사] 블로그 스마트에디터 표 서식 복사", "btn_copy_f_html"), unsafe_allow_html=True)
 
-        with tab_fov3:
-            st.text_area("텍스트 양식", value=factory_txt, height=350, key="txt_f_clip")
-            st.markdown(render_copy_button(factory_txt, "💬 [원클릭 복사] 일반 텍스트 복사", "btn_copy_f_txt"), unsafe_allow_html=True)
+            with tab_fov2:
+                st.text_area("네이버 광고 등록용", value=factory_guide, height=300, key="txt_f_guide")
+                st.markdown(render_copy_button(factory_guide, "📄 [원클릭 복사] 네이버 등록 가이드 복사", "btn_copy_f_guide"), unsafe_allow_html=True)
 
-        with tab_fov4:
-            with st.spinner("공장 점검표 카드 이미지 생성 중..."):
-                f_card_img = render_spec_table_image(factory_dict, items=factory_items)
-            st.image(f_card_img, caption="1080px 정방형 공장 중개대상물 표시 카드", use_container_width=True)
-            f_card_io = io.BytesIO()
-            f_card_img.save(f_card_io, format="PNG", quality=98)
-            f_card_bytes = f_card_io.getvalue()
-            f_card_name = f"중개대상물표시_공장_{st.session_state.factory_ad_trade_type}.png"
-            st.markdown(render_pc_save_button(
-                file_bytes=f_card_bytes,
-                filename=f_card_name,
-                label="💾 1080px 공장 표시 카드 저장",
-                uid_key="factory_ad_card_pc_save",
-                bg_color="#1E293B"
-            ), unsafe_allow_html=True)
+            with tab_fov3:
+                st.text_area("텍스트 양식", value=factory_txt, height=300, key="txt_f_clip")
+                st.markdown(render_copy_button(factory_txt, "💬 [원클릭 복사] 일반 텍스트 복사", "btn_copy_f_txt"), unsafe_allow_html=True)
 
 
 # ====================================================
