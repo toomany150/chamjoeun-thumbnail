@@ -201,51 +201,11 @@ def render_copy_button(text_to_copy: str, button_label: str, btn_id: str = "") -
     </div>
     """
 
-def save_file_with_dialog(file_bytes: bytes, default_filename: str) -> str:
-    """
-    Windows 파일 탐색기 '다른 이름으로 저장' 대화상자를 화면 최상단에 띄워
-    사용자가 원하는 폴더(바탕화면, 내문서, D드라이브 등)를 직접 지정하여 저장합니다.
-    """
-    try:
-        import tkinter as tk
-        from tkinter import filedialog
-        
-        root = tk.Tk()
-        root.withdraw()
-        root.attributes('-topmost', True)
-        
-        ext = os.path.splitext(default_filename)[1] or ".png"
-        file_path = filedialog.asksaveasfilename(
-            parent=root,
-            title="저장할 폴더와 파일명을 지정하세요",
-            initialfile=default_filename,
-            filetypes=[("PNG Image", "*.png"), ("All Files", "*.*")],
-            defaultextension=ext
-        )
-        root.destroy()
-        
-        if file_path:
-            with open(file_path, "wb") as f:
-                f.write(file_bytes)
-            return file_path
-    except Exception as e:
-        st.error(f"저장 중 오류 발생: {e}")
-    return ""
-
-def open_folder_in_explorer(file_path: str):
-    """저장된 파일의 폴더를 윈도우 탐색기로 즉시 열어줍니다."""
-    try:
-        folder = os.path.dirname(file_path)
-        if os.path.exists(folder):
-            os.startfile(folder)
-    except Exception:
-        pass
-
 def render_pc_save_button(file_bytes: bytes, filename: str, label: str, uid_key: str, bg_color: str = "#FF4B4B", text_color: str = "#FFFFFF") -> str:
     """
-    1) [📂 경로 지정하여 PC 저장] (Windows 탐색기 저장 창 팝업 - 바탕화면/원하는 폴더 지정)
-    2) [📥 기본 다운로드] (st.download_button)
-    두 가지 옵션을 모두 제공하여 원하는 폴더로 100% 확실하게 저장할 수 있습니다.
+    썸네일 이미지 파일 저장 전용 컨트롤러:
+    - 웹/클라우드 환경에서 100% 안정적으로 동작하는 브라우저 다운로드 버튼
+    - 48px 최적 높이와 100% 너비, 프리미엄 버튼 디자인 적용
     """
     clean_name = re.sub(r'[\\/*?:"<>|\'\"]', '', filename).strip()
     if not clean_name:
@@ -255,86 +215,57 @@ def render_pc_save_button(file_bytes: bytes, filename: str, label: str, uid_key:
     
     clean_label = label.replace("(기본 다운로드)", "").strip()
     if not (clean_label.startswith("📥") or clean_label.startswith("💾") or clean_label.startswith("📂")):
-        clean_label = f"💾 {clean_label}"
+        clean_label = f"📥 {clean_label}"
 
-    btn_dialog_key = f"btn_as_{uid_key}"
     btn_dl_key = f"btn_dl_{uid_key}"
-    
-    col_s1, col_s2 = st.columns([1.3, 1.0])
-    with col_s1:
-        if st.button("📂 경로 지정하여 PC 저장", key=btn_dialog_key, use_container_width=True, help="클릭 시 윈도우 탐색기 창이 떠서 바탕화면, 내문서 등 원하는 폴더를 직접 골라 저장합니다."):
-            saved_p = save_file_with_dialog(file_bytes, clean_name)
-            if saved_p:
-                st.session_state[f"last_saved_{uid_key}"] = saved_p
-                st.rerun()
 
-    with col_s2:
-        st.markdown(f"""
-        <style>
-        div.st-key-{btn_dialog_key} button {{
-            background: #0F766E !important;
-            color: #FFFFFF !important;
-            -webkit-text-fill-color: #FFFFFF !important;
-            font-weight: 800 !important;
-            font-size: 15px !important;
-            border-radius: 8px !important;
-            border: none !important;
-            box-shadow: 0 3px 10px rgba(15,118,110,0.3) !important;
-            width: 100% !important;
-        }}
-        div.st-key-{btn_dialog_key} button:hover {{
-            filter: brightness(1.1) !important;
-            transform: translateY(-2px) !important;
-        }}
-        div.st-key-{btn_dialog_key} button p,
-        div.st-key-{btn_dialog_key} button span {{
-            color: #FFFFFF !important;
-            -webkit-text-fill-color: #FFFFFF !important;
-            font-weight: 800 !important;
-        }}
-        div.st-key-{btn_dl_key} button {{
-            background: {bg_color} !important;
-            color: {text_color} !important;
-            -webkit-text-fill-color: {text_color} !important;
-            font-weight: 800 !important;
-            font-size: 15px !important;
-            border-radius: 8px !important;
-            border: none !important;
-            box-shadow: 0 3px 10px rgba(0,0,0,0.2) !important;
-            width: 100% !important;
-        }}
-        div.st-key-{btn_dl_key} button:hover {{
-            filter: brightness(1.1) !important;
-            transform: translateY(-2px) !important;
-        }}
-        div.st-key-{btn_dl_key} button p,
-        div.st-key-{btn_dl_key} button span {{
-            color: {text_color} !important;
-            -webkit-text-fill-color: {text_color} !important;
-            font-weight: 800 !important;
-        }}
-        </style>
-        """, unsafe_allow_html=True)
-        st.download_button(
-            label="📥 기본 다운로드",
-            data=file_bytes,
-            file_name=clean_name,
-            mime="image/png",
-            key=btn_dl_key,
-            use_container_width=True,
-            help="브라우저 기본 다운로드 폴더로 바로 저장합니다."
-        )
+    st.markdown(f"""
+    <style>
+    div.st-key-{btn_dl_key} button {{
+        background: {bg_color} !important;
+        color: {text_color} !important;
+        -webkit-text-fill-color: {text_color} !important;
+        font-weight: 800 !important;
+        font-size: 15.5px !important;
+        height: 48px !important;
+        min-height: 48px !important;
+        border-radius: 9px !important;
+        border: none !important;
+        box-shadow: 0 4px 14px rgba(255,75,75,0.3) !important;
+        width: 100% !important;
+        display: flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        transition: all 0.2s ease-in-out !important;
+    }}
+    div.st-key-{btn_dl_key} button:hover {{
+        filter: brightness(1.1) !important;
+        transform: translateY(-2px) !important;
+        box-shadow: 0 6px 16px rgba(255,75,75,0.4) !important;
+    }}
+    div.st-key-{btn_dl_key} button p,
+    div.st-key-{btn_dl_key} button span {{
+        color: {text_color} !important;
+        -webkit-text-fill-color: {text_color} !important;
+        font-weight: 800 !important;
+        font-size: 15.5px !important;
+    }}
+    </style>
+    """, unsafe_allow_html=True)
 
-    # 최근 저장 성공 알림 및 탐색기 바로 열기
-    if st.session_state.get(f"last_saved_{uid_key}"):
-        l_saved = st.session_state[f"last_saved_{uid_key}"]
-        st.success(f"🎉 지정하신 경로에 파일 저장 완료:\n`{l_saved}`")
-        if st.button("📁 저장된 폴더 열기", key=f"btn_open_folder_{uid_key}", use_container_width=True):
-            open_folder_in_explorer(l_saved)
+    st.download_button(
+        label=clean_label,
+        data=file_bytes,
+        file_name=clean_name,
+        mime="image/png",
+        key=btn_dl_key,
+        use_container_width=True,
+        help="클릭하시면 이미지 파일이 PC에 즉시 다운로드 저장됩니다."
+    )
 
     st.markdown("""
-    <div style="font-size: 12px; color: #64748B; margin-top: 3px; line-height: 1.4;">
-        💡 <b>경로 지정 저장:</b> 내 컴퓨터의 원하는 폴더(바탕화면, 내문서 등)를 직접 지정하여 저장합니다.
+    <div style="font-size: 12px; color: #64748B; background: #F8FAFC; border: 1px solid #E2E8F0; padding: 9px 13px; border-radius: 6px; margin-top: 4px; line-height: 1.45;">
+        💡 <b>바탕화면 등 원하는 위치로 저장 팁:</b> 브라우저(크롬/엣지) 설정 ➔ <b>'다운로드'</b> ➔ <b>'다운로드 전에 각 파일의 저장 위치 확인'</b>을 켜두시면 매번 원하는 폴더를 선택하실 수 있습니다.
     </div>
     """, unsafe_allow_html=True)
     return ""
@@ -347,9 +278,8 @@ def render_poster_action_bar(
 ) -> str:
     """
     창문 전단지용 A4 포스터 전용 컨트롤러 (150 DPI 최적화 규격: 1240 x 1754 px):
-    - [📂 포스터 경로 지정 저장]: 윈도우 탐색기 창으로 바탕화면 등 원하는 폴더 직접 선택
-    - [📥 기본 다운로드]: 브라우저 기본 다운로드 폴더로 바로 저장
-    - [🖨️ 창문부착용 즉시 인쇄]: A4 세로 맞춤 즉시 인쇄창(Ctrl+P) 호출
+    - [📥 150DPI A4 포스터 저장] + [🖨️ 창문부착용 즉시 인쇄] 2칸 대칭 레이아웃
+    - 두 버튼의 너비, 높이(48px), 모서리 라운드(9px) 및 폰트를 완벽하게 동일하게 맞춤
     """
     clean_name = re.sub(r'[\\/*?:"<>|\'\"]', '', filename).strip()
     if not clean_name:
@@ -357,141 +287,115 @@ def render_poster_action_bar(
     if not clean_name.lower().endswith(".png"):
         clean_name += ".png"
     
-    btn_p_dialog_key = f"{key_prefix}_p_save_as"
     btn_p_dl_key = f"{key_prefix}_p_save_dl"
-    
-    col_p1, col_p2 = st.columns([1.3, 1.0])
-    with col_p1:
-        if st.button("📂 경로 지정하여 포스터 저장", key=btn_p_dialog_key, use_container_width=True, help="클릭 시 윈도우 탐색기 창이 떠서 바탕화면, 내문서 등 원하는 폴더를 직접 골라 저장합니다."):
-            saved_p = save_file_with_dialog(file_bytes, clean_name)
-            if saved_p:
-                st.session_state[f"last_saved_{key_prefix}"] = saved_p
-                st.rerun()
+    pr_b64 = base64.b64encode(file_bytes).decode("ascii")
 
-    with col_p2:
+    col_p1, col_p2 = st.columns([1, 1])
+
+    with col_p1:
         st.markdown(f"""
         <style>
-        div.st-key-{btn_p_dialog_key} button {{
-            background: #0F766E !important;
-            color: #FFFFFF !important;
-            -webkit-text-fill-color: #FFFFFF !important;
-            font-weight: 800 !important;
-            font-size: 15px !important;
-            border-radius: 8px !important;
-            border: none !important;
-            box-shadow: 0 3px 10px rgba(15,118,110,0.3) !important;
-            width: 100% !important;
-        }}
-        div.st-key-{btn_p_dialog_key} button:hover {{
-            filter: brightness(1.1) !important;
-            transform: translateY(-2px) !important;
-        }}
-        div.st-key-{btn_p_dialog_key} button p,
-        div.st-key-{btn_p_dialog_key} button span {{
-            color: #FFFFFF !important;
-            -webkit-text-fill-color: #FFFFFF !important;
-            font-weight: 800 !important;
-        }}
         div.st-key-{btn_p_dl_key} button {{
             background: #2563EB !important;
             color: #FFFFFF !important;
             -webkit-text-fill-color: #FFFFFF !important;
             font-weight: 800 !important;
             font-size: 15px !important;
-            border-radius: 8px !important;
+            height: 48px !important;
+            min-height: 48px !important;
+            border-radius: 9px !important;
             border: none !important;
-            box-shadow: 0 3px 10px rgba(37,99,235,0.3) !important;
+            box-shadow: 0 4px 12px rgba(37,99,235,0.3) !important;
             width: 100% !important;
+            display: flex !important;
+            align-items: center !important;
+            justify-content: center !important;
+            transition: all 0.2s ease-in-out !important;
         }}
         div.st-key-{btn_p_dl_key} button:hover {{
-            filter: brightness(1.1) !important;
+            background: #1D4ED8 !important;
+            filter: brightness(1.08) !important;
             transform: translateY(-2px) !important;
+            box-shadow: 0 6px 16px rgba(37,99,235,0.4) !important;
         }}
         div.st-key-{btn_p_dl_key} button p,
         div.st-key-{btn_p_dl_key} button span {{
             color: #FFFFFF !important;
             -webkit-text-fill-color: #FFFFFF !important;
             font-weight: 800 !important;
+            font-size: 15px !important;
         }}
         </style>
         """, unsafe_allow_html=True)
         st.download_button(
-            label="📥 기본 다운로드",
+            label="📥 150DPI A4 포스터 파일 저장",
             data=file_bytes,
             file_name=clean_name,
             mime="image/png",
             key=btn_p_dl_key,
             use_container_width=True,
-            help="브라우저 기본 다운로드 폴더로 바로 저장합니다."
+            help="150 DPI 최적화 A4 포스터 이미지 파일을 PC에 즉시 다운로드 저장합니다."
         )
 
-    # 최근 저장 성공 알림
-    if st.session_state.get(f"last_saved_{key_prefix}"):
-        l_saved = st.session_state[f"last_saved_{key_prefix}"]
-        st.success(f"🎉 지정하신 경로에 포스터 저장 완료:\n`{l_saved}`")
-        if st.button("📁 포스터 저장 폴더 열기", key=f"btn_open_folder_{key_prefix}", use_container_width=True):
-            open_folder_in_explorer(l_saved)
+    with col_p2:
+        print_html = f"""
+        <!DOCTYPE html>
+        <html>
+        <head>
+        <meta charset="utf-8">
+        <style>
+            * {{ margin: 0; padding: 0; box-sizing: border-box; }}
+            body {{ margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Pretendard", "Segoe UI", sans-serif; overflow: hidden; background: transparent; }}
+            .print-btn {{
+                width: 100%;
+                height: 48px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                gap: 8px;
+                background-color: #0F172A;
+                color: #FFFFFF;
+                padding: 0 16px;
+                border-radius: 9px;
+                font-weight: 800;
+                font-size: 15px;
+                border: none;
+                cursor: pointer;
+                box-shadow: 0 4px 12px rgba(15,23,42,0.25);
+                transition: all 0.2s ease-in-out;
+            }}
+            .print-btn:hover {{
+                background-color: #1E293B;
+                transform: translateY(-2px);
+                box-shadow: 0 6px 16px rgba(15,23,42,0.35);
+            }}
+        </style>
+        </head>
+        <body>
+        <button class="print-btn" onclick="openPrintWindow()">
+            <span style="font-size: 16px;">🖨️</span>
+            <span>창문부착용 즉시 인쇄 (Ctrl+P)</span>
+        </button>
+        <script>
+        function openPrintWindow() {{
+            var w = window.open('', '_blank', 'width=850,height=1100');
+            if (!w) {{
+                alert('브라우저에서 팝업이 차단되었습니다. 주소창 우측에서 팝업 허용을 눌러주세요.');
+                return;
+            }}
+            w.document.open();
+            w.document.write('<!DOCTYPE html><html><head><title>A4 포스터 인쇄</title><style>@page{{size:A4 portrait;margin:0;}}body{{margin:0;padding:0;display:flex;justify-content:center;align-items:center;background:#fff;}}img{{width:100%;height:auto;max-height:100vh;object-fit:contain;}}</style></head><body><img src="data:image/png;base64,{pr_b64}" onload="setTimeout(function(){{window.print();}},250);"/></body></html>');
+            w.document.close();
+        }}
+        </script>
+        </body>
+        </html>
+        """
+        components.html(print_html, height=52)
 
-    # 인쇄용 이미지 base64 (150 DPI는 약 270KB로 초고속 렌더링!)
-    pr_b64 = base64.b64encode(file_bytes).decode("ascii")
-
-    print_html = f"""
-    <!DOCTYPE html>
-    <html>
-    <head>
-    <meta charset="utf-8">
-    <style>
-        body {{ margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Pretendard", "Segoe UI", sans-serif; }}
-        .print-btn {{
-            width: 100%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 8px;
-            background-color: #0F172A;
-            color: #FFFFFF;
-            padding: 12px 18px;
-            border-radius: 9px;
-            font-weight: 800;
-            font-size: 15.5px;
-            border: none;
-            cursor: pointer;
-            box-shadow: 0 4px 12px rgba(15,23,42,0.25);
-            transition: all 0.2s ease-in-out;
-            box-sizing: border-box;
-        }}
-        .print-btn:hover {{
-            background-color: #1E293B;
-            transform: translateY(-2px);
-            box-shadow: 0 6px 16px rgba(15,23,42,0.35);
-        }}
-    </style>
-    </head>
-    <body>
-    <button class="print-btn" onclick="openPrintWindow()">
-        <span style="font-size: 16px;">🖨️</span>
-        <span>창문부착용 즉시 인쇄 (A4 맞춤 Ctrl+P)</span>
-    </button>
-    <script>
-    function openPrintWindow() {{
-        var w = window.open('', '_blank', 'width=850,height=1100');
-        if (!w) {{
-            alert('브라우저에서 팝업이 차단되었습니다. 주소창 우측에서 팝업 허용을 눌러주세요.');
-            return;
-        }}
-        w.document.open();
-        w.document.write('<!DOCTYPE html><html><head><title>A4 포스터 인쇄</title><style>@page{{size:A4 portrait;margin:0;}}body{{margin:0;padding:0;display:flex;justify-content:center;align-items:center;background:#fff;}}img{{width:100%;height:auto;max-height:100vh;object-fit:contain;}}</style></head><body><img src="data:image/png;base64,{pr_b64}" onload="setTimeout(function(){{window.print();}},250);"/></body></html>');
-        w.document.close();
-    }}
-    </script>
-    </body>
-    </html>
-    """
-    components.html(print_html, height=52)
-    
     st.markdown("""
-    <div style="font-size: 12px; color: #64748B; margin-top: 3px; margin-bottom: 12px; line-height: 1.4;">
-        💡 <b>경로 지정 저장:</b> 바탕화면 등 원하는 폴더 선택 | <b>인쇄:</b> 프린터 창(A4 세로 맞춤) 즉시 호출
+    <div style="font-size: 12px; color: #64748B; background: #F8FAFC; border: 1px solid #E2E8F0; padding: 9px 13px; border-radius: 6px; margin-top: 4px; margin-bottom: 8px; line-height: 1.45;">
+        💡 <b>바탕화면 등 원하는 위치로 저장 팁:</b> 브라우저(크롬/엣지) 설정 ➔ <b>'다운로드'</b> ➔ <b>'다운로드 전에 각 파일의 저장 위치 확인'</b>을 켜두시면 매번 원하는 폴더를 선택하실 수 있습니다.
     </div>
     """, unsafe_allow_html=True)
     return ""
