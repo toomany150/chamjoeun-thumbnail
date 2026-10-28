@@ -201,12 +201,51 @@ def render_copy_button(text_to_copy: str, button_label: str, btn_id: str = "") -
     </div>
     """
 
+def save_file_with_dialog(file_bytes: bytes, default_filename: str) -> str:
+    """
+    Windows 파일 탐색기 '다른 이름으로 저장' 대화상자를 화면 최상단에 띄워
+    사용자가 원하는 폴더(바탕화면, 내문서, D드라이브 등)를 직접 지정하여 저장합니다.
+    """
+    try:
+        import tkinter as tk
+        from tkinter import filedialog
+        
+        root = tk.Tk()
+        root.withdraw()
+        root.attributes('-topmost', True)
+        
+        ext = os.path.splitext(default_filename)[1] or ".png"
+        file_path = filedialog.asksaveasfilename(
+            parent=root,
+            title="저장할 폴더와 파일명을 지정하세요",
+            initialfile=default_filename,
+            filetypes=[("PNG Image", "*.png"), ("All Files", "*.*")],
+            defaultextension=ext
+        )
+        root.destroy()
+        
+        if file_path:
+            with open(file_path, "wb") as f:
+                f.write(file_bytes)
+            return file_path
+    except Exception as e:
+        st.error(f"저장 중 오류 발생: {e}")
+    return ""
+
+def open_folder_in_explorer(file_path: str):
+    """저장된 파일의 폴더를 윈도우 탐색기로 즉시 열어줍니다."""
+    try:
+        folder = os.path.dirname(file_path)
+        if os.path.exists(folder):
+            os.startfile(folder)
+    except Exception:
+        pass
+
 def render_pc_save_button(file_bytes: bytes, filename: str, label: str, uid_key: str, bg_color: str = "#FF4B4B", text_color: str = "#FFFFFF") -> str:
     """
-    Streamlit 공식 st.download_button 기반 100% 저장 보장 컨트롤러.
-    - 브라우저 data: URI 보안 차단 및 크기 제한 원천 해결
-    - 선명한 배경색 + 고대비 순백색 볼드 텍스트 적용 (시인성 100% 보장)
-    - 클릭 시 PC의 다운로드/지정 폴더로 1초 만에 즉시 파일 저장
+    1) [📂 경로 지정하여 PC 저장] (Windows 탐색기 저장 창 팝업 - 바탕화면/원하는 폴더 지정)
+    2) [📥 기본 다운로드] (st.download_button)
+    두 가지 옵션을 모두 제공하여 원하는 폴더로 100% 확실하게 저장할 수 있습니다.
     """
     clean_name = re.sub(r'[\\/*?:"<>|\'\"]', '', filename).strip()
     if not clean_name:
@@ -215,56 +254,87 @@ def render_pc_save_button(file_bytes: bytes, filename: str, label: str, uid_key:
         clean_name += ".png"
     
     clean_label = label.replace("(기본 다운로드)", "").strip()
-    if not (clean_label.startswith("📥") or clean_label.startswith("💾")):
+    if not (clean_label.startswith("📥") or clean_label.startswith("💾") or clean_label.startswith("📂")):
         clean_label = f"💾 {clean_label}"
+
+    btn_dialog_key = f"btn_as_{uid_key}"
+    btn_dl_key = f"btn_dl_{uid_key}"
     
-    btn_key = f"save_btn_{uid_key}"
-    box_shadow = "0 4px 14px rgba(255, 75, 75, 0.35)" if bg_color == "#FF4B4B" else "0 4px 14px rgba(37, 99, 235, 0.35)"
-    
-    st.markdown(f"""
-    <style>
-    div.st-key-{btn_key} button {{
-        background-color: {bg_color} !important;
-        background: {bg_color} !important;
-        color: {text_color} !important;
-        -webkit-text-fill-color: {text_color} !important;
-        font-weight: 800 !important;
-        font-size: 16px !important;
-        border-radius: 9px !important;
-        padding: 14px 22px !important;
-        border: none !important;
-        box-shadow: {box_shadow} !important;
-        transition: all 0.2s ease-in-out !important;
-        width: 100% !important;
-        letter-spacing: -0.3px !important;
-    }}
-    div.st-key-{btn_key} button:hover {{
-        filter: brightness(1.1) !important;
-        transform: translateY(-2px) !important;
-        box-shadow: 0 6px 18px rgba(0,0,0,0.25) !important;
-    }}
-    div.st-key-{btn_key} button p,
-    div.st-key-{btn_key} button span,
-    div.st-key-{btn_key} button div {{
-        color: {text_color} !important;
-        -webkit-text-fill-color: {text_color} !important;
-        font-weight: 800 !important;
-        font-size: 16px !important;
-    }}
-    </style>
-    """, unsafe_allow_html=True)
-    
-    st.download_button(
-        label=clean_label,
-        data=file_bytes,
-        file_name=clean_name,
-        mime="image/png",
-        key=btn_key,
-        use_container_width=True
-    )
+    col_s1, col_s2 = st.columns([1.3, 1.0])
+    with col_s1:
+        if st.button("📂 경로 지정하여 PC 저장", key=btn_dialog_key, use_container_width=True, help="클릭 시 윈도우 탐색기 창이 떠서 바탕화면, 내문서 등 원하는 폴더를 직접 골라 저장합니다."):
+            saved_p = save_file_with_dialog(file_bytes, clean_name)
+            if saved_p:
+                st.session_state[f"last_saved_{uid_key}"] = saved_p
+                st.rerun()
+
+    with col_s2:
+        st.markdown(f"""
+        <style>
+        div.st-key-{btn_dialog_key} button {{
+            background: #0F766E !important;
+            color: #FFFFFF !important;
+            -webkit-text-fill-color: #FFFFFF !important;
+            font-weight: 800 !important;
+            font-size: 15px !important;
+            border-radius: 8px !important;
+            border: none !important;
+            box-shadow: 0 3px 10px rgba(15,118,110,0.3) !important;
+            width: 100% !important;
+        }}
+        div.st-key-{btn_dialog_key} button:hover {{
+            filter: brightness(1.1) !important;
+            transform: translateY(-2px) !important;
+        }}
+        div.st-key-{btn_dialog_key} button p,
+        div.st-key-{btn_dialog_key} button span {{
+            color: #FFFFFF !important;
+            -webkit-text-fill-color: #FFFFFF !important;
+            font-weight: 800 !important;
+        }}
+        div.st-key-{btn_dl_key} button {{
+            background: {bg_color} !important;
+            color: {text_color} !important;
+            -webkit-text-fill-color: {text_color} !important;
+            font-weight: 800 !important;
+            font-size: 15px !important;
+            border-radius: 8px !important;
+            border: none !important;
+            box-shadow: 0 3px 10px rgba(0,0,0,0.2) !important;
+            width: 100% !important;
+        }}
+        div.st-key-{btn_dl_key} button:hover {{
+            filter: brightness(1.1) !important;
+            transform: translateY(-2px) !important;
+        }}
+        div.st-key-{btn_dl_key} button p,
+        div.st-key-{btn_dl_key} button span {{
+            color: {text_color} !important;
+            -webkit-text-fill-color: {text_color} !important;
+            font-weight: 800 !important;
+        }}
+        </style>
+        """, unsafe_allow_html=True)
+        st.download_button(
+            label="📥 기본 다운로드",
+            data=file_bytes,
+            file_name=clean_name,
+            mime="image/png",
+            key=btn_dl_key,
+            use_container_width=True,
+            help="브라우저 기본 다운로드 폴더로 바로 저장합니다."
+        )
+
+    # 최근 저장 성공 알림 및 탐색기 바로 열기
+    if st.session_state.get(f"last_saved_{uid_key}"):
+        l_saved = st.session_state[f"last_saved_{uid_key}"]
+        st.success(f"🎉 지정하신 경로에 파일 저장 완료:\n`{l_saved}`")
+        if st.button("📁 저장된 폴더 열기", key=f"btn_open_folder_{uid_key}", use_container_width=True):
+            open_folder_in_explorer(l_saved)
+
     st.markdown("""
-    <div style="font-size: 12.5px; color: #64748B; margin-top: 5px; margin-bottom: 6px; text-align: center; line-height: 1.4;">
-        💡 클릭 시 내 컴퓨터의 다운로드 폴더 또는 지정 폴더(바탕화면, 내문서 등)로 즉시 저장됩니다.
+    <div style="font-size: 12px; color: #64748B; margin-top: 3px; line-height: 1.4;">
+        💡 <b>경로 지정 저장:</b> 내 컴퓨터의 원하는 폴더(바탕화면, 내문서 등)를 직접 지정하여 저장합니다.
     </div>
     """, unsafe_allow_html=True)
     return ""
@@ -273,12 +343,13 @@ def render_poster_action_bar(
     file_bytes: bytes,
     filename: str,
     key_prefix: str,
-    title_label: str = "300dpi 초고화질 A4포스터 파일저장"
+    title_label: str = "150dpi 고화질 A4포스터 파일저장"
 ) -> str:
     """
-    포스터 전용 액션 컨트롤러:
-    - [저장]: st.download_button으로 300DPI 대용량(20MB+) 원본 PNG 파일 100% 확실하게 PC 저장
-    - [출력]: components.html을 통한 A4 세로 규격 즉시 인쇄(Ctrl+P) 호출
+    창문 전단지용 A4 포스터 전용 컨트롤러 (150 DPI 최적화 규격: 1240 x 1754 px):
+    - [📂 포스터 경로 지정 저장]: 윈도우 탐색기 창으로 바탕화면 등 원하는 폴더 직접 선택
+    - [📥 기본 다운로드]: 브라우저 기본 다운로드 폴더로 바로 저장
+    - [🖨️ 창문부착용 즉시 인쇄]: A4 세로 맞춤 즉시 인쇄창(Ctrl+P) 호출
     """
     clean_name = re.sub(r'[\\/*?:"<>|\'\"]', '', filename).strip()
     if not clean_name:
@@ -286,61 +357,84 @@ def render_poster_action_bar(
     if not clean_name.lower().endswith(".png"):
         clean_name += ".png"
     
-    save_key = f"{key_prefix}_poster_save_btn"
+    btn_p_dialog_key = f"{key_prefix}_p_save_as"
+    btn_p_dl_key = f"{key_prefix}_p_save_dl"
     
-    # 1. 파일 저장 버튼 CSS (선명한 로얄 블루 #2563EB + 선명한 흰색 텍스트)
-    st.markdown(f"""
-    <style>
-    div.st-key-{save_key} button {{
-        background-color: #2563EB !important;
-        background: #2563EB !important;
-        color: #FFFFFF !important;
-        -webkit-text-fill-color: #FFFFFF !important;
-        font-weight: 800 !important;
-        font-size: 16px !important;
-        border-radius: 9px !important;
-        padding: 13px 20px !important;
-        border: none !important;
-        box-shadow: 0 4px 14px rgba(37,99,235,0.35) !important;
-        transition: all 0.2s ease-in-out !important;
-        width: 100% !important;
-        letter-spacing: -0.3px !important;
-    }}
-    div.st-key-{save_key} button:hover {{
-        filter: brightness(1.1) !important;
-        transform: translateY(-2px) !important;
-        box-shadow: 0 6px 18px rgba(37,99,235,0.45) !important;
-    }}
-    div.st-key-{save_key} button p,
-    div.st-key-{save_key} button span,
-    div.st-key-{save_key} button div {{
-        color: #FFFFFF !important;
-        -webkit-text-fill-color: #FFFFFF !important;
-        font-weight: 800 !important;
-        font-size: 16px !important;
-    }}
-    </style>
-    """, unsafe_allow_html=True)
-    
-    st.download_button(
-        label="💾 300dpi 초고화질 A4포스터 파일저장",
-        data=file_bytes,
-        file_name=clean_name,
-        mime="image/png",
-        key=save_key,
-        use_container_width=True
-    )
-    
-    # 2. 인쇄용 이미지 base64 (용량 최적화하여 팝업 즉시 반응)
-    try:
-        p_img = Image.open(io.BytesIO(file_bytes))
-        pr_io = io.BytesIO()
-        p_img.convert("RGB").save(pr_io, format="JPEG", quality=92, optimize=True)
-        pr_b64 = base64.b64encode(pr_io.getvalue()).decode("ascii")
-    except Exception:
-        pr_b64 = base64.b64encode(file_bytes).decode("ascii")
+    col_p1, col_p2 = st.columns([1.3, 1.0])
+    with col_p1:
+        if st.button("📂 경로 지정하여 포스터 저장", key=btn_p_dialog_key, use_container_width=True, help="클릭 시 윈도우 탐색기 창이 떠서 바탕화면, 내문서 등 원하는 폴더를 직접 골라 저장합니다."):
+            saved_p = save_file_with_dialog(file_bytes, clean_name)
+            if saved_p:
+                st.session_state[f"last_saved_{key_prefix}"] = saved_p
+                st.rerun()
 
-    # 3. 브라우저 보안 및 샌드박스를 우회하는 안전한 iframe 컴포넌트 인쇄 버튼
+    with col_p2:
+        st.markdown(f"""
+        <style>
+        div.st-key-{btn_p_dialog_key} button {{
+            background: #0F766E !important;
+            color: #FFFFFF !important;
+            -webkit-text-fill-color: #FFFFFF !important;
+            font-weight: 800 !important;
+            font-size: 15px !important;
+            border-radius: 8px !important;
+            border: none !important;
+            box-shadow: 0 3px 10px rgba(15,118,110,0.3) !important;
+            width: 100% !important;
+        }}
+        div.st-key-{btn_p_dialog_key} button:hover {{
+            filter: brightness(1.1) !important;
+            transform: translateY(-2px) !important;
+        }}
+        div.st-key-{btn_p_dialog_key} button p,
+        div.st-key-{btn_p_dialog_key} button span {{
+            color: #FFFFFF !important;
+            -webkit-text-fill-color: #FFFFFF !important;
+            font-weight: 800 !important;
+        }}
+        div.st-key-{btn_p_dl_key} button {{
+            background: #2563EB !important;
+            color: #FFFFFF !important;
+            -webkit-text-fill-color: #FFFFFF !important;
+            font-weight: 800 !important;
+            font-size: 15px !important;
+            border-radius: 8px !important;
+            border: none !important;
+            box-shadow: 0 3px 10px rgba(37,99,235,0.3) !important;
+            width: 100% !important;
+        }}
+        div.st-key-{btn_p_dl_key} button:hover {{
+            filter: brightness(1.1) !important;
+            transform: translateY(-2px) !important;
+        }}
+        div.st-key-{btn_p_dl_key} button p,
+        div.st-key-{btn_p_dl_key} button span {{
+            color: #FFFFFF !important;
+            -webkit-text-fill-color: #FFFFFF !important;
+            font-weight: 800 !important;
+        }}
+        </style>
+        """, unsafe_allow_html=True)
+        st.download_button(
+            label="📥 기본 다운로드",
+            data=file_bytes,
+            file_name=clean_name,
+            mime="image/png",
+            key=btn_p_dl_key,
+            use_container_width=True,
+            help="브라우저 기본 다운로드 폴더로 바로 저장합니다."
+        )
+
+    # 최근 저장 성공 알림
+    if st.session_state.get(f"last_saved_{key_prefix}"):
+        l_saved = st.session_state[f"last_saved_{key_prefix}"]
+        st.success(f"🎉 지정하신 경로에 포스터 저장 완료:\n`{l_saved}`")
+        if st.button("📁 포스터 저장 폴더 열기", key=f"btn_open_folder_{key_prefix}", use_container_width=True):
+            open_folder_in_explorer(l_saved)
+
+    # 인쇄용 이미지 base64 (150 DPI는 약 270KB로 초고속 렌더링!)
+    pr_b64 = base64.b64encode(file_bytes).decode("ascii")
+
     print_html = f"""
     <!DOCTYPE html>
     <html>
@@ -386,7 +480,7 @@ def render_poster_action_bar(
             return;
         }}
         w.document.open();
-        w.document.write('<!DOCTYPE html><html><head><title>A4 포스터 인쇄</title><style>@page{{size:A4 portrait;margin:0;}}body{{margin:0;padding:0;display:flex;justify-content:center;align-items:center;background:#fff;}}img{{width:100%;height:auto;max-height:100vh;object-fit:contain;}}</style></head><body><img src="data:image/jpeg;base64,{pr_b64}" onload="setTimeout(function(){{window.print();}},350);"/></body></html>');
+        w.document.write('<!DOCTYPE html><html><head><title>A4 포스터 인쇄</title><style>@page{{size:A4 portrait;margin:0;}}body{{margin:0;padding:0;display:flex;justify-content:center;align-items:center;background:#fff;}}img{{width:100%;height:auto;max-height:100vh;object-fit:contain;}}</style></head><body><img src="data:image/png;base64,{pr_b64}" onload="setTimeout(function(){{window.print();}},250);"/></body></html>');
         w.document.close();
     }}
     </script>
@@ -396,8 +490,8 @@ def render_poster_action_bar(
     components.html(print_html, height=52)
     
     st.markdown("""
-    <div style="font-size: 12.5px; color: #64748B; margin-top: 4px; margin-bottom: 12px; text-align: center; line-height: 1.4;">
-        💡 <b>저장:</b> 내 컴퓨터에 초고화질 파일 저장 | <b>인쇄:</b> 창문부착용 즉시 인쇄창(Ctrl+P) 호출
+    <div style="font-size: 12px; color: #64748B; margin-top: 3px; margin-bottom: 12px; line-height: 1.4;">
+        💡 <b>경로 지정 저장:</b> 바탕화면 등 원하는 폴더 선택 | <b>인쇄:</b> 프린터 창(A4 세로 맞춤) 즉시 호출
     </div>
     """, unsafe_allow_html=True)
     return ""
@@ -421,7 +515,7 @@ def render_download_save_controller(
             file_bytes=file_bytes,
             filename=default_filename,
             key_prefix=key_prefix,
-            title_label="300dpi 초고화질 A4포스터 파일저장"
+            title_label="150dpi 고화질 A4포스터 파일저장"
         )
     else:
         render_pc_save_button(
@@ -2383,10 +2477,10 @@ def render_tab_apt_poster():
     st.markdown("""
     <div style="background-color: #F8F9FB; border-left: 4px solid #F48A26; padding: 12px 18px; border-radius: 6px; margin-bottom: 20px;">
         <span style="font-size: 15px; font-weight: 700; color: #1E2022;">
-            🖨️ 아파트 중개사무소 창문 부착용 A4 브리핑 포스터 (초고화질 300 DPI)
+            🖨️ 아파트 중개사무소 창문 부착용 A4 브리핑 포스터 (150 DPI 최적화)
         </span><br/>
         <span style="font-size: 13px; color: #6C757D;">
-            중개사무소 유리창에 부착 시 지나가는 고객의 시선을 사로잡는 인쇄용 브리핑 포스터입니다. 원클릭 즉시 인쇄(Ctrl+P) 또는 300DPI 초고화질 저장이 지원됩니다.
+            중개사무소 유리창에 부착 시 지나가는 고객의 시선을 사로잡는 인쇄용 브리핑 포스터입니다. 원클릭 즉시 인쇄(Ctrl+P) 또는 150DPI 고화질 저장이 지원됩니다.
         </span>
     </div>
     """, unsafe_allow_html=True)
@@ -2412,7 +2506,7 @@ def render_tab_apt_poster():
         selected_design = get_design_by_name(cur_dname)
 
     with col_l:
-        with st.spinner("창문 부착용 300DPI 초고화질 A4 포스터 렌더링 중..."):
+        with st.spinner("창문 부착용 150DPI A4 포스터 렌더링 중..."):
             a4_poster_img = render_a4_window_poster(
                 bg_image=uploaded_bg,
                 item_no=st.session_state.item_no,
@@ -2433,7 +2527,7 @@ def render_tab_apt_poster():
                 primary_color_override=selected_design.get("primary_color", "#F48A26"),
                 accent_color_override=selected_design.get("accent_color", "#EB5E28")
             )
-        st.image(a4_poster_img, caption="아파트 창문 부착용 A4 포스터 (초고화질 300 DPI)", use_container_width=True)
+        st.image(a4_poster_img, caption="아파트 창문 부착용 A4 포스터 (150 DPI 고화질)", use_container_width=True)
         
         st.markdown("""
         <div style="font-size:13px; color:#2D3748; background:#F8FAFC; border:1px solid #E2E8F0; padding:12px 14px; border-radius:8px; margin-top:12px; line-height:1.6;">
@@ -2450,14 +2544,14 @@ def render_tab_apt_poster():
         a4_filename = f"창문부착용_아파트포스터_{clean_title}_{clean_price}.png"
         
         a4_io = io.BytesIO()
-        a4_poster_img.save(a4_io, format="PNG", quality=98)
+        a4_poster_img.save(a4_io, format="PNG", quality=95)
         a4_bytes = a4_io.getvalue()
 
         st.markdown("### 🖨️ 포스터 출력 및 파일 저장")
         render_download_save_controller(
             file_bytes=a4_bytes,
             default_filename=a4_filename,
-            label_download="📥 300DPI 초고화질 A4 포스터 파일 저장",
+            label_download="📥 150DPI A4 포스터 파일 저장",
             key_prefix="poster_page_apt",
             is_poster=True,
             print_bytes=a4_bytes
@@ -2490,10 +2584,10 @@ def render_tab_house_poster():
     st.markdown("""
     <div style="background-color: #F8F9FB; border-left: 4px solid #38A169; padding: 12px 18px; border-radius: 6px; margin-bottom: 20px;">
         <span style="font-size: 15px; font-weight: 700; color: #1E2022;">
-            🖨️ 주택 / 빌라 / 원룸 중개사무소 창문 부착용 A4 포스터 (초고화질 300 DPI)
+            🖨️ 주택 / 빌라 / 원룸 중개사무소 창문 부착용 A4 포스터 (150 DPI 최적화)
         </span><br/>
         <span style="font-size: 13px; color: #6C757D;">
-            중개사무소 유리창에 부착 시 지나가는 고객의 시선을 사로잡는 인쇄용 브리핑 포스터입니다. 원클릭 즉시 인쇄(Ctrl+P) 또는 300DPI 초고화질 저장이 지원됩니다.
+            중개사무소 유리창에 부착 시 지나가는 고객의 시선을 사로잡는 인쇄용 브리핑 포스터입니다. 원클릭 즉시 인쇄(Ctrl+P) 또는 150DPI 고화질 저장이 지원됩니다.
         </span>
     </div>
     """, unsafe_allow_html=True)
@@ -2519,7 +2613,7 @@ def render_tab_house_poster():
         selected_design = get_design_by_name(cur_dname)
 
     with col_l:
-        with st.spinner("창문 부착용 300DPI 초고화질 A4 포스터 렌더링 중..."):
+        with st.spinner("창문 부착용 150DPI A4 포스터 렌더링 중..."):
             house_a4_img = render_a4_window_poster(
                 bg_image=uploaded_house_bg,
                 item_no=st.session_state.house_item_no,
@@ -2540,7 +2634,7 @@ def render_tab_house_poster():
                 primary_color_override=selected_design.get("primary_color", "#38A169"),
                 accent_color_override=selected_design.get("accent_color", "#276749")
             )
-        st.image(house_a4_img, caption="주택 창문 부착용 A4 포스터 (초고화질 300 DPI)", use_container_width=True)
+        st.image(house_a4_img, caption="주택 창문 부착용 A4 포스터 (150 DPI 고화질)", use_container_width=True)
 
         st.markdown("""
         <div style="font-size:13px; color:#2D3748; background:#F8FAFC; border:1px solid #E2E8F0; padding:12px 14px; border-radius:8px; margin-top:12px; line-height:1.6;">
@@ -2557,14 +2651,14 @@ def render_tab_house_poster():
         house_a4_name = f"창문부착용_주택포스터_{clean_title}_{clean_price}.png"
 
         h_a4_io = io.BytesIO()
-        house_a4_img.save(h_a4_io, format="PNG", quality=98)
+        house_a4_img.save(h_a4_io, format="PNG", quality=95)
         house_a4_bytes = h_a4_io.getvalue()
 
         st.markdown("### 🖨️ 포스터 출력 및 파일 저장")
         render_download_save_controller(
             file_bytes=house_a4_bytes,
             default_filename=house_a4_name,
-            label_download="📥 300DPI 초고화질 A4 포스터 파일 저장",
+            label_download="📥 150DPI A4 포스터 파일 저장",
             key_prefix="poster_page_house",
             is_poster=True,
             print_bytes=house_a4_bytes
@@ -2597,10 +2691,10 @@ def render_tab_comm_poster():
     st.markdown("""
     <div style="background-color: #181C24; border-left: 4px solid #DAA844; padding: 12px 18px; border-radius: 6px; margin-bottom: 20px; color: #FFFFFF;">
         <span style="font-size: 15px; font-weight: 700; color: #DAA844;">
-            🖨️ 상가 / 점포 / 빌딩 창문 부착용 A4 포스터 (초고화질 300 DPI)
+            🖨️ 상가 / 점포 / 빌딩 창문 부착용 A4 포스터 (150 DPI 최적화)
         </span><br/>
         <span style="font-size: 13px; color: #CBD5E0;">
-            임차 상가 및 매매 상가 전용 브리핑 포스터입니다. 원클릭 즉시 인쇄(Ctrl+P) 또는 300DPI 초고화질 저장이 지원됩니다.
+            임차 상가 및 매매 상가 전용 브리핑 포스터입니다. 원클릭 즉시 인쇄(Ctrl+P) 또는 150DPI 고화질 저장이 지원됩니다.
         </span>
     </div>
     """, unsafe_allow_html=True)
@@ -2649,7 +2743,7 @@ def render_tab_comm_poster():
         selected_comm_design = get_design_by_name(cur_dname)
 
     with col_l:
-        with st.spinner("상가 창문 부착용 300DPI 초고화질 A4 포스터 렌더링 중..."):
+        with st.spinner("상가 창문 부착용 150DPI A4 포스터 렌더링 중..."):
             comm_a4_poster_img = render_a4_window_poster(
                 bg_image=uploaded_comm_bg,
                 item_no=st.session_state.get("comm_item_no", "No. COMM-01"),
@@ -2670,7 +2764,7 @@ def render_tab_comm_poster():
                 primary_color_override=selected_comm_design.get("primary_color", "#DAA844"),
                 accent_color_override=selected_comm_design.get("accent_color", "#B8860B")
             )
-        st.image(comm_a4_poster_img, caption="상가 유리창 부착용 A4 브리핑 포스터 (초고화질 300 DPI)", use_container_width=True)
+        st.image(comm_a4_poster_img, caption="상가 유리창 부착용 A4 브리핑 포스터 (150 DPI 고화질)", use_container_width=True)
 
         st.markdown("""
         <div style="font-size:13px; color:#2D3748; background:#F8FAFC; border:1px solid #E2E8F0; padding:12px 14px; border-radius:8px; margin-top:12px; line-height:1.6;">
@@ -2687,14 +2781,14 @@ def render_tab_comm_poster():
         comm_a4_name = f"창문부착용_상가포스터_{clean_comm_title}_{clean_comm_price}.png"
 
         c_a4_io = io.BytesIO()
-        comm_a4_poster_img.save(c_a4_io, format="PNG", quality=98)
+        comm_a4_poster_img.save(c_a4_io, format="PNG", quality=95)
         comm_a4_bytes = c_a4_io.getvalue()
 
         st.markdown("### 🖨️ 포스터 출력 및 파일 저장")
         render_download_save_controller(
             file_bytes=comm_a4_bytes,
             default_filename=comm_a4_name,
-            label_download="📥 300DPI 초고화질 A4 포스터 파일 저장",
+            label_download="📥 150DPI A4 포스터 파일 저장",
             key_prefix="poster_page_comm",
             is_poster=True,
             print_bytes=comm_a4_bytes
@@ -2729,10 +2823,10 @@ def render_tab_factory_poster():
     st.markdown("""
     <div style="background-color: #F8F9FB; border-left: 4px solid #3182CE; padding: 12px 18px; border-radius: 6px; margin-bottom: 20px;">
         <span style="font-size: 15px; font-weight: 700; color: #1E2022;">
-            🖨️ 공장 / 창고 / 나대지 창문 부착용 A4 포스터 (초고화질 300 DPI)
+            🖨️ 공장 / 창고 / 나대지 창문 부착용 A4 포스터 (150 DPI 최적화)
         </span><br/>
         <span style="font-size: 13px; color: #6C757D;">
-            중개사무소 유리창에 부착 시 지나가는 고객의 시선을 사로잡는 인쇄용 브리핑 포스터입니다. 원클릭 즉시 인쇄(Ctrl+P) 또는 300DPI 초고화질 저장이 지원됩니다.
+            중개사무소 유리창에 부착 시 지나가는 고객의 시선을 사로잡는 인쇄용 브리핑 포스터입니다. 원클릭 즉시 인쇄(Ctrl+P) 또는 150DPI 고화질 저장이 지원됩니다.
         </span>
     </div>
     """, unsafe_allow_html=True)
@@ -2758,7 +2852,7 @@ def render_tab_factory_poster():
         selected_design = get_design_by_name(cur_dname)
 
     with col_l:
-        with st.spinner("창문 부착용 300DPI 초고화질 A4 포스터 렌더링 중..."):
+        with st.spinner("창문 부착용 150DPI A4 포스터 렌더링 중..."):
             factory_a4_img = render_a4_window_poster(
                 bg_image=uploaded_factory_bg,
                 item_no=st.session_state.factory_item_no,
@@ -2779,7 +2873,7 @@ def render_tab_factory_poster():
                 primary_color_override=selected_design.get("primary_color", "#3182CE"),
                 accent_color_override=selected_design.get("accent_color", "#2B6CB0")
             )
-        st.image(factory_a4_img, caption="공장 창문 부착용 A4 포스터 (초고화질 300 DPI)", use_container_width=True)
+        st.image(factory_a4_img, caption="공장 창문 부착용 A4 포스터 (150 DPI 고화질)", use_container_width=True)
 
         st.markdown("""
         <div style="font-size:13px; color:#2D3748; background:#F8FAFC; border:1px solid #E2E8F0; padding:12px 14px; border-radius:8px; margin-top:12px; line-height:1.6;">
@@ -2796,14 +2890,14 @@ def render_tab_factory_poster():
         factory_a4_name = f"창문부착용_공장포스터_{clean_f_title}_{clean_f_price}.png"
 
         f_a4_io = io.BytesIO()
-        factory_a4_img.save(f_a4_io, format="PNG", quality=98)
+        factory_a4_img.save(f_a4_io, format="PNG", quality=95)
         factory_a4_bytes = f_a4_io.getvalue()
 
         st.markdown("### 🖨️ 포스터 출력 및 파일 저장")
         render_download_save_controller(
             file_bytes=factory_a4_bytes,
             default_filename=factory_a4_name,
-            label_download="📥 300DPI 초고화질 A4 포스터 파일 저장",
+            label_download="📥 150DPI A4 포스터 파일 저장",
             key_prefix="poster_page_factory",
             is_poster=True,
             print_bytes=factory_a4_bytes
