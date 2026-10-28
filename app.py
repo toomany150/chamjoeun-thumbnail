@@ -290,43 +290,75 @@ def render_poster_action_bar(
     btn_p_dl_key = f"{key_prefix}_p_save_dl"
     pr_b64 = base64.b64encode(file_bytes).decode("ascii")
 
-    col_p1, col_p2 = st.columns([1, 1])
+    # 1. 컬럼 밖에서 공통 CSS 선언 (컬럼 내부에 st.markdown이 들어가서 상단이 어긋나는 현상 원천 차단)
+    st.markdown(f"""
+    <style>
+    /* 좌측 다운로드 버튼 래퍼 및 버튼 높이 48px 완전 고정 */
+    div.st-key-{btn_p_dl_key} {{
+        margin: 0 !important;
+        padding: 0 !important;
+        height: 48px !important;
+    }}
+    div.st-key-{btn_p_dl_key} button {{
+        background: #2563EB !important;
+        color: #FFFFFF !important;
+        -webkit-text-fill-color: #FFFFFF !important;
+        font-weight: 800 !important;
+        font-size: 15px !important;
+        height: 48px !important;
+        min-height: 48px !important;
+        max-height: 48px !important;
+        border-radius: 9px !important;
+        border: none !important;
+        box-shadow: 0 4px 12px rgba(37,99,235,0.28) !important;
+        width: 100% !important;
+        box-sizing: border-box !important;
+        padding: 0 16px !important;
+        margin: 0 !important;
+        display: flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        transition: all 0.2s ease-in-out !important;
+    }}
+    div.st-key-{btn_p_dl_key} button:hover {{
+        background: #1D4ED8 !important;
+        filter: brightness(1.08) !important;
+        transform: translateY(-2px) !important;
+        box-shadow: 0 6px 16px rgba(37,99,235,0.38) !important;
+    }}
+    div.st-key-{btn_p_dl_key} button p,
+    div.st-key-{btn_p_dl_key} button span {{
+        color: #FFFFFF !important;
+        -webkit-text-fill-color: #FFFFFF !important;
+        font-weight: 800 !important;
+        font-size: 15px !important;
+        line-height: 1 !important;
+        margin: 0 !important;
+        padding: 0 !important;
+    }}
+    /* 우측 iframe 컨테이너의 상하 마진 제거 및 48px 정확 일치 */
+    div[data-testid="stCustomComponentV1"] {{
+        margin: 0 !important;
+        padding: 0 !important;
+        height: 48px !important;
+        line-height: 0 !important;
+    }}
+    div[data-testid="stCustomComponentV1"] iframe {{
+        height: 48px !important;
+        min-height: 48px !important;
+        max-height: 48px !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        display: block !important;
+        border: none !important;
+    }}
+    </style>
+    """, unsafe_allow_html=True)
+
+    # 2. 두 칸 나란히 배치 (gap="small"로 단정하고 깔끔한 간격 유지)
+    col_p1, col_p2 = st.columns([1, 1], gap="small")
 
     with col_p1:
-        st.markdown(f"""
-        <style>
-        div.st-key-{btn_p_dl_key} button {{
-            background: #2563EB !important;
-            color: #FFFFFF !important;
-            -webkit-text-fill-color: #FFFFFF !important;
-            font-weight: 800 !important;
-            font-size: 15px !important;
-            height: 48px !important;
-            min-height: 48px !important;
-            border-radius: 9px !important;
-            border: none !important;
-            box-shadow: 0 4px 12px rgba(37,99,235,0.3) !important;
-            width: 100% !important;
-            display: flex !important;
-            align-items: center !important;
-            justify-content: center !important;
-            transition: all 0.2s ease-in-out !important;
-        }}
-        div.st-key-{btn_p_dl_key} button:hover {{
-            background: #1D4ED8 !important;
-            filter: brightness(1.08) !important;
-            transform: translateY(-2px) !important;
-            box-shadow: 0 6px 16px rgba(37,99,235,0.4) !important;
-        }}
-        div.st-key-{btn_p_dl_key} button p,
-        div.st-key-{btn_p_dl_key} button span {{
-            color: #FFFFFF !important;
-            -webkit-text-fill-color: #FFFFFF !important;
-            font-weight: 800 !important;
-            font-size: 15px !important;
-        }}
-        </style>
-        """, unsafe_allow_html=True)
         st.download_button(
             label="📥 150DPI A4 포스터 파일 저장",
             data=file_bytes,
@@ -345,10 +377,20 @@ def render_poster_action_bar(
         <meta charset="utf-8">
         <style>
             * {{ margin: 0; padding: 0; box-sizing: border-box; }}
-            body {{ margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Pretendard", "Segoe UI", sans-serif; overflow: hidden; background: transparent; }}
+            html, body {{
+                margin: 0;
+                padding: 0;
+                height: 48px;
+                overflow: hidden;
+                background: transparent;
+                font-family: -apple-system, BlinkMacSystemFont, "Pretendard", "Segoe UI", sans-serif;
+            }}
             .print-btn {{
                 width: 100%;
                 height: 48px;
+                min-height: 48px;
+                max-height: 48px;
+                box-sizing: border-box;
                 display: flex;
                 align-items: center;
                 justify-content: center;
@@ -391,10 +433,10 @@ def render_poster_action_bar(
         </body>
         </html>
         """
-        components.html(print_html, height=52)
+        components.html(print_html, height=48)
 
     st.markdown("""
-    <div style="font-size: 12px; color: #64748B; background: #F8FAFC; border: 1px solid #E2E8F0; padding: 9px 13px; border-radius: 6px; margin-top: 4px; margin-bottom: 8px; line-height: 1.45;">
+    <div style="font-size: 12px; color: #64748B; background: #F8FAFC; border: 1px solid #E2E8F0; padding: 9px 13px; border-radius: 6px; margin-top: 6px; margin-bottom: 8px; line-height: 1.45;">
         💡 <b>바탕화면 등 원하는 위치로 저장 팁:</b> 브라우저(크롬/엣지) 설정 ➔ <b>'다운로드'</b> ➔ <b>'다운로드 전에 각 파일의 저장 위치 확인'</b>을 켜두시면 매번 원하는 폴더를 선택하실 수 있습니다.
     </div>
     """, unsafe_allow_html=True)
