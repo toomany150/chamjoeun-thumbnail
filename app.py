@@ -1,8 +1,10 @@
 import streamlit as st
+import streamlit.components.v1 as components
 import io
 import os
 import re
 import base64
+from PIL import Image
 import subprocess
 import importlib
 import thumbnail_generator
@@ -199,10 +201,12 @@ def render_copy_button(text_to_copy: str, button_label: str, btn_id: str = "") -
     </div>
     """
 
-def render_pc_save_button(file_bytes: bytes, filename: str, label: str, uid_key: str, bg_color: str = "#FF4B4B") -> str:
+def render_pc_save_button(file_bytes: bytes, filename: str, label: str, uid_key: str, bg_color: str = "#FF4B4B", text_color: str = "#FFFFFF") -> str:
     """
-    클릭 시 100% 안정적으로 PC에 즉시 저장되는 고화질 다운로드 버튼입니다.
-    브라우저 설정(다운로드 전 각 파일의 저장 위치 확인)에 따라 원하는 폴더(바탕화면, 내문서 등)를 직접 지정하여 저장할 수 있습니다.
+    Streamlit 공식 st.download_button 기반 100% 저장 보장 컨트롤러.
+    - 브라우저 data: URI 보안 차단 및 크기 제한 원천 해결
+    - 선명한 배경색 + 고대비 순백색 볼드 텍스트 적용 (시인성 100% 보장)
+    - 클릭 시 PC의 다운로드/지정 폴더로 1초 만에 즉시 파일 저장
     """
     clean_name = re.sub(r'[\\/*?:"<>|\'\"]', '', filename).strip()
     if not clean_name:
@@ -210,24 +214,60 @@ def render_pc_save_button(file_bytes: bytes, filename: str, label: str, uid_key:
     if not clean_name.lower().endswith(".png"):
         clean_name += ".png"
     
-    b64_data = base64.b64encode(file_bytes).decode("ascii")
-
     clean_label = label.replace("(기본 다운로드)", "").strip()
     if not (clean_label.startswith("📥") or clean_label.startswith("💾")):
         clean_label = f"💾 {clean_label}"
-
-    box_shadow = "0 4px 14px rgba(255, 75, 75, 0.35)" if bg_color == "#FF4B4B" else ("0 4px 14px rgba(37, 99, 235, 0.35)" if bg_color in ["#2563EB", "#3182CE"] else "0 4px 14px rgba(244, 138, 38, 0.35)")
-
-    return f"""<div style="margin: 8px 0 10px 0;">
-<a href="data:image/png;base64,{b64_data}" download="{clean_name}" style="text-decoration: none; display: block; width: 100%;">
-    <div style="width: 100%; box-sizing: border-box; display: flex; align-items: center; justify-content: center; gap: 8px; background-color: {bg_color}; color: #FFFFFF !important; -webkit-text-fill-color: #FFFFFF !important; padding: 15px 20px; border-radius: 9px; font-weight: 800; border: none; cursor: pointer; font-size: 16px; box-shadow: {box_shadow}; transition: all 0.2s ease-in-out;">
-        <span style="color: #FFFFFF !important; -webkit-text-fill-color: #FFFFFF !important; font-weight: 800; font-size: 16.5px; letter-spacing: -0.3px;">{clean_label}</span>
+    
+    btn_key = f"save_btn_{uid_key}"
+    box_shadow = "0 4px 14px rgba(255, 75, 75, 0.35)" if bg_color == "#FF4B4B" else "0 4px 14px rgba(37, 99, 235, 0.35)"
+    
+    st.markdown(f"""
+    <style>
+    div.st-key-{btn_key} button {{
+        background-color: {bg_color} !important;
+        background: {bg_color} !important;
+        color: {text_color} !important;
+        -webkit-text-fill-color: {text_color} !important;
+        font-weight: 800 !important;
+        font-size: 16px !important;
+        border-radius: 9px !important;
+        padding: 14px 22px !important;
+        border: none !important;
+        box-shadow: {box_shadow} !important;
+        transition: all 0.2s ease-in-out !important;
+        width: 100% !important;
+        letter-spacing: -0.3px !important;
+    }}
+    div.st-key-{btn_key} button:hover {{
+        filter: brightness(1.1) !important;
+        transform: translateY(-2px) !important;
+        box-shadow: 0 6px 18px rgba(0,0,0,0.25) !important;
+    }}
+    div.st-key-{btn_key} button p,
+    div.st-key-{btn_key} button span,
+    div.st-key-{btn_key} button div {{
+        color: {text_color} !important;
+        -webkit-text-fill-color: {text_color} !important;
+        font-weight: 800 !important;
+        font-size: 16px !important;
+    }}
+    </style>
+    """, unsafe_allow_html=True)
+    
+    st.download_button(
+        label=clean_label,
+        data=file_bytes,
+        file_name=clean_name,
+        mime="image/png",
+        key=btn_key,
+        use_container_width=True
+    )
+    st.markdown("""
+    <div style="font-size: 12.5px; color: #64748B; margin-top: 5px; margin-bottom: 6px; text-align: center; line-height: 1.4;">
+        💡 클릭 시 내 컴퓨터의 다운로드 폴더 또는 지정 폴더(바탕화면, 내문서 등)로 즉시 저장됩니다.
     </div>
-</a>
-<div style="font-size: 12.5px; color: #64748B; margin-top: 6px; text-align: center; line-height: 1.4;">
-💡 클릭 시 내 컴퓨터의 다운로드 폴더 또는 지정 폴더(바탕화면, 내문서 등)로 즉시 저장됩니다.
-</div>
-</div>"""
+    """, unsafe_allow_html=True)
+    return ""
 
 def render_poster_action_bar(
     file_bytes: bytes,
@@ -236,11 +276,9 @@ def render_poster_action_bar(
     title_label: str = "300dpi 초고화질 A4포스터 파일저장"
 ) -> str:
     """
-    포스터 전용 가로형 통합 액션 바:
-    - 좌측: '300dpi 초고화질 A4포스터 파일저장' 타이틀 라벨
-    - 우측: [출력] 버튼 및 [저장] 버튼 나란히 배치
-    - [저장] 클릭 시: 100% 즉시 다운로드 (PC 저장 폴더 직접 지정 가능)
-    - [출력] 클릭 시: 새 창을 열어 A4 맞춤형 브라우저 인쇄(Ctrl+P) 즉시 호출
+    포스터 전용 액션 컨트롤러:
+    - [저장]: st.download_button으로 300DPI 대용량(20MB+) 원본 PNG 파일 100% 확실하게 PC 저장
+    - [출력]: components.html을 통한 A4 세로 규격 즉시 인쇄(Ctrl+P) 호출
     """
     clean_name = re.sub(r'[\\/*?:"<>|\'\"]', '', filename).strip()
     if not clean_name:
@@ -248,45 +286,121 @@ def render_poster_action_bar(
     if not clean_name.lower().endswith(".png"):
         clean_name += ".png"
     
-    b64_data = base64.b64encode(file_bytes).decode("ascii")
-    uid = abs(hash(f"{key_prefix}_{filename}_{len(file_bytes)}")) % 10000000
-
-    js_print = (
-        "(function(){"
-        "try{"
-        "var w=window.open('about:blank','_blank','width=900,height=1200');"
-        "if(!w){alert('브라우저에서 팝업이 차단되었습니다. 주소창 우측에서 팝업 허용을 눌러주세요.');return;}"
-        f"var b64='{b64_data}';"
-        "w.document.open();"
-        "w.document.write('<!DOCTYPE html><html><head><title>A4 포스터 인쇄</title><style>@page{size:A4 portrait;margin:0;}body{margin:0;padding:0;display:flex;justify-content:center;align-items:center;background:#fff;}img{width:100%;height:auto;max-height:100vh;object-fit:contain;}</style></head><body><img src=\"data:image/png;base64,'+b64+'\" onload=\"setTimeout(function(){window.print();},300);\"/></body></html>');"
-        "w.document.close();"
-        "}catch(e){alert('인쇄 창 호출 중 오류가 발생했습니다: '+e);}"
-        "})();"
+    save_key = f"{key_prefix}_poster_save_btn"
+    
+    # 1. 파일 저장 버튼 CSS (선명한 로얄 블루 #2563EB + 선명한 흰색 텍스트)
+    st.markdown(f"""
+    <style>
+    div.st-key-{save_key} button {{
+        background-color: #2563EB !important;
+        background: #2563EB !important;
+        color: #FFFFFF !important;
+        -webkit-text-fill-color: #FFFFFF !important;
+        font-weight: 800 !important;
+        font-size: 16px !important;
+        border-radius: 9px !important;
+        padding: 13px 20px !important;
+        border: none !important;
+        box-shadow: 0 4px 14px rgba(37,99,235,0.35) !important;
+        transition: all 0.2s ease-in-out !important;
+        width: 100% !important;
+        letter-spacing: -0.3px !important;
+    }}
+    div.st-key-{save_key} button:hover {{
+        filter: brightness(1.1) !important;
+        transform: translateY(-2px) !important;
+        box-shadow: 0 6px 18px rgba(37,99,235,0.45) !important;
+    }}
+    div.st-key-{save_key} button p,
+    div.st-key-{save_key} button span,
+    div.st-key-{save_key} button div {{
+        color: #FFFFFF !important;
+        -webkit-text-fill-color: #FFFFFF !important;
+        font-weight: 800 !important;
+        font-size: 16px !important;
+    }}
+    </style>
+    """, unsafe_allow_html=True)
+    
+    st.download_button(
+        label="💾 300dpi 초고화질 A4포스터 파일저장",
+        data=file_bytes,
+        file_name=clean_name,
+        mime="image/png",
+        key=save_key,
+        use_container_width=True
     )
+    
+    # 2. 인쇄용 이미지 base64 (용량 최적화하여 팝업 즉시 반응)
+    try:
+        p_img = Image.open(io.BytesIO(file_bytes))
+        pr_io = io.BytesIO()
+        p_img.convert("RGB").save(pr_io, format="JPEG", quality=92, optimize=True)
+        pr_b64 = base64.b64encode(pr_io.getvalue()).decode("ascii")
+    except Exception:
+        pr_b64 = base64.b64encode(file_bytes).decode("ascii")
 
-    return f"""<div style="background: #FFFFFF; border: 1.5px solid #CBD5E1; border-radius: 12px; padding: 14px 18px; margin: 8px 0 14px 0; box-shadow: 0 3px 10px rgba(0,0,0,0.04);">
-<div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px;">
-<div style="display: flex; align-items: center; gap: 8px;">
-<span style="font-size: 20px;">📄</span>
-<span style="font-size: 16.5px; font-weight: 800; color: #1E293B; letter-spacing: -0.3px;">{title_label}</span>
-</div>
-<div style="display: flex; align-items: center; gap: 10px;">
-<button id="poster_print_btn_{uid}" onclick='{js_print}' style="display: inline-flex; align-items: center; justify-content: center; gap: 6px; background-color: #1E293B; color: #FFFFFF !important; -webkit-text-fill-color: #FFFFFF !important; padding: 10px 22px; border-radius: 8px; font-weight: 800; font-size: 15px; border: none; cursor: pointer; box-shadow: 0 3px 10px rgba(30,41,59,0.25); transition: all 0.2s ease-in-out;">
-<span style="font-size: 16px;">🖨️</span>
-<span style="color: #FFFFFF !important; -webkit-text-fill-color: #FFFFFF !important; font-weight: 800;">출력</span>
-</button>
-<a href="data:image/png;base64,{b64_data}" download="{clean_name}" style="text-decoration: none; display: inline-flex;">
-<div style="display: inline-flex; align-items: center; justify-content: center; gap: 6px; background-color: #2563EB; color: #FFFFFF !important; -webkit-text-fill-color: #FFFFFF !important; padding: 10px 22px; border-radius: 8px; font-weight: 800; font-size: 15px; border: none; cursor: pointer; box-shadow: 0 3px 10px rgba(37,99,235,0.3); transition: all 0.2s ease-in-out;">
-<span style="font-size: 16px;">💾</span>
-<span style="color: #FFFFFF !important; -webkit-text-fill-color: #FFFFFF !important; font-weight: 800;">저장</span>
-</div>
-</a>
-</div>
-</div>
-<div style="font-size: 12.5px; color: #64748B; margin-top: 8px; line-height: 1.4;">
-💡 <b>출력</b> 클릭 시 창문부착용 즉시 인쇄(A4 세로 맞춤), <b>저장</b> 클릭 시 내 컴퓨터의 지정 폴더로 즉시 저장됩니다.
-</div>
-</div>"""
+    # 3. 브라우저 보안 및 샌드박스를 우회하는 안전한 iframe 컴포넌트 인쇄 버튼
+    print_html = f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+    <meta charset="utf-8">
+    <style>
+        body {{ margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Pretendard", "Segoe UI", sans-serif; }}
+        .print-btn {{
+            width: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            background-color: #0F172A;
+            color: #FFFFFF;
+            padding: 12px 18px;
+            border-radius: 9px;
+            font-weight: 800;
+            font-size: 15.5px;
+            border: none;
+            cursor: pointer;
+            box-shadow: 0 4px 12px rgba(15,23,42,0.25);
+            transition: all 0.2s ease-in-out;
+            box-sizing: border-box;
+        }}
+        .print-btn:hover {{
+            background-color: #1E293B;
+            transform: translateY(-2px);
+            box-shadow: 0 6px 16px rgba(15,23,42,0.35);
+        }}
+    </style>
+    </head>
+    <body>
+    <button class="print-btn" onclick="openPrintWindow()">
+        <span style="font-size: 16px;">🖨️</span>
+        <span>창문부착용 즉시 인쇄 (A4 맞춤 Ctrl+P)</span>
+    </button>
+    <script>
+    function openPrintWindow() {{
+        var w = window.open('', '_blank', 'width=850,height=1100');
+        if (!w) {{
+            alert('브라우저에서 팝업이 차단되었습니다. 주소창 우측에서 팝업 허용을 눌러주세요.');
+            return;
+        }}
+        w.document.open();
+        w.document.write('<!DOCTYPE html><html><head><title>A4 포스터 인쇄</title><style>@page{{size:A4 portrait;margin:0;}}body{{margin:0;padding:0;display:flex;justify-content:center;align-items:center;background:#fff;}}img{{width:100%;height:auto;max-height:100vh;object-fit:contain;}}</style></head><body><img src="data:image/jpeg;base64,{pr_b64}" onload="setTimeout(function(){{window.print();}},350);"/></body></html>');
+        w.document.close();
+    }}
+    </script>
+    </body>
+    </html>
+    """
+    components.html(print_html, height=52)
+    
+    st.markdown("""
+    <div style="font-size: 12.5px; color: #64748B; margin-top: 4px; margin-bottom: 12px; text-align: center; line-height: 1.4;">
+        💡 <b>저장:</b> 내 컴퓨터에 초고화질 파일 저장 | <b>인쇄:</b> 창문부착용 즉시 인쇄창(Ctrl+P) 호출
+    </div>
+    """, unsafe_allow_html=True)
+    return ""
 
 def render_download_save_controller(
     file_bytes: bytes,
@@ -299,24 +413,25 @@ def render_download_save_controller(
     print_bg: str = "#1E293B"
 ):
     """
-    1) 포스터인 경우: '300dpi 초고화질 A4포스터 파일저장' 옆에 [출력]과 [저장] 버튼 제공 (클릭 시 PC 저장 폴더 직접 지정)
-    2) 썸네일인 경우: PC의 저장 위치(경로)를 직접 지정하여 다운로드하는 스마트 다운로드 버튼 제공
+    1) 포스터인 경우: A4 포스터 초고화질 파일 저장 + 원클릭 즉시 인쇄 지원
+    2) 썸네일인 경우: PC의 지정 폴더로 즉시 다운로드되는 스마트 저장 버튼 지원
     """
     if is_poster:
-        st.markdown(render_poster_action_bar(
+        render_poster_action_bar(
             file_bytes=file_bytes,
             filename=default_filename,
             key_prefix=key_prefix,
             title_label="300dpi 초고화질 A4포스터 파일저장"
-        ), unsafe_allow_html=True)
+        )
     else:
-        st.markdown(render_pc_save_button(
+        render_pc_save_button(
             file_bytes=file_bytes,
             filename=default_filename,
             label=label_download,
             uid_key=key_prefix,
-            bg_color="#FF4B4B"
-        ), unsafe_allow_html=True)
+            bg_color="#FF4B4B",
+            text_color="#FFFFFF"
+        )
 
 def render_deal_done_controller(key_prefix: str, default_color: str = "#FF0101"):
     """
@@ -1703,13 +1818,14 @@ def render_tab_apt_thumb():
         st.markdown("<hr style='margin: 15px 0 12px 0;'/>", unsafe_allow_html=True)
         st.markdown("### 📥 썸네일 파일 저장")
 
-        st.markdown(render_pc_save_button(
+        render_pc_save_button(
             file_bytes=img_bytes,
             filename=download_filename,
             label="💾 1080x1080 썸네일 저장",
             uid_key="apt_thumb_down",
-            bg_color="#FF4B4B"
-        ), unsafe_allow_html=True)
+            bg_color="#FF4B4B",
+            text_color="#FFFFFF"
+        )
 
         st.info("💡 아파트 썸네일을 만드셨다면, 상단의 **'🖨️ 창문부착용A4'** 또는 **'📋 중개대상물표시'** 탭을 클릭하여 포스터 출력과 네이버 광고 서식을 바로 확인하세요!")
 
@@ -3233,10 +3349,10 @@ def render_tab_apt_ad():
             st.info("ℹ️ 중개사무소 정보가 제외되었습니다. 순수 매물 스펙(01~15번 항목)만 출력됩니다. (소공 및 협력 중개사 활용 가능)")
 
 
-    # 우측: 실시간 완성 뷰 (네이버 광고 점검표 1:1 대조 리스트)
+    # 우측: 1080px 중개대상물 표시 카드 (최우선 간소화 뷰)
     with col_ad_output:
-        st.markdown("### 📋 네이버 광고 16개 점검표 (대조용)")
-        st.caption("네이버 부동산 매물 등록창을 띄워두고 위에서부터 순서대로 보며 입력하세요.")
+        st.markdown("### 🖼️ 1080px 중개대상물 표시 카드")
+        st.caption("블로그 본문 및 SNS에 바로 활용하는 1:1 정방형 1080px 고화질 명시사항 카드입니다.")
 
         # 현재 입력 데이터 딕셔너리 구축
         current_spec_data = {
@@ -3271,6 +3387,8 @@ def render_tab_apt_ad():
         # 1. 1080px 고화질 표시 카드 이미지 (최우선 표시 및 100% 저장)
         with st.spinner("표시 카드 렌더링 중..."):
             spec_card_img = render_spec_table_image(current_spec_data)
+        st.image(spec_card_img, caption="1080px 정방형 아파트 중개대상물 표시 카드", use_container_width=True)
+
         card_byte_arr = io.BytesIO()
         spec_card_img.save(card_byte_arr, format="PNG", quality=95)
         card_bytes = card_byte_arr.getvalue()
@@ -3279,13 +3397,14 @@ def render_tab_apt_ad():
         clean_trade = re.sub(r'[^\w\s-]', '', (st.session_state.ad_trade_type or "매매")).strip()
         card_filename = f"중개대상물표시_{clean_loc}_{clean_trade}.png"
 
-        st.markdown(render_pc_save_button(
+        render_pc_save_button(
             file_bytes=card_bytes,
             filename=card_filename,
             label="💾 1080px 중개대상물 표시 카드 저장",
             uid_key="apt_ad_card_pc_save",
-            bg_color="#2563EB"
-        ), unsafe_allow_html=True)
+            bg_color="#2563EB",
+            text_color="#FFFFFF"
+        )
 
         # 2. 부가 서식 (네이버광고 대조 체크리스트 및 블로그 서식은 접어두어 간소화)
         with st.expander("📋 [참고용] 네이버광고 점검표 & 블로그 서식(텍스트/HTML)", expanded=False):
@@ -3436,6 +3555,8 @@ def render_tab_house_ad():
         house_guide = generate_naver_ad_guide_text(house_dict, items=house_items)
 
         # 1. 1080px 고화질 주택 표시 카드 이미지 (최우선 표시 및 100% 저장)
+        st.markdown("### 🖼️ 1080px 주택 중개대상물 표시 카드")
+        st.caption("블로그 본문 및 SNS에 바로 활용하는 1:1 정방형 1080px 고화질 명시사항 카드입니다.")
         with st.spinner("주택 점검표 카드 이미지 생성 중..."):
             h_card_img = render_spec_table_image(house_dict, items=house_items)
         st.image(h_card_img, caption="1080px 정방형 주택 중개대상물 표시 카드", use_container_width=True)
@@ -3443,13 +3564,14 @@ def render_tab_house_ad():
         h_card_img.save(h_card_io, format="PNG", quality=98)
         h_card_bytes = h_card_io.getvalue()
         h_card_name = f"중개대상물표시_주택_{st.session_state.house_ad_trade_type}.png"
-        st.markdown(render_pc_save_button(
+        render_pc_save_button(
             file_bytes=h_card_bytes,
             filename=h_card_name,
             label="💾 1080px 주택 표시 카드 저장",
             uid_key="house_ad_card_pc_save",
-            bg_color="#2563EB"
-        ), unsafe_allow_html=True)
+            bg_color="#2563EB",
+            text_color="#FFFFFF"
+        )
 
         # 2. 부가 서식 (1~3번 텍스트 및 HTML 표는 참고용으로 간편 접기)
         with st.expander("📋 [참고용] 블로그 HTML 표 / 네이버 등록 체크리스트 / 텍스트 복사", expanded=False):
@@ -3963,8 +4085,11 @@ def render_tab_comm_ad():
         }
 
         # 1. 1080px 고화질 상가 카드 (최우선 표시 및 100% 저장)
+        st.markdown("### 🖼️ 1080px 상가 중개대상물 표시 카드")
+        st.caption("블로그 본문 및 SNS에 바로 활용하는 1:1 정방형 1080px 고화질 명시사항 카드입니다.")
         with st.spinner("상가 표시 카드 렌더링 중..."):
             comm_card_img = render_commercial_spec_table_image(current_comm_spec_data)
+        st.image(comm_card_img, caption="1080px 정방형 상가 중개대상물 표시 카드", use_container_width=True)
         comm_card_byte_arr = io.BytesIO()
         comm_card_img.save(comm_card_byte_arr, format="PNG", quality=95)
         comm_card_bytes = comm_card_byte_arr.getvalue()
@@ -3972,13 +4097,14 @@ def render_tab_comm_ad():
         clean_comm_loc = re.sub(r'[^\w\s-]', '', (st.session_state.comm_ad_location.split(" ")[-1] if st.session_state.comm_ad_location else "상가매물")).strip()
         comm_card_filename = f"상가중개대상물표시_{clean_comm_loc}_{'매매' if is_comm_ad_sale else '임차'}.png"
 
-        st.markdown(render_pc_save_button(
+        render_pc_save_button(
             file_bytes=comm_card_bytes,
             filename=comm_card_filename,
             label="💾 1080px 상가 중개대상물 표시 카드 저장",
             uid_key="comm_ad_card_pc_save",
-            bg_color="#2563EB"
-        ), unsafe_allow_html=True)
+            bg_color="#2563EB",
+            text_color="#FFFFFF"
+        )
 
         # 2. 부가 서식 (상가 체크리스트 및 텍스트/HTML 복사 접기)
         with st.expander("📋 [참고용] 상가 네이버광고 점검표 & 블로그 표 서식", expanded=False):
@@ -4114,6 +4240,8 @@ def render_tab_factory_ad():
         factory_guide = generate_naver_ad_guide_text(factory_dict, items=factory_items)
 
         # 1. 1080px 고화질 공장 표시 카드 이미지 (최우선 표시 및 100% 저장)
+        st.markdown("### 🖼️ 1080px 공장 중개대상물 표시 카드")
+        st.caption("블로그 본문 및 SNS에 바로 활용하는 1:1 정방형 1080px 고화질 명시사항 카드입니다.")
         with st.spinner("공장 점검표 카드 이미지 생성 중..."):
             f_card_img = render_spec_table_image(factory_dict, items=factory_items)
         st.image(f_card_img, caption="1080px 정방형 공장 중개대상물 표시 카드", use_container_width=True)
@@ -4121,13 +4249,14 @@ def render_tab_factory_ad():
         f_card_img.save(f_card_io, format="PNG", quality=98)
         f_card_bytes = f_card_io.getvalue()
         f_card_name = f"중개대상물표시_공장_{st.session_state.factory_ad_trade_type}.png"
-        st.markdown(render_pc_save_button(
+        render_pc_save_button(
             file_bytes=f_card_bytes,
             filename=f_card_name,
             label="💾 1080px 공장 표시 카드 저장",
             uid_key="factory_ad_card_pc_save",
-            bg_color="#2563EB"
-        ), unsafe_allow_html=True)
+            bg_color="#2563EB",
+            text_color="#FFFFFF"
+        )
 
         # 2. 부가 서식 (1~3번 텍스트 및 HTML 표는 참고용으로 간편 접기)
         with st.expander("📋 [참고용] 블로그 HTML 표 / 네이버 등록 체크리스트 / 텍스트 복사", expanded=False):
