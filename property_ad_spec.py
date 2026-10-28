@@ -59,7 +59,7 @@ OFFICE_SPEC = {
 
 # 사상 중흥S-클래스 추천 예시 데이터 (원클릭 예시 불러오기용)
 SAMPLE_APT_SPEC = {
-    "location": "부산광역시 사상구 덕포동 220 (사상 중흥S-클래스 105동)",
+    "location": "부산광역시 사상구 덕포동 795 (사상 중흥S-클래스 105동)",
     "area_supply": "111.42",
     "area_exclusive": "79.85",
     "floor_info": "25 / 36층",
@@ -408,32 +408,39 @@ def get_factory_spec_table_data(data: dict) -> list[dict]:
 
 
 def generate_blog_html_table(data: dict, items: list = None) -> str:
-    """네이버 블로그 스마트에디터에 바로 붙여넣을 수 있는 세련된 HTML 표 서식 생성"""
+    """네이버 블로그 스마트에디터(SmartEditor ONE)에 바로 붙여넣을 수 있는 세련된 HTML 표 서식 생성
+    - 마크다운 코드블록 오인 방지를 위해 줄 앞 공백(들여쓰기) 완전 제거
+    - 스마트에디터 붙여넣기 시 배경색/테두리가 깨지지 않도록 헤더·풋터를 table 셀(td) 내부로 통합하고 bgcolor 속성 병기
+    """
     if items is None:
         items = get_ordered_spec_table_data(data)
-    
-    html = """
-<div style="font-family: -apple-system, BlinkMacSystemFont, 'Malgun Gothic', sans-serif; max-width: 780px; margin: 25px auto; border: 2px solid #232529; border-radius: 8px; overflow: hidden; box-shadow: 0 4px 15px rgba(0,0,0,0.08);">
-    <div style="background-color: #232529; color: #FFFFFF; padding: 14px 20px; font-size: 17px; font-weight: 700; display: flex; align-items: center; justify-content: space-between;">
-        <span>📋 중개대상물 인터넷 표시·광고 명시사항</span>
-        <span style="font-size: 13px; color: #F48A26; font-weight: 600;">[공인중개사법 시행령 준수]</span>
-    </div>
-    <table style="width: 100%; border-collapse: collapse; font-size: 14px; text-align: left; background: #FFFFFF;">
-        <tbody>
-"""
+
+    rows = [
+        '<div style="font-family: -apple-system, BlinkMacSystemFont, \'Malgun Gothic\', sans-serif; max-width: 780px; margin: 20px auto;">',
+        '<table style="width: 100%; max-width: 780px; border-collapse: collapse; font-size: 14px; text-align: left; background-color: #FFFFFF; border: 2px solid #232529;">',
+        '<tbody>',
+        '<tr bgcolor="#232529" style="background-color: #232529;">',
+        '<td colspan="2" bgcolor="#232529" style="background-color: #232529; color: #FFFFFF; padding: 14px 20px; font-size: 16px; font-weight: 700; border-bottom: 2px solid #F48A26;">',
+        '<span style="color: #FFFFFF; font-weight: 700;">📋 중개대상물 인터넷 표시·광고 명시사항</span> ',
+        '<span style="font-size: 12px; color: #F48A26; font-weight: 600; margin-left: 8px;">[공인중개사법 시행령 준수]</span>',
+        '</td>',
+        '</tr>',
+    ]
+
     for i, it in enumerate(items):
         bg_col = "#F9FAFC" if i % 2 == 0 else "#FFFFFF"
-        val_escaped = it['val'].replace("\n", "<br/>")
-        html += f"""
-            <tr style="background-color: {bg_col}; border-bottom: 1px solid #E5E8EB;">
-                <td style="width: 25%; padding: 10px 14px; font-weight: 700; color: #333D4B; border-right: 1px solid #E5E8EB; vertical-align: top;">
-                    <span style="display: inline-block; width: 18px; color: #F48A26; font-size: 12px;">{it['num']}.</span> {it['name']}
-                </td>
-                <td style="width: 75%; padding: 10px 14px; color: #1E2022; line-height: 1.5;">
-                    {val_escaped}
-                </td>
-            </tr>
-"""
+        val_escaped = str(it['val']).replace("\n", "<br/>")
+        rows.extend([
+            f'<tr bgcolor="{bg_col}" style="background-color: {bg_col}; border-bottom: 1px solid #E5E8EB;">',
+            f'<td bgcolor="{bg_col}" style="width: 26%; background-color: {bg_col}; padding: 10px 14px; font-weight: 700; color: #333D4B; border-right: 1px solid #E5E8EB; border-bottom: 1px solid #E5E8EB; vertical-align: top;">'
+            f'<span style="color: #F48A26; font-weight: 800; font-size: 13px; margin-right: 4px;">{it["num"]:02d}.</span>{it["name"]}'
+            f'</td>',
+            f'<td bgcolor="{bg_col}" style="width: 74%; background-color: {bg_col}; padding: 10px 14px; color: #1E2022; border-bottom: 1px solid #E5E8EB; line-height: 1.55;">'
+            f'{val_escaped}'
+            f'</td>',
+            '</tr>',
+        ])
+
     include_office = data.get("include_office_info", True)
     if include_office:
         office_name = data.get('office_name', '참좋은공인중개사사무소')
@@ -442,23 +449,111 @@ def generate_blog_html_table(data: dict, items: list = None) -> str:
         office_addr = data.get('office_address', '부산 사상구 강선로 9, 1층')
         as_name = data.get("assistant_name", "").strip()
         as_phone = data.get("assistant_phone", "").strip()
-        
         as_tag = f" | 👤 담당(소공): {as_name} ({as_phone})" if (as_name or as_phone) else ""
-        html += f"""
-        </tbody>
-    </table>
-    <div style="background-color: #F48A26; color: #FFFFFF; padding: 12px 20px; font-size: 14px; font-weight: 600; text-align: center;">
-        🏢 {office_name} (대표 {office_owner}) ☎ {office_phone}{as_tag} | {office_addr}
-    </div>
+        rows.extend([
+            '<tr bgcolor="#F48A26" style="background-color: #F48A26;">',
+            '<td colspan="2" bgcolor="#F48A26" style="background-color: #F48A26; color: #FFFFFF; padding: 12px 20px; font-size: 14px; font-weight: 700; text-align: center;">',
+            f'🏢 {office_name} (대표 {office_owner}) ☎ {office_phone}{as_tag} | {office_addr}',
+            '</td>',
+            '</tr>',
+        ])
+
+    rows.extend([
+        '</tbody>',
+        '</table>',
+        '</div>',
+    ])
+    return "\n".join(rows)
+
+
+def generate_standalone_blog_html_file(table_html: str, title: str = "중개대상물 표시·광고 명시사항 표") -> bytes:
+    """메모장 변환 과정 없이 바로 더블클릭해 열거나 복사할 수 있는 완성형 단일 .html 파일 바이트 생성"""
+    doc = f"""<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>{title}</title>
+<style>
+  body {{
+    font-family: -apple-system, BlinkMacSystemFont, 'Malgun Gothic', sans-serif;
+    background-color: #F1F5F9;
+    margin: 0;
+    padding: 30px 20px;
+  }}
+  .guide-box {{
+    max-width: 780px;
+    margin: 0 auto 20px auto;
+    background: #FFFFFF;
+    border: 2px solid #2563EB;
+    border-radius: 12px;
+    padding: 18px 22px;
+    box-shadow: 0 4px 12px rgba(37,99,235,0.12);
+    text-align: center;
+  }}
+  .copy-btn {{
+    display: inline-block;
+    width: 100%;
+    padding: 15px 24px;
+    background-color: #2563EB;
+    color: #FFFFFF;
+    font-size: 17px;
+    font-weight: 800;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    box-shadow: 0 4px 10px rgba(37,99,235,0.3);
+    transition: all 0.2s;
+  }}
+  .copy-btn:hover {{
+    background-color: #1D4ED8;
+  }}
+  .table-wrap {{
+    max-width: 780px;
+    margin: 0 auto;
+    background: #FFFFFF;
+    padding: 10px;
+    border-radius: 10px;
+  }}
+</style>
+</head>
+<body>
+<div class="guide-box">
+  <div style="font-size: 15px; font-weight: 700; color: #1E293B; margin-bottom: 10px;">
+    💡 아래 파란색 버튼을 누르신 뒤, <b>네이버 블로그 글쓰기 창에서 붙여넣기(Ctrl+V)</b> 하시면 표 디자인 그대로 들어갑니다!
+  </div>
+  <button id="copyTableBtn" class="copy-btn" onclick="copyRenderedTable()">
+    📋 이 표 전체 복사하기 (클릭 후 블로그에 Ctrl+V)
+  </button>
 </div>
-"""
-    else:
-        html += """
-        </tbody>
-    </table>
+<div id="blogTableTarget" class="table-wrap">
+{table_html}
 </div>
-"""
-    return html.strip()
+<script>
+function copyRenderedTable() {{
+  var target = document.getElementById('blogTableTarget');
+  var btn = document.getElementById('copyTableBtn');
+  try {{
+    var range = document.createRange();
+    range.selectNodeContents(target);
+    var sel = window.getSelection();
+    sel.removeAllRanges();
+    sel.addRange(range);
+    document.execCommand('copy');
+    sel.removeAllRanges();
+    btn.innerText = '✅ 복사 완료! 이제 네이버 블로그 글쓰기 창에서 Ctrl+V를 누르세요!';
+    btn.style.backgroundColor = '#10B981';
+    setTimeout(function() {{
+      btn.innerText = '📋 이 표 전체 복사하기 (클릭 후 블로그에 Ctrl+V)';
+      btn.style.backgroundColor = '#2563EB';
+    }}, 3500);
+  }} catch (e) {{
+    alert('아래 표를 마우스로 드래그하여 복사(Ctrl+C)해주세요.');
+  }}
+}}
+</script>
+</body>
+</html>"""
+    return doc.encode("utf-8")
 
 def generate_clipboard_text(data: dict, items: list = None) -> str:
     """블로그 본문 또는 카카오톡 전송용 일반 텍스트 서식"""

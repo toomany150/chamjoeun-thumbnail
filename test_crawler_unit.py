@@ -16,7 +16,7 @@ SAMPLE_CLIPBOARD_TEXT = """
 해당면적 세대수: 331세대 (총 1,572세대)
 건축물 용도: 공동주택 (아파트)
 사용승인일: 2023.07.28
-소재지: 부산광역시 사상구 덕포동 220
+소재지: 부산광역시 사상구 덕포동 795
 """
 
 class TestNaverCrawler(unittest.TestCase):
@@ -41,7 +41,7 @@ class TestNaverCrawler(unittest.TestCase):
         self.assertEqual(res.get("direction"), "남동향 (거실 기준)")
         self.assertEqual(res.get("entrance_type"), "계단식")
         self.assertEqual(res.get("approval_date"), "2023.07.28")
-        self.assertTrue("부산광역시 사상구 덕포동 220" in res.get("location", ""))
+        self.assertTrue("부산광역시 사상구 덕포동 795" in res.get("location", ""))
 
 if __name__ == "__main__":
     unittest.main()

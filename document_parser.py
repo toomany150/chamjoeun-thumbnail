@@ -62,18 +62,19 @@ def identify_document_type(text: str) -> str:
     """텍스트 내용을 분석하여 서류 유형을 정밀 감지합니다."""
     text_condensed = text.replace(" ", "")
     
-    if "건축물대장" in text_condensed:
-        is_jeon = "전유부" in text_condensed or "전유부분" in text_condensed or "전유" in text_condensed
-        is_pyo = "표제부" in text_condensed or "총괄표제부" in text_condensed
-        
-        if is_jeon and is_pyo:
-            return "집합건축물대장 (표제부+전유부 복합)"
-        elif is_jeon:
-            return "집합건축물대장 (전유부)"
-        elif is_pyo:
-            if "총괄표제부" in text_condensed:
-                return "집합건축물대장 (총괄표제부)"
-            return "집합건축물대장 (표제부)"
+    is_jeon = any(k in text_condensed for k in ["전유부", "전유부분", "호명칭", "공용부분", "전유면적"])
+    is_pyo = any(k in text_condensed for k in ["총괄표제부", "표제부", "총주차대수", "세대수", "가구수"])
+    is_bldg = any(k in text_condensed for k in ["건축물대장", "대지위치", "건축물명칭", "허가일", "사용승인일", "주구조", "도로명주소", "주용도"])
+    
+    if (is_jeon and is_pyo) or ("건축물대장" in text_condensed and is_jeon and is_pyo):
+        return "집합건축물대장 (표제부+전유부 복합)"
+    elif is_jeon:
+        return "집합건축물대장 (전유부)"
+    elif is_pyo:
+        if "총괄표제부" in text_condensed:
+            return "집합건축물대장 (총괄표제부)"
+        return "집합건축물대장 (표제부)"
+    elif "건축물대장" in text_condensed or is_bldg:
         return "일반건축물대장"
     elif "토지대장" in text_condensed or "임야대장" in text_condensed:
         return "토지대장"
@@ -771,7 +772,23 @@ def parse_official_document(file_or_bytes, filename: str = "") -> Tuple[str, Dic
     공적 서류를 종합 분석하여 (서류유형, 추출된 딕셔너리, 원본텍스트요약)을 반환합니다.
     """
     pages_text = extract_pages_text_from_pdf(file_or_bytes)
-    return parse_single_or_multi_document(pages_text)
+    doc_type, parsed, full_text = parse_single_or_multi_document(pages_text)
+    
+    # 본문 텍스트에서 식별이 모호했지만 파일명에 단서가 있는 경우 지능형 보강
+    if filename:
+        fn_clean = filename.replace(" ", "")
+        if "표제부" in fn_clean and "전유" in fn_clean:
+            doc_type = "집합건축물대장 (표제부+전유부 복합)"
+        elif ("표제부" in fn_clean or "총괄" in fn_clean) and "전유부" not in doc_type:
+            doc_type = "집합건축물대장 (표제부)"
+            if full_text and not parsed:
+                parsed = parse_building_register_title(full_text)
+        elif ("전유부" in fn_clean or "전유" in fn_clean) and "표제부" not in doc_type:
+            doc_type = "집합건축물대장 (전유부)"
+            if full_text and not parsed:
+                parsed = parse_building_register_exclusive(full_text)
+
+    return doc_type, parsed, full_text
 
 
 def parse_raw_script_document(raw_text: str) -> Tuple[str, Dict[str, Any]]:

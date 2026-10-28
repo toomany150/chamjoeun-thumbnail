@@ -9,8 +9,8 @@ from document_parser import (
 # 정부24 / 세움터 표제부 모의 텍스트
 SAMPLE_TITLE_TEXT = """
 [총괄표제부] (집합건축물대장)
-대지위치: 부산광역시 사상구 덕포동 220
-지번: 220
+대지위치: 부산광역시 사상구 덕포동 795
+지번: 795
 도로명주소: 부산광역시 사상구 사상로 300
 건축물명칭: 사상 중흥S-클래스 그랜드센트럴
 동명칭: 제105동
@@ -27,7 +27,7 @@ SAMPLE_TITLE_TEXT = """
 # 정부24 / 세움터 전유부 모의 텍스트
 SAMPLE_EXCLUSIVE_TEXT = """
 [전유부] (집합건축물대장)
-대지위치: 부산광역시 사상구 덕포동 220
+대지위치: 부산광역시 사상구 덕포동 795
 건축물명칭: 사상 중흥S-클래스 그랜드센트럴 제105동
 호명칭: 제2501호
 층별: 제25층
@@ -74,7 +74,7 @@ class TestDocumentParser(unittest.TestCase):
         self.assertEqual(merged.get("approval_date"), "2023년 07월 28일")
         self.assertEqual(merged.get("households"), "총 1,572세대")
         self.assertIn("1,685대", merged.get("parking", ""))
-        self.assertIn("덕포동 220", merged.get("location", ""))
+        self.assertIn("덕포동 795", merged.get("location", ""))
         self.assertIn("2501호", merged.get("location", ""))
 
 if __name__ == "__main__":

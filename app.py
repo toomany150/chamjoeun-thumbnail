@@ -46,6 +46,7 @@ from property_ad_spec import (
     get_house_spec_table_data,
     get_factory_spec_table_data,
     generate_blog_html_table,
+    generate_standalone_blog_html_file,
     generate_clipboard_text,
     generate_naver_ad_guide_text,
     render_spec_table_image
@@ -145,6 +146,186 @@ def render_direct_print_button(image_bytes: bytes, file_name: str, button_label:
 <span style="color: #FFFFFF !important; -webkit-text-fill-color: #FFFFFF !important; font-weight: 800; font-size: 17px; letter-spacing: -0.3px;">{clean_text}</span>
 </button>
 </div>"""
+
+def render_blog_html_action_bar(table_html: str, filename_base: str, key_prefix: str):
+    """
+    네이버 블로그(스마트에디터 ONE)에 메모장 변환 과정 없이 바로 표 서식을 넣는 올인원 컨트롤러:
+    1) [좌측] 📋 원클릭 '완성된 표' 서식 복사 (클릭 후 블로그 글쓰기 창에서 바로 Ctrl+V 하면 표 디자인 그대로 안착!)
+    2) [우측] 💾 완성된 표(.html) 통합 파일 다운로드 (메모장 열기·붙여넣기·저장 1~3단계를 하나로 통합한 완성형 파일)
+    """
+    clean_name = re.sub(r'[\\/*?:"<>|\'\"]', '', filename_base).strip()
+    if not clean_name:
+        clean_name = "블로그표서식.html"
+    if not clean_name.lower().endswith(".html"):
+        clean_name += ".html"
+
+    html_file_bytes = generate_standalone_blog_html_file(table_html, title=clean_name.replace(".html", ""))
+    b64_html = base64.b64encode(table_html.encode("utf-8")).decode("ascii")
+    btn_html_dl_key = f"{key_prefix}_html_file_dl"
+
+    st.markdown(f"""
+    <style>
+    div.st-key-{btn_html_dl_key} {{
+        margin: 0 !important;
+        padding: 0 !important;
+        height: 48px !important;
+    }}
+    div.st-key-{btn_html_dl_key} button {{
+        background: #0F172A !important;
+        color: #FFFFFF !important;
+        -webkit-text-fill-color: #FFFFFF !important;
+        font-weight: 800 !important;
+        font-size: 14.5px !important;
+        height: 48px !important;
+        min-height: 48px !important;
+        max-height: 48px !important;
+        border-radius: 9px !important;
+        border: none !important;
+        box-shadow: 0 4px 12px rgba(15,23,42,0.25) !important;
+        width: 100% !important;
+        box-sizing: border-box !important;
+        padding: 0 14px !important;
+        margin: 0 !important;
+        display: flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        transition: all 0.2s ease-in-out !important;
+    }}
+    div.st-key-{btn_html_dl_key} button:hover {{
+        background: #1E293B !important;
+        transform: translateY(-2px) !important;
+    }}
+    div.st-key-{btn_html_dl_key} button p,
+    div.st-key-{btn_html_dl_key} button span {{
+        color: #FFFFFF !important;
+        -webkit-text-fill-color: #FFFFFF !important;
+        font-weight: 800 !important;
+        font-size: 14.5px !important;
+        line-height: 1 !important;
+        margin: 0 !important;
+        padding: 0 !important;
+    }}
+    </style>
+    """, unsafe_allow_html=True)
+
+    col_bh1, col_bh2 = st.columns([1.15, 1], gap="small")
+    with col_bh1:
+        rich_copy_iframe = f"""
+        <!DOCTYPE html>
+        <html>
+        <head>
+        <meta charset="utf-8">
+        <style>
+            * {{ margin: 0; padding: 0; box-sizing: border-box; }}
+            html, body {{
+                margin: 0;
+                padding: 0;
+                height: 48px;
+                overflow: hidden;
+                background: transparent;
+                font-family: -apple-system, BlinkMacSystemFont, "Pretendard", "Malgun Gothic", sans-serif;
+            }}
+            .rich-copy-btn {{
+                width: 100%;
+                height: 48px;
+                min-height: 48px;
+                max-height: 48px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                gap: 6px;
+                background-color: #2563EB;
+                color: #FFFFFF;
+                padding: 0 14px;
+                border-radius: 9px;
+                font-weight: 800;
+                font-size: 14.5px;
+                border: none;
+                cursor: pointer;
+                box-shadow: 0 4px 12px rgba(37,99,235,0.28);
+                transition: all 0.2s ease-in-out;
+            }}
+            .rich-copy-btn:hover {{
+                background-color: #1D4ED8;
+            }}
+        </style>
+        </head>
+        <body>
+        <button id="richBtn" class="rich-copy-btn" onclick="copyRichTable()">
+            <span>📋</span>
+            <span id="richBtnText">완성된 표 원클릭 복사 (블로그에 바로 Ctrl+V)</span>
+        </button>
+        <div id="hiddenRenderBox" contenteditable="true" style="position:fixed; left:-99999px; top:0; width:780px; opacity:0; pointer-events:none;"></div>
+        <script>
+        function copyRichTable() {{
+            var rawHtml = decodeURIComponent(escape(window.atob('{b64_html}')));
+            var box = document.getElementById('hiddenRenderBox');
+            var btn = document.getElementById('richBtn');
+            var btnTxt = document.getElementById('richBtnText');
+            box.innerHTML = rawHtml;
+
+            var copied = false;
+            try {{
+                var range = document.createRange();
+                range.selectNodeContents(box);
+                var sel = window.getSelection();
+                sel.removeAllRanges();
+                sel.addRange(range);
+                copied = document.execCommand('copy');
+                sel.removeAllRanges();
+            }} catch (e) {{
+                copied = false;
+            }}
+
+            if (copied) {{
+                showSuccess(btn, btnTxt);
+            }} else if (navigator.clipboard && window.ClipboardItem) {{
+                var blobHtml = new Blob([rawHtml], {{ type: 'text/html' }});
+                var blobText = new Blob([box.innerText || rawHtml], {{ type: 'text/plain' }});
+                var item = new ClipboardItem({{ 'text/html': blobHtml, 'text/plain': blobText }});
+                navigator.clipboard.write([item]).then(function() {{
+                    showSuccess(btn, btnTxt);
+                }}).catch(function() {{
+                    alert('표 복사에 실패했습니다. 우측의 [.html 통합 파일 다운로드] 버튼을 이용해주세요.');
+                }});
+            }} else {{
+                alert('표 복사에 실패했습니다. 우측의 [.html 통합 파일 다운로드] 버튼을 이용해주세요.');
+            }}
+        }}
+        function showSuccess(btn, btnTxt) {{
+            btn.style.backgroundColor = '#10B981';
+            btnTxt.innerText = '✅ 복사 완료! 블로그 글쓰기 창에서 Ctrl+V 하세요!';
+            setTimeout(function() {{
+                btn.style.backgroundColor = '#2563EB';
+                btnTxt.innerText = '완성된 표 원클릭 복사 (블로그에 바로 Ctrl+V)';
+            }}, 3500);
+        }}
+        </script>
+        </body>
+        </html>
+        """
+        components.html(rich_copy_iframe, height=48)
+
+    with col_bh2:
+        st.download_button(
+            label=f"💾 완성된 표(.html) 통합 파일 다운로드",
+            data=html_file_bytes,
+            file_name=clean_name,
+            mime="text/html",
+            key=btn_html_dl_key,
+            use_container_width=True,
+            help="메모장 열기·붙여넣기·저장(1~3번) 과정이 모두 통합된 완성형 .html 파일을 즉시 다운로드합니다."
+        )
+
+    st.markdown("""
+    <div style="font-size: 12.5px; color: #1E293B; background: #EFF6FF; border: 1px solid #BFDBFE; padding: 10px 14px; border-radius: 8px; margin-top: 8px; margin-bottom: 12px; line-height: 1.55;">
+        ✨ <b>메모장 작업 없이 네이버 블로그에 바로 올리는 3가지 방법:</b><br/>
+        ① <b>[가장 빠름 - 1초 완성]</b> 좌측 파란색 <b>[📋 완성된 표 원클릭 복사]</b> 클릭 ➔ 네이버 블로그 글쓰기 창에서 바로 <b>붙여넣기(Ctrl+V)</b> 하면 회색 배경·주황 번호 표가 그대로 들어갑니다!<br/>
+        ② <b>[하나의 .html 파일로 받기]</b> 우측 검정색 <b>[💾 완성된 표(.html) 통합 파일 다운로드]</b> 클릭 ➔ 다운로드된 파일을 더블클릭해 열고 복사 후 블로그에 붙여넣기<br/>
+        ③ <b>[사진 파일 하나로 바로 올리기]</b> 바로 위 <b>[💾 1080px 중개대상물 표시 카드 저장 (.png)]</b>으로 받은 이미지 파일을 블로그에 사진 첨부하듯 그대로 올리기
+    </div>
+    """, unsafe_allow_html=True)
+
 
 def render_copy_button(text_to_copy: str, button_label: str, btn_id: str = "") -> str:
     """텍스트/HTML을 클립보드로 복사하는 원클릭 복사 버튼 컴포넌트입니다."""
@@ -1087,7 +1268,7 @@ def apply_preset(p_type):
         st.session_state.spec_line5 = "남동향 (거실 기준)"
         
         # 2단계 점검표도 함께 동기화
-        st.session_state.ad_location = "부산광역시 사상구 덕포동 220 (사상 중흥S-클래스 105동)"
+        st.session_state.ad_location = "부산광역시 사상구 덕포동 795 (사상 중흥S-클래스 105동)"
         st.session_state.ad_area_supply = "111.42"
         st.session_state.ad_area_exclusive = "79.85"
         st.session_state.ad_floor_info = "25 / 36층"
@@ -1641,7 +1822,7 @@ def render_smart_autocomplete_console(target_prop_type="apt"):
                 top_script_text = st.text_area(
                     "건축물대장 열람 복사 텍스트 (스크립트)",
                     height=120,
-                    placeholder="대지위치: 부산시 사상구 덕포동 220\n건축물명칭: 사상 중흥S-클래스 제105동 제2501호\n층별: 25층\n전유부분 면적: 79.85㎡...",
+                    placeholder="대지위치: 부산시 사상구 덕포동 795\n건축물명칭: 사상 중흥S-클래스 제105동 제2501호\n층별: 25층\n전유부분 면적: 79.85㎡...",
                     key="top_input_script_doc"
                 )
                 if st.button("🔍 붙여넣은 대장 스크립트 분석 & 즉시 적용", type="primary", use_container_width=True, key="top_btn_parse_script"):
@@ -1655,19 +1836,44 @@ def render_smart_autocomplete_console(target_prop_type="apt"):
                         st.warning("대장 텍스트를 먼저 붙여넣어 주세요.")
 
             with top_doc_tab2:
-                top_uploaded_pdf = st.file_uploader(
-                    "건축물대장 PDF 파일",
+                top_uploaded_pdfs = st.file_uploader(
+                    "건축물대장 PDF 파일 (복수 선택 지원 - 표제부+전유부 자동 병합)",
                     type=["pdf"],
+                    accept_multiple_files=True,
                     key="top_pdf_uploader_key"
                 )
-                if top_uploaded_pdf:
+                if top_uploaded_pdfs:
                     if st.button("🚀 업로드된 PDF 정밀 분석 & 즉시 적용", type="primary", use_container_width=True, key="top_btn_parse_pdf"):
                         try:
-                            p_t, p_res, _ = parse_official_document(top_uploaded_pdf, top_uploaded_pdf.name)
-                            if p_res:
-                                queue_state_update("apply_apt", data=p_res, clean_previous=True, success_msg=f"🎉 [{p_t}] 분석 완료! 즉시 반영되었습니다.")
+                            if len(top_uploaded_pdfs) == 1:
+                                p_t, p_res, _ = parse_official_document(top_uploaded_pdfs[0], top_uploaded_pdfs[0].name)
+                                if p_res:
+                                    queue_state_update("apply_apt", data=p_res, clean_previous=True, success_msg=f"🎉 [{p_t}] 분석 완료! 즉시 반영되었습니다.")
+                                else:
+                                    st.error("⚠️ PDF 파일에서 텍스트를 추출하지 못했습니다. 정부24/세움터 보안(DRM) 문서인 경우 첫 번째 탭 [📋 대장 텍스트 통째로 붙여넣기]에 열람 화면 텍스트를 복사(Ctrl+C)하여 넣어주세요!")
                             else:
-                                st.error("PDF 파일에서 텍스트를 추출하지 못했습니다.")
+                                title_data = {}
+                                exclusive_data = {}
+                                other_data = {}
+                                for f in top_uploaded_pdfs:
+                                    p_t, p_r, _ = parse_official_document(f, f.name)
+                                    if "표제부" in p_t:
+                                        title_data.update(p_r)
+                                    elif "전유부" in p_t:
+                                        exclusive_data.update(p_r)
+                                    else:
+                                        other_data.update(p_r)
+                                if title_data and exclusive_data:
+                                    merged = merge_building_registers(title_data, exclusive_data)
+                                    queue_state_update("apply_apt", data=merged, clean_previous=True, success_msg="🎉 [집합건축물대장 표제부+전유부 통합] 분석 완료! 즉시 반영되었습니다.")
+                                elif title_data:
+                                    queue_state_update("apply_apt", data=title_data, clean_previous=True, success_msg="🎉 [집합건축물대장 표제부] 분석 완료! 즉시 반영되었습니다.")
+                                elif exclusive_data:
+                                    queue_state_update("apply_apt", data=exclusive_data, clean_previous=True, success_msg="🎉 [집합건축물대장 전유부] 분석 완료! 즉시 반영되었습니다.")
+                                elif other_data:
+                                    queue_state_update("apply_apt", data=other_data, clean_previous=True, success_msg="🎉 공적서류 분석 완료! 즉시 반영되었습니다.")
+                                else:
+                                    st.error("⚠️ 업로드된 PDF 파일들에서 텍스트를 추출하지 못했습니다. 정부24/세움터 보안(DRM) 문서인 경우 첫 번째 탭 [📋 대장 텍스트 통째로 붙여넣기]에 열람 화면 텍스트를 복사(Ctrl+C)하여 넣어주세요!")
                         except Exception as e:
                             st.error(f"PDF 분석 오류: {e}")
 
@@ -2419,6 +2625,102 @@ def render_tab_factory_thumb():
 # ====================================================
 # [ 탭 1-2 ] 창문부착용 A4 포스터 전용 렌더러 (아파트, 주택, 상가, 공장)
 # ====================================================
+
+# --- 포스터 -> 썸네일 동기화 안전 콜백 함수들 ---
+# Streamlit 규칙: 위젯 생성 전 실행되는 on_click 콜백에서 session_state를 변경해야 
+# StreamlitWidgetAlreadyInstantiatedError 없이 안전하게 동기화가 반영됩니다.
+
+def sync_poster_to_thumbnail_apt():
+    p_item = st.session_state.get("poster_apt_item_no", st.session_state.get("item_no", "No. APT001"))
+    p_title = st.session_state.get("poster_apt_main_title", st.session_state.get("main_title", "사상 중흥S-클래스"))
+    p_sub = st.session_state.get("poster_apt_sub_title", st.session_state.get("sub_title", "그랜드센트럴"))
+    p_feat = st.session_state.get("poster_apt_feature", st.session_state.get("feature_text", ""))
+    p_trade = st.session_state.get("poster_apt_trade_type", st.session_state.get("thumb_trade_type", "매매"))
+    p_price = st.session_state.get("poster_apt_price", st.session_state.get("thumb_price_text", "6억2천"))
+
+    st.session_state.item_no = p_item
+    st.session_state.main_title = p_title
+    st.session_state.sub_title = p_sub
+    st.session_state.feature_text = p_feat
+    st.session_state.thumb_trade_type = p_trade
+    st.session_state.thumb_price_text = p_price
+    if p_trade in ["매매", "전세", "월세", "분양", "급매"]:
+        st.session_state.ad_trade_type = p_trade
+
+    st.session_state["_last_apt_thumb_sig"] = (p_item, p_title, p_sub, p_feat, p_trade, p_price)
+    st.session_state["_poster_apt_sync_success"] = True
+
+
+def sync_poster_to_thumbnail_house():
+    p_item = st.session_state.get("poster_house_item_no", st.session_state.get("house_item_no", "No. H-001"))
+    p_title = st.session_state.get("poster_house_main_title", st.session_state.get("house_main_title", "사상 덕포동 단독주택"))
+    p_sub = st.session_state.get("poster_house_sub_title", st.session_state.get("house_sub_title", "2층 단독주택"))
+    p_feat = st.session_state.get("poster_house_feature", st.session_state.get("house_feature_text", ""))
+    p_trade = st.session_state.get("poster_house_trade_type", st.session_state.get("house_trade_type", "매매"))
+    p_price = st.session_state.get("poster_house_price", st.session_state.get("house_price_text", "3억 8천"))
+
+    st.session_state.house_item_no = p_item
+    st.session_state.house_main_title = p_title
+    st.session_state.house_sub_title = p_sub
+    st.session_state.house_feature_text = p_feat
+    st.session_state.house_trade_type = p_trade
+    st.session_state.house_price_text = p_price
+    if p_trade in ["매매", "전세", "월세", "분양", "단기"]:
+        st.session_state.house_ad_trade_type = p_trade
+
+    st.session_state["_last_house_thumb_sig"] = (p_item, p_title, p_sub, p_feat, p_trade, p_price)
+    st.session_state["_poster_house_sync_success"] = True
+
+
+def sync_poster_to_thumbnail_comm_lease():
+    p_title = st.session_state.get("poster_comm_l_title", st.session_state.get("comm_lease_main_title", "코너 상가 임차"))
+    p_sub = st.session_state.get("poster_comm_l_sub", st.session_state.get("comm_lease_cp_top", "유동인구 1등! 대로변 1층"))
+    p_feat = st.session_state.get("poster_comm_l_feat", st.session_state.get("comm_lease_top_badge", "사상역 초역세권 · 무권리 추천매물"))
+    p_price = st.session_state.get("poster_comm_l_price", st.session_state.get("comm_lease_spec1", "전용 25평 | 보증금 3,000만 / 월 180만"))
+
+    st.session_state.comm_lease_main_title = p_title
+    st.session_state.comm_lease_cp_top = p_sub
+    st.session_state.comm_lease_top_badge = p_feat
+    st.session_state.comm_lease_spec1 = p_price
+
+    st.session_state["_last_comm_l_thumb_sig"] = (p_title, p_sub, p_feat, p_price)
+    st.session_state["_poster_comm_l_sync_success"] = True
+
+
+def sync_poster_to_thumbnail_comm_sale():
+    p_title = st.session_state.get("poster_comm_s_title", st.session_state.get("comm_sale_main_sub", "안정적인 알짜 상가 매매"))
+    p_sub = st.session_state.get("poster_comm_s_sub", st.session_state.get("comm_sale_top_left", "사상 핵심상권 매매"))
+    p_price = st.session_state.get("poster_comm_s_price", st.session_state.get("comm_sale_main_hl", "확정 수익률 6.8%"))
+
+    st.session_state.comm_sale_main_sub = p_title
+    st.session_state.comm_sale_top_left = p_sub
+    st.session_state.comm_sale_main_hl = p_price
+
+    st.session_state["_last_comm_s_thumb_sig"] = (p_title, p_sub, p_price)
+    st.session_state["_poster_comm_s_sync_success"] = True
+
+
+def sync_poster_to_thumbnail_factory():
+    p_item = st.session_state.get("poster_factory_item_no", st.session_state.get("factory_item_no", "No. FACT-001"))
+    p_title = st.session_state.get("poster_factory_main_title", st.session_state.get("factory_main_title", "사상 감전동 특급 공장"))
+    p_sub = st.session_state.get("poster_factory_sub_title", st.session_state.get("factory_sub_title", "사상공단 대로변 인접"))
+    p_feat = st.session_state.get("poster_factory_feature", st.session_state.get("factory_feature_text", ""))
+    p_trade = st.session_state.get("poster_factory_trade_type", st.session_state.get("factory_trade_type", "매매"))
+    p_price = st.session_state.get("poster_factory_price", st.session_state.get("factory_price_text", "18억 5천"))
+
+    st.session_state.factory_item_no = p_item
+    st.session_state.factory_main_title = p_title
+    st.session_state.factory_sub_title = p_sub
+    st.session_state.factory_feature_text = p_feat
+    st.session_state.factory_trade_type = p_trade
+    st.session_state.factory_price_text = p_price
+    if p_trade in ["매매", "월세", "임대", "급매"]:
+        st.session_state.factory_ad_trade_type = p_trade
+
+    st.session_state["_last_factory_thumb_sig"] = (p_item, p_title, p_sub, p_feat, p_trade, p_price)
+    st.session_state["_poster_factory_sync_success"] = True
+
+
 def render_tab_apt_poster():
     st.markdown("""
     <div style="background-color: #F8F9FB; border-left: 4px solid #F48A26; padding: 12px 18px; border-radius: 6px; margin-bottom: 20px;">
@@ -2430,6 +2732,24 @@ def render_tab_apt_poster():
         </span>
     </div>
     """, unsafe_allow_html=True)
+
+    # 썸네일에서 변경된 내용이 있는 경우 포스터 입력 세션에 자동 반영
+    thumb_sig = (
+        st.session_state.get("item_no", ""),
+        st.session_state.get("main_title", ""),
+        st.session_state.get("sub_title", ""),
+        st.session_state.get("feature_text", ""),
+        st.session_state.get("thumb_trade_type", ""),
+        st.session_state.get("thumb_price_text", "")
+    )
+    if st.session_state.get("_last_apt_thumb_sig") != thumb_sig or "poster_apt_main_title" not in st.session_state:
+        st.session_state["poster_apt_item_no"] = st.session_state.get("item_no", "No. APT001")
+        st.session_state["poster_apt_main_title"] = st.session_state.get("main_title", "사상 중흥S-클래스")
+        st.session_state["poster_apt_sub_title"] = st.session_state.get("sub_title", "그랜드센트럴")
+        st.session_state["poster_apt_feature"] = st.session_state.get("feature_text", "")
+        st.session_state["poster_apt_trade_type"] = st.session_state.get("thumb_trade_type", "매매")
+        st.session_state["poster_apt_price"] = st.session_state.get("thumb_price_text", "6억2천")
+        st.session_state["_last_apt_thumb_sig"] = thumb_sig
 
     col_l, col_r = st.columns([1.2, 1.1])
     
@@ -2451,16 +2771,23 @@ def render_tab_apt_poster():
     if cur_dname:
         selected_design = get_design_by_name(cur_dname)
 
+    p_item = st.session_state.get("poster_apt_item_no", st.session_state.get("item_no", "No. APT001"))
+    p_title = st.session_state.get("poster_apt_main_title", st.session_state.get("main_title", "사상 중흥S-클래스"))
+    p_sub = st.session_state.get("poster_apt_sub_title", st.session_state.get("sub_title", "그랜드센트럴"))
+    p_feature = st.session_state.get("poster_apt_feature", st.session_state.get("feature_text", ""))
+    p_trade = st.session_state.get("poster_apt_trade_type", st.session_state.get("thumb_trade_type", "매매"))
+    p_price = st.session_state.get("poster_apt_price", st.session_state.get("thumb_price_text", "6억2천"))
+
     with col_l:
         with st.spinner("창문 부착용 150DPI A4 포스터 렌더링 중..."):
             a4_poster_img = render_a4_window_poster(
                 bg_image=uploaded_bg,
-                item_no=st.session_state.item_no,
-                main_title=st.session_state.main_title,
-                sub_title=st.session_state.sub_title,
-                feature_text=st.session_state.feature_text,
-                trade_type=st.session_state.thumb_trade_type,
-                price_text=st.session_state.thumb_price_text,
+                item_no=p_item,
+                main_title=p_title,
+                sub_title=p_sub,
+                feature_text=p_feature,
+                trade_type=p_trade,
+                price_text=p_price,
                 spec_lines=spec_lines,
                 office_name=st.session_state.get("ad_office_name", "참좋은공인중개사사무소"),
                 office_owner=st.session_state.get("ad_office_owner", "신제환"),
@@ -2485,8 +2812,8 @@ def render_tab_apt_poster():
         """, unsafe_allow_html=True)
 
     with col_r:
-        clean_title = re.sub(r'[\\/*?:"<>|]', "", st.session_state.main_title).strip()
-        clean_price = re.sub(r'[\\/*?:"<>|]', "", st.session_state.thumb_price_text).strip()
+        clean_title = re.sub(r'[\\/*?:"<>|]', "", p_title).strip()
+        clean_price = re.sub(r'[\\/*?:"<>|]', "", p_price).strip()
         a4_filename = f"창문부착용_아파트포스터_{clean_title}_{clean_price}.png"
         
         a4_io = io.BytesIO()
@@ -2504,26 +2831,29 @@ def render_tab_apt_poster():
         )
 
         with st.expander("🛠️ 포스터 주요 문구 및 중개사무소 정보 간편 수정", expanded=True):
-            st.text_input("🏷️ 물건 번호", key="poster_apt_item_no", value=st.session_state.item_no)
-            st.text_input("🏢 메인 타이틀 (아파트명)", key="poster_apt_main_title", value=st.session_state.main_title)
-            st.text_input("📍 서브 타이틀 (동/단지명)", key="poster_apt_sub_title", value=st.session_state.sub_title)
-            st.text_input("✨ 매물 핵심 특징", key="poster_apt_feature", value=st.session_state.feature_text)
+            st.text_input("🏷️ 물건 번호", key="poster_apt_item_no")
+            st.text_input("🏢 메인 타이틀 (아파트명)", key="poster_apt_main_title")
+            st.text_input("📍 서브 타이틀 (동/단지명)", key="poster_apt_sub_title")
+            st.text_input("✨ 매물 핵심 특징", key="poster_apt_feature")
             
             cp1, cp2 = st.columns(2)
             with cp1:
-                st.selectbox("거래 형태", ["매매", "전세", "월세", "분양", "급매"], key="poster_apt_trade_type", index=0 if st.session_state.thumb_trade_type not in ["매매", "전세", "월세", "분양", "급매"] else ["매매", "전세", "월세", "분양", "급매"].index(st.session_state.thumb_trade_type))
+                trade_opts = ["매매", "전세", "월세", "분양", "급매"]
+                cur_trade = st.session_state.get("poster_apt_trade_type", "매매")
+                t_idx = trade_opts.index(cur_trade) if cur_trade in trade_opts else 0
+                st.selectbox("거래 형태", trade_opts, key="poster_apt_trade_type", index=t_idx)
             with cp2:
-                st.text_input("금액", key="poster_apt_price", value=st.session_state.thumb_price_text)
+                st.text_input("금액", key="poster_apt_price")
 
-            if st.button("🔄 포스터 수정 내용 썸네일과 동기화 적용", key="btn_sync_poster_apt", use_container_width=True):
-                st.session_state.item_no = st.session_state.poster_apt_item_no
-                st.session_state.main_title = st.session_state.poster_apt_main_title
-                st.session_state.sub_title = st.session_state.poster_apt_sub_title
-                st.session_state.feature_text = st.session_state.poster_apt_feature
-                st.session_state.thumb_trade_type = st.session_state.poster_apt_trade_type
-                st.session_state.thumb_price_text = st.session_state.poster_apt_price
-                st.success("포스터 문구가 동기화되었습니다!")
-                st.rerun()
+            if st.session_state.pop("_poster_apt_sync_success", False):
+                st.success("✅ 포스터 수정 내용이 썸네일과 점검 항목에 완벽하게 동기화되었습니다!")
+
+            st.button(
+                "🔄 포스터 수정 내용 썸네일과 동기화 적용",
+                key="btn_sync_poster_apt",
+                on_click=sync_poster_to_thumbnail_apt,
+                use_container_width=True
+            )
 
 
 def render_tab_house_poster():
@@ -2537,6 +2867,24 @@ def render_tab_house_poster():
         </span>
     </div>
     """, unsafe_allow_html=True)
+
+    # 썸네일에서 변경된 내용이 있는 경우 포스터 입력 세션에 자동 반영
+    house_thumb_sig = (
+        st.session_state.get("house_item_no", ""),
+        st.session_state.get("house_main_title", ""),
+        st.session_state.get("house_sub_title", ""),
+        st.session_state.get("house_feature_text", ""),
+        st.session_state.get("house_trade_type", ""),
+        st.session_state.get("house_price_text", "")
+    )
+    if st.session_state.get("_last_house_thumb_sig") != house_thumb_sig or "poster_house_main_title" not in st.session_state:
+        st.session_state["poster_house_item_no"] = st.session_state.get("house_item_no", "No. H-001")
+        st.session_state["poster_house_main_title"] = st.session_state.get("house_main_title", "사상 덕포동 단독주택")
+        st.session_state["poster_house_sub_title"] = st.session_state.get("house_sub_title", "2층 단독주택")
+        st.session_state["poster_house_feature"] = st.session_state.get("house_feature_text", "")
+        st.session_state["poster_house_trade_type"] = st.session_state.get("house_trade_type", "매매")
+        st.session_state["poster_house_price"] = st.session_state.get("house_price_text", "3억 8천")
+        st.session_state["_last_house_thumb_sig"] = house_thumb_sig
 
     col_l, col_r = st.columns([1.2, 1.1])
     
@@ -2558,16 +2906,23 @@ def render_tab_house_poster():
     if cur_dname:
         selected_design = get_design_by_name(cur_dname)
 
+    p_h_item = st.session_state.get("poster_house_item_no", st.session_state.get("house_item_no", "No. H-001"))
+    p_h_title = st.session_state.get("poster_house_main_title", st.session_state.get("house_main_title", "사상 덕포동 단독주택"))
+    p_h_sub = st.session_state.get("poster_house_sub_title", st.session_state.get("house_sub_title", "2층 단독주택"))
+    p_h_feature = st.session_state.get("poster_house_feature", st.session_state.get("house_feature_text", ""))
+    p_h_trade = st.session_state.get("poster_house_trade_type", st.session_state.get("house_trade_type", "매매"))
+    p_h_price = st.session_state.get("poster_house_price", st.session_state.get("house_price_text", "3억 8천"))
+
     with col_l:
         with st.spinner("창문 부착용 150DPI A4 포스터 렌더링 중..."):
             house_a4_img = render_a4_window_poster(
                 bg_image=uploaded_house_bg,
-                item_no=st.session_state.house_item_no,
-                main_title=st.session_state.house_main_title,
-                sub_title=st.session_state.house_sub_title,
-                feature_text=st.session_state.house_feature_text,
-                trade_type=st.session_state.house_trade_type,
-                price_text=st.session_state.house_price_text,
+                item_no=p_h_item,
+                main_title=p_h_title,
+                sub_title=p_h_sub,
+                feature_text=p_h_feature,
+                trade_type=p_h_trade,
+                price_text=p_h_price,
                 spec_lines=house_specs,
                 office_name=st.session_state.get("ad_office_name", "참좋은공인중개사사무소"),
                 office_owner=st.session_state.get("ad_office_owner", "신제환"),
@@ -2592,8 +2947,8 @@ def render_tab_house_poster():
         """, unsafe_allow_html=True)
 
     with col_r:
-        clean_title = re.sub(r'[\\/*?:"<>|]', "", st.session_state.house_main_title).strip()
-        clean_price = re.sub(r'[\\/*?:"<>|]', "", st.session_state.house_price_text).strip()
+        clean_title = re.sub(r'[\\/*?:"<>|]', "", p_h_title).strip()
+        clean_price = re.sub(r'[\\/*?:"<>|]', "", p_h_price).strip()
         house_a4_name = f"창문부착용_주택포스터_{clean_title}_{clean_price}.png"
 
         h_a4_io = io.BytesIO()
@@ -2611,26 +2966,29 @@ def render_tab_house_poster():
         )
 
         with st.expander("🛠️ 포스터 주요 문구 및 중개사무소 정보 간편 수정", expanded=True):
-            st.text_input("🏷️ 물건 번호", key="poster_house_item_no", value=st.session_state.house_item_no)
-            st.text_input("🏡 메인 타이틀 (주택명)", key="poster_house_main_title", value=st.session_state.house_main_title)
-            st.text_input("📍 서브 타이틀 (동/층/구조)", key="poster_house_sub_title", value=st.session_state.house_sub_title)
-            st.text_input("✨ 매물 핵심 특징", key="poster_house_feature", value=st.session_state.house_feature_text)
+            st.text_input("🏷️ 물건 번호", key="poster_house_item_no")
+            st.text_input("🏡 메인 타이틀 (주택명)", key="poster_house_main_title")
+            st.text_input("📍 서브 타이틀 (동/층/구조)", key="poster_house_sub_title")
+            st.text_input("✨ 매물 핵심 특징", key="poster_house_feature")
             
             cp1, cp2 = st.columns(2)
             with cp1:
-                st.selectbox("거래 형태", ["매매", "전세", "월세", "분양", "단기"], key="poster_house_trade_type", index=0 if st.session_state.house_trade_type not in ["매매", "전세", "월세", "분양", "단기"] else ["매매", "전세", "월세", "분양", "단기"].index(st.session_state.house_trade_type))
+                trade_opts = ["매매", "전세", "월세", "분양", "단기"]
+                cur_trade = st.session_state.get("poster_house_trade_type", "매매")
+                t_idx = trade_opts.index(cur_trade) if cur_trade in trade_opts else 0
+                st.selectbox("거래 형태", trade_opts, key="poster_house_trade_type", index=t_idx)
             with cp2:
-                st.text_input("금액", key="poster_house_price", value=st.session_state.house_price_text)
+                st.text_input("금액", key="poster_house_price")
 
-            if st.button("🔄 포스터 수정 내용 썸네일과 동기화 적용", key="btn_sync_poster_house", use_container_width=True):
-                st.session_state.house_item_no = st.session_state.poster_house_item_no
-                st.session_state.house_main_title = st.session_state.poster_house_main_title
-                st.session_state.house_sub_title = st.session_state.poster_house_sub_title
-                st.session_state.house_feature_text = st.session_state.poster_house_feature
-                st.session_state.house_trade_type = st.session_state.poster_house_trade_type
-                st.session_state.house_price_text = st.session_state.poster_house_price
-                st.success("주택 포스터 문구가 동기화되었습니다!")
-                st.rerun()
+            if st.session_state.pop("_poster_house_sync_success", False):
+                st.success("✅ 주택 포스터 수정 내용이 썸네일과 점검 항목에 완벽하게 동기화되었습니다!")
+
+            st.button(
+                "🔄 포스터 수정 내용 썸네일과 동기화 적용",
+                key="btn_sync_poster_house",
+                on_click=sync_poster_to_thumbnail_house,
+                use_container_width=True
+            )
 
 
 def render_tab_comm_poster():
@@ -2645,17 +3003,43 @@ def render_tab_comm_poster():
     </div>
     """, unsafe_allow_html=True)
 
+    is_comm_sale = "매매" in st.session_state.get("comm_thumb_mode", "임대차")
+
+    if not is_comm_sale:
+        comm_l_thumb_sig = (
+            st.session_state.get("comm_lease_main_title", "코너 상가 임차"),
+            st.session_state.get("comm_lease_cp_top", "유동인구 1등! 대로변 1층"),
+            st.session_state.get("comm_lease_top_badge", "사상역 초역세권 · 무권리 추천매물"),
+            st.session_state.get("comm_lease_spec1", "전용 25평 | 보증금 3,000만 / 월 180만")
+        )
+        if st.session_state.get("_last_comm_l_thumb_sig") != comm_l_thumb_sig or "poster_comm_l_title" not in st.session_state:
+            st.session_state["poster_comm_l_title"] = comm_l_thumb_sig[0]
+            st.session_state["poster_comm_l_sub"] = comm_l_thumb_sig[1]
+            st.session_state["poster_comm_l_feat"] = comm_l_thumb_sig[2]
+            st.session_state["poster_comm_l_price"] = comm_l_thumb_sig[3]
+            st.session_state["_last_comm_l_thumb_sig"] = comm_l_thumb_sig
+    else:
+        comm_s_thumb_sig = (
+            st.session_state.get("comm_sale_main_sub", "안정적인 알짜 상가 매매"),
+            st.session_state.get("comm_sale_top_left", "사상 핵심상권 매매"),
+            st.session_state.get("comm_sale_main_hl", "확정 수익률 6.8%")
+        )
+        if st.session_state.get("_last_comm_s_thumb_sig") != comm_s_thumb_sig or "poster_comm_s_title" not in st.session_state:
+            st.session_state["poster_comm_s_title"] = comm_s_thumb_sig[0]
+            st.session_state["poster_comm_s_sub"] = comm_s_thumb_sig[1]
+            st.session_state["poster_comm_s_price"] = comm_s_thumb_sig[2]
+            st.session_state["_last_comm_s_thumb_sig"] = comm_s_thumb_sig
+
     col_l, col_r = st.columns([1.2, 1.1])
     
     uploaded_comm_bg = st.session_state.get("saved_comm_uploaded_bg")
-    is_comm_sale = "매매" in st.session_state.get("comm_thumb_mode", "임대차")
     
     if not is_comm_sale:
-        comm_a4_title = st.session_state.get("comm_lease_main_title", "코너 상가 임차")
-        comm_a4_sub = st.session_state.get("comm_lease_cp_top", "유동인구 1등! 대로변 1층")
-        comm_a4_feature = st.session_state.get("comm_lease_top_badge", "사상역 초역세권 · 무권리 추천매물")
+        comm_a4_title = st.session_state.get("poster_comm_l_title", st.session_state.get("comm_lease_main_title", "코너 상가 임차"))
+        comm_a4_sub = st.session_state.get("poster_comm_l_sub", st.session_state.get("comm_lease_cp_top", "유동인구 1등! 대로변 1층"))
+        comm_a4_feature = st.session_state.get("poster_comm_l_feat", st.session_state.get("comm_lease_top_badge", "사상역 초역세권 · 무권리 추천매물"))
         comm_a4_trade = "임대"
-        comm_spec1 = st.session_state.get("comm_lease_spec1", "전용 25평 | 보증금 3,000만 / 월 180만")
+        comm_spec1 = st.session_state.get("poster_comm_l_price", st.session_state.get("comm_lease_spec1", "전용 25평 | 보증금 3,000만 / 월 180만"))
         comm_a4_price = comm_spec1.split("|")[-1].strip() if "|" in comm_spec1 else comm_spec1
         comm_a4_specs = [
             comm_spec1,
@@ -2665,11 +3049,11 @@ def render_tab_comm_poster():
             "도로변 가시성 우수"
         ]
     else:
-        comm_a4_title = st.session_state.get("comm_sale_main_sub", "안정적인 알짜 상가 매매")
-        comm_a4_sub = st.session_state.get("comm_sale_top_left", "사상 핵심상권 매매")
+        comm_a4_title = st.session_state.get("poster_comm_s_title", st.session_state.get("comm_sale_main_sub", "안정적인 알짜 상가 매매"))
+        comm_a4_sub = st.session_state.get("poster_comm_s_sub", st.session_state.get("comm_sale_top_left", "사상 핵심상권 매매"))
         comm_a4_feature = st.session_state.get("comm_sale_top_right", "우량 임차인 성업중")
         comm_a4_trade = "매매"
-        comm_a4_price = st.session_state.get("comm_sale_main_hl", "확정 수익률 6.8%")
+        comm_a4_price = st.session_state.get("poster_comm_s_price", st.session_state.get("comm_sale_main_hl", "확정 수익률 6.8%"))
         comm_a4_specs = [
             st.session_state.get("comm_sale_price_spec", "매매가 15억 | 보증금 8천 / 월수익 650만"),
             comm_a4_price,
@@ -2742,27 +3126,30 @@ def render_tab_comm_poster():
 
         with st.expander("🛠️ 상가 포스터 주요 문구 간편 수정", expanded=True):
             if not is_comm_sale:
-                st.text_input("🏢 상가 메인 타이틀", key="poster_comm_l_title", value=st.session_state.get("comm_lease_main_title", "코너 상가 임차"))
-                st.text_input("📍 상단 강조 카피", key="poster_comm_l_sub", value=st.session_state.get("comm_lease_cp_top", "유동인구 1등! 대로변 1층"))
-                st.text_input("✨ 캡슐 뱃지 문구", key="poster_comm_l_feat", value=st.session_state.get("comm_lease_top_badge", "사상역 초역세권 · 무권리 추천매물"))
-                st.text_input("💰 1행 스펙 (보증금/월세)", key="poster_comm_l_price", value=st.session_state.get("comm_lease_spec1", "전용 25평 | 보증금 3,000만 / 월 180만"))
-                if st.button("🔄 임대 상가 포스터 수정 동기화", key="btn_sync_poster_comm_l", use_container_width=True):
-                    st.session_state.comm_lease_main_title = st.session_state.poster_comm_l_title
-                    st.session_state.comm_lease_cp_top = st.session_state.poster_comm_l_sub
-                    st.session_state.comm_lease_top_badge = st.session_state.poster_comm_l_feat
-                    st.session_state.comm_lease_spec1 = st.session_state.poster_comm_l_price
-                    st.success("상가 문구가 동기화되었습니다!")
-                    st.rerun()
+                st.text_input("🏢 상가 메인 타이틀", key="poster_comm_l_title")
+                st.text_input("📍 상단 강조 카피", key="poster_comm_l_sub")
+                st.text_input("✨ 캡슐 뱃지 문구", key="poster_comm_l_feat")
+                st.text_input("💰 1행 스펙 (보증금/월세)", key="poster_comm_l_price")
+                if st.session_state.pop("_poster_comm_l_sync_success", False):
+                    st.success("✅ 상가 임대 문구가 썸네일에 완벽하게 동기화되었습니다!")
+                st.button(
+                    "🔄 임대 상가 포스터 수정 동기화",
+                    key="btn_sync_poster_comm_l",
+                    on_click=sync_poster_to_thumbnail_comm_lease,
+                    use_container_width=True
+                )
             else:
-                st.text_input("🏢 매매 상가 메인 타이틀", key="poster_comm_s_title", value=st.session_state.get("comm_sale_main_sub", "안정적인 알짜 상가 매매"))
-                st.text_input("📍 상단 좌측 뱃지", key="poster_comm_s_sub", value=st.session_state.get("comm_sale_top_left", "사상 핵심상권 매매"))
-                st.text_input("💰 메인 강조 문구 (수익률)", key="poster_comm_s_price", value=st.session_state.get("comm_sale_main_hl", "확정 수익률 6.8%"))
-                if st.button("🔄 매매 상가 포스터 수정 동기화", key="btn_sync_poster_comm_s", use_container_width=True):
-                    st.session_state.comm_sale_main_sub = st.session_state.poster_comm_s_title
-                    st.session_state.comm_sale_top_left = st.session_state.poster_comm_s_sub
-                    st.session_state.comm_sale_main_hl = st.session_state.poster_comm_s_price
-                    st.success("상가 문구가 동기화되었습니다!")
-                    st.rerun()
+                st.text_input("🏢 매매 상가 메인 타이틀", key="poster_comm_s_title")
+                st.text_input("📍 상단 좌측 뱃지", key="poster_comm_s_sub")
+                st.text_input("💰 메인 강조 문구 (수익률)", key="poster_comm_s_price")
+                if st.session_state.pop("_poster_comm_s_sync_success", False):
+                    st.success("✅ 상가 매매 문구가 썸네일에 완벽하게 동기화되었습니다!")
+                st.button(
+                    "🔄 매매 상가 포스터 수정 동기화",
+                    key="btn_sync_poster_comm_s",
+                    on_click=sync_poster_to_thumbnail_comm_sale,
+                    use_container_width=True
+                )
 
 
 def render_tab_factory_poster():
@@ -2776,6 +3163,24 @@ def render_tab_factory_poster():
         </span>
     </div>
     """, unsafe_allow_html=True)
+
+    # 썸네일에서 변경된 내용이 있는 경우 포스터 입력 세션에 자동 반영
+    factory_thumb_sig = (
+        st.session_state.get("factory_item_no", ""),
+        st.session_state.get("factory_main_title", ""),
+        st.session_state.get("factory_sub_title", ""),
+        st.session_state.get("factory_feature_text", ""),
+        st.session_state.get("factory_trade_type", ""),
+        st.session_state.get("factory_price_text", "")
+    )
+    if st.session_state.get("_last_factory_thumb_sig") != factory_thumb_sig or "poster_factory_main_title" not in st.session_state:
+        st.session_state["poster_factory_item_no"] = st.session_state.get("factory_item_no", "No. FACT-001")
+        st.session_state["poster_factory_main_title"] = st.session_state.get("factory_main_title", "사상 감전동 특급 공장")
+        st.session_state["poster_factory_sub_title"] = st.session_state.get("factory_sub_title", "사상공단 대로변 인접")
+        st.session_state["poster_factory_feature"] = st.session_state.get("factory_feature_text", "")
+        st.session_state["poster_factory_trade_type"] = st.session_state.get("factory_trade_type", "매매")
+        st.session_state["poster_factory_price"] = st.session_state.get("factory_price_text", "18억 5천")
+        st.session_state["_last_factory_thumb_sig"] = factory_thumb_sig
 
     col_l, col_r = st.columns([1.2, 1.1])
     
@@ -2797,16 +3202,23 @@ def render_tab_factory_poster():
     if cur_dname:
         selected_design = get_design_by_name(cur_dname)
 
+    p_f_item = st.session_state.get("poster_factory_item_no", st.session_state.get("factory_item_no", "No. FACT-001"))
+    p_f_title = st.session_state.get("poster_factory_main_title", st.session_state.get("factory_main_title", "사상 감전동 특급 공장"))
+    p_f_sub = st.session_state.get("poster_factory_sub_title", st.session_state.get("factory_sub_title", "사상공단 대로변 인접"))
+    p_f_feature = st.session_state.get("poster_factory_feature", st.session_state.get("factory_feature_text", ""))
+    p_f_trade = st.session_state.get("poster_factory_trade_type", st.session_state.get("factory_trade_type", "매매"))
+    p_f_price = st.session_state.get("poster_factory_price", st.session_state.get("factory_price_text", "18억 5천"))
+
     with col_l:
         with st.spinner("창문 부착용 150DPI A4 포스터 렌더링 중..."):
             factory_a4_img = render_a4_window_poster(
                 bg_image=uploaded_factory_bg,
-                item_no=st.session_state.factory_item_no,
-                main_title=st.session_state.factory_main_title,
-                sub_title=st.session_state.factory_sub_title,
-                feature_text=st.session_state.factory_feature_text,
-                trade_type=st.session_state.factory_trade_type,
-                price_text=st.session_state.factory_price_text,
+                item_no=p_f_item,
+                main_title=p_f_title,
+                sub_title=p_f_sub,
+                feature_text=p_f_feature,
+                trade_type=p_f_trade,
+                price_text=p_f_price,
                 spec_lines=factory_specs,
                 office_name=st.session_state.get("ad_office_name", "참좋은공인중개사사무소"),
                 office_owner=st.session_state.get("ad_office_owner", "신제환"),
@@ -2831,8 +3243,8 @@ def render_tab_factory_poster():
         """, unsafe_allow_html=True)
 
     with col_r:
-        clean_f_title = re.sub(r'[\\/*?:"<>|]', "", st.session_state.factory_main_title).strip()
-        clean_f_price = re.sub(r'[\\/*?:"<>|]', "", st.session_state.factory_price_text).strip()
+        clean_f_title = re.sub(r'[\\/*?:"<>|]', "", p_f_title).strip()
+        clean_f_price = re.sub(r'[\\/*?:"<>|]', "", p_f_price).strip()
         factory_a4_name = f"창문부착용_공장포스터_{clean_f_title}_{clean_f_price}.png"
 
         f_a4_io = io.BytesIO()
@@ -2850,26 +3262,29 @@ def render_tab_factory_poster():
         )
 
         with st.expander("🛠️ 공장 포스터 주요 문구 간편 수정", expanded=True):
-            st.text_input("🏷️ 물건 번호", key="poster_factory_item_no", value=st.session_state.factory_item_no)
-            st.text_input("🏭 메인 타이틀 (공장명)", key="poster_factory_main_title", value=st.session_state.factory_main_title)
-            st.text_input("📍 서브 타이틀 (위치/도로)", key="poster_factory_sub_title", value=st.session_state.factory_sub_title)
-            st.text_input("✨ 매물 핵심 특징", key="poster_factory_feature", value=st.session_state.factory_feature_text)
+            st.text_input("🏷️ 물건 번호", key="poster_factory_item_no")
+            st.text_input("🏭 메인 타이틀 (공장명)", key="poster_factory_main_title")
+            st.text_input("📍 서브 타이틀 (위치/도로)", key="poster_factory_sub_title")
+            st.text_input("✨ 매물 핵심 특징", key="poster_factory_feature")
             
             cp1, cp2 = st.columns(2)
             with cp1:
-                st.selectbox("거래 형태", ["매매", "월세", "임대", "급매"], key="poster_factory_trade_type", index=0 if st.session_state.factory_trade_type not in ["매매", "월세", "임대", "급매"] else ["매매", "월세", "임대", "급매"].index(st.session_state.factory_trade_type))
+                trade_opts = ["매매", "월세", "임대", "급매"]
+                cur_trade = st.session_state.get("poster_factory_trade_type", "매매")
+                t_idx = trade_opts.index(cur_trade) if cur_trade in trade_opts else 0
+                st.selectbox("거래 형태", trade_opts, key="poster_factory_trade_type", index=t_idx)
             with cp2:
-                st.text_input("금액", key="poster_factory_price", value=st.session_state.factory_price_text)
+                st.text_input("금액", key="poster_factory_price")
 
-            if st.button("🔄 공장 포스터 수정 내용 동기화 적용", key="btn_sync_poster_factory", use_container_width=True):
-                st.session_state.factory_item_no = st.session_state.poster_factory_item_no
-                st.session_state.factory_main_title = st.session_state.poster_factory_main_title
-                st.session_state.factory_sub_title = st.session_state.poster_factory_sub_title
-                st.session_state.factory_feature_text = st.session_state.poster_factory_feature
-                st.session_state.factory_trade_type = st.session_state.poster_factory_trade_type
-                st.session_state.factory_price_text = st.session_state.poster_factory_price
-                st.success("공장 포스터 문구가 동기화되었습니다!")
-                st.rerun()
+            if st.session_state.pop("_poster_factory_sync_success", False):
+                st.success("✅ 공장 포스터 수정 내용이 썸네일과 점검 항목에 완벽하게 동기화되었습니다!")
+
+            st.button(
+                "🔄 공장 포스터 수정 내용 동기화 적용",
+                key="btn_sync_poster_factory",
+                on_click=sync_poster_to_thumbnail_factory,
+                use_container_width=True
+            )
 
 
 # ====================================================
@@ -3094,7 +3509,7 @@ def render_tab_apt_ad():
                 raw_unified_txt = st.text_area(
                     "건축물대장 전체 열람 복사 텍스트 (스크립트)",
                     height=130,
-                    placeholder="대지위치: 부산시 사상구 덕포동 220\n건축물명칭: 사상 중흥S-클래스 제105동 제2501호\n층별: 25층\n전유부분 면적: 79.85㎡\n사용승인일: 2023-07-28...",
+                    placeholder="대지위치: 부산시 사상구 덕포동 795\n건축물명칭: 사상 중흥S-클래스 제105동 제2501호\n층별: 25층\n전유부분 면적: 79.85㎡\n사용승인일: 2023-07-28...",
                     key="txt_raw_unified_doc"
                 )
                 if st.button("🔍 붙여넣은 대장 텍스트 0.1초 통합 분석 & 즉시 적용", type="primary", key="btn_parse_unified_text", use_container_width=True):
@@ -3114,7 +3529,7 @@ def render_tab_apt_ad():
                     raw_title_txt = st.text_area(
                         "표제부 열람 텍스트",
                         height=100,
-                        placeholder="대지위치: 부산시 사상구 덕포동 220\n건축물명칭: 사상 중흥S-클래스\n층수: 지상 36층 / 지하 3층\n세대수: 1,572세대\n주차대수: 1,685대\n사용승인일: 2023-07-28...",
+                        placeholder="대지위치: 부산시 사상구 덕포동 795\n건축물명칭: 사상 중흥S-클래스\n층수: 지상 36층 / 지하 3층\n세대수: 1,572세대\n주차대수: 1,685대\n사용승인일: 2023-07-28...",
                         key="txt_raw_title"
                     )
                 with col_txt_e:
@@ -3476,7 +3891,7 @@ def render_tab_apt_ad():
                 
                 blog_html = generate_blog_html_table(current_spec_data)
                 st.markdown(blog_html, unsafe_allow_html=True)
-                st.markdown(render_copy_button(blog_html, "📋 블로그용 HTML 서식 원클릭 복사", "btn_copy_apt_blog_html"), unsafe_allow_html=True)
+                render_blog_html_action_bar(blog_html, f"블로그표_{clean_loc}_{clean_trade}.html", "apt_blog_html")
 
                 clip_text = generate_clipboard_text(current_spec_data)
                 st.text_area("📋 블로그 본문용 일반 텍스트 (Ctrl+C 복사)", value=clip_text, height=180)
@@ -3623,7 +4038,7 @@ def render_tab_house_ad():
 
             with tab_hov1:
                 st.markdown(house_html, unsafe_allow_html=True)
-                st.markdown(render_copy_button(house_html, "📋 [원클릭 복사] 블로그 스마트에디터 표 서식 복사", "btn_copy_h_html"), unsafe_allow_html=True)
+                render_blog_html_action_bar(house_html, f"블로그표_주택_{st.session_state.house_ad_trade_type}.html", "house_blog_html")
 
             with tab_hov2:
                 st.text_area("네이버 광고 등록용", value=house_guide, height=300, key="txt_h_guide")
@@ -4167,7 +4582,9 @@ def render_tab_comm_ad():
             st.text_area("💬 [카카오톡 / 블로그 본문용] 상가 일반 텍스트 복사", value=comm_clip_txt, height=110)
 
             comm_blog_html = generate_commercial_blog_html_table(current_comm_spec_data)
-            st.text_area("📝 [네이버 블로그용] 스마트에디터 다크골드 HTML 표 서식", value=comm_blog_html, height=110)
+            st.markdown("#### 📝 [네이버 블로그용] 스마트에디터 다크골드 표 서식")
+            st.markdown(comm_blog_html, unsafe_allow_html=True)
+            render_blog_html_action_bar(comm_blog_html, f"블로그표_상가_{clean_comm_loc}.html", "comm_blog_html")
 
 
 # ====================================================
@@ -4308,7 +4725,7 @@ def render_tab_factory_ad():
 
             with tab_fov1:
                 st.markdown(factory_html, unsafe_allow_html=True)
-                st.markdown(render_copy_button(factory_html, "📋 [원클릭 복사] 블로그 스마트에디터 표 서식 복사", "btn_copy_f_html"), unsafe_allow_html=True)
+                render_blog_html_action_bar(factory_html, f"블로그표_공장_{st.session_state.factory_ad_trade_type}.html", "factory_blog_html")
 
             with tab_fov2:
                 st.text_area("네이버 광고 등록용", value=factory_guide, height=300, key="txt_f_guide")

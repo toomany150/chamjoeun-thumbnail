@@ -234,40 +234,42 @@ def get_commercial_spec_table_data(data: dict) -> list[dict]:
 
 
 def generate_commercial_blog_html_table(data: dict) -> str:
-    """네이버 블로그 스마트에디터에 바로 붙여넣을 수 있는 세련된 상가 전용 다크골드 HTML 표 생성"""
+    """네이버 블로그 스마트에디터에 바로 붙여넣을 수 있는 세련된 상가 전용 다크골드 HTML 표 생성
+    - 마크다운 코드블록 오인 방지를 위해 줄 앞 공백(들여쓰기) 제거
+    - 스마트에디터 붙여넣기 시 배경색/테두리가 깨지지 않도록 헤더·풋터를 table 셀(td) 내부로 통합하고 bgcolor 속성 병기
+    """
     items = get_commercial_spec_table_data(data)
     is_sale = str(data.get("comm_mode", "lease")).lower() == "sale" or "매매" in str(data.get("trade_type", ""))
     type_badge = "상가 매매 (수익형)" if is_sale else "상가 임대차 (월세)"
 
-    html = f"""
-<div style="font-family: -apple-system, BlinkMacSystemFont, 'Malgun Gothic', 'Pretendard', sans-serif; max-width: 780px; margin: 25px auto; border: 2px solid #1E2229; border-radius: 10px; overflow: hidden; box-shadow: 0 4px 18px rgba(0,0,0,0.12);">
-    <div style="background: linear-gradient(135deg, #181C24 0%, #222834 100%); color: #FFFFFF; padding: 15px 22px; font-size: 17px; font-weight: 700; display: flex; align-items: center; justify-content: space-between; border-bottom: 2px solid #DAA844;">
-        <div style="display: flex; align-items: center; gap: 8px;">
-            <span style="color: #DAA844; font-size: 20px;">🏬</span>
-            <span style="font-size: 16px;">중개대상물 인터넷 표시·광고 명시사항 <span style="font-size: 14px; color: #DAA844;">[{type_badge}]</span></span>
-        </div>
-        <span style="font-size: 12px; background: rgba(218,168,68,0.2); color: #DAA844; border: 1px solid #DAA844; padding: 4px 10px; border-radius: 20px; font-weight: 600;">공인중개사법 시행령 준수</span>
-    </div>
-    <table style="width: 100%; border-collapse: collapse; font-size: 14px; text-align: left; background: #FFFFFF;">
-        <tbody>
-"""
+    rows = [
+        '<div style="font-family: -apple-system, BlinkMacSystemFont, \'Malgun Gothic\', \'Pretendard\', sans-serif; max-width: 780px; margin: 20px auto;">',
+        '<table style="width: 100%; max-width: 780px; border-collapse: collapse; font-size: 14px; text-align: left; background-color: #FFFFFF; border: 2px solid #1E2229;">',
+        '<tbody>',
+        '<tr bgcolor="#181C24" style="background-color: #181C24;">',
+        '<td colspan="2" bgcolor="#181C24" style="background-color: #181C24; color: #FFFFFF; padding: 14px 20px; font-size: 16px; font-weight: 700; border-bottom: 2px solid #DAA844;">',
+        f'<span style="color: #DAA844; font-size: 18px;">🏬</span> <span style="color: #FFFFFF; font-weight: 700;">중개대상물 인터넷 표시·광고 명시사항</span> <span style="font-size: 13px; color: #DAA844; font-weight: 700;">[{type_badge}]</span> <span style="font-size: 11px; color: #DAA844; margin-left: 6px;">(공인중개사법 시행령 준수)</span>',
+        '</td>',
+        '</tr>',
+    ]
+
     for i, it in enumerate(items):
         bg_col = "#F8F9FB" if i % 2 == 0 else "#FFFFFF"
-        val_escaped = it['val'].replace("\n", "<br/>")
+        val_escaped = str(it['val']).replace("\n", "<br/>")
         is_highlight = it["name"] in ["소재지", "거래 가격", "거래 형태", "면적 (전용/계약)", "수익률 & 투자금 분석", "권리금 유무"]
-        name_col = "#DAA844" if is_highlight else "#333D4B"
+        name_col = "#B7791F" if is_highlight else "#333D4B"
         val_style = "font-weight: 700; color: #1A202C;" if is_highlight else "color: #2D3748;"
 
-        html += f"""
-            <tr style="background-color: {bg_col}; border-bottom: 1px solid #E5E8EB;">
-                <td style="width: 28%; padding: 11px 16px; font-weight: 700; color: {name_col}; border-right: 1px solid #E5E8EB; vertical-align: top;">
-                    <span style="display: inline-block; width: 22px; color: #DAA844; font-size: 13px;">{it['num']:02d}.</span> {it['name']}
-                </td>
-                <td style="width: 72%; padding: 11px 16px; {val_style} line-height: 1.6;">
-                    {val_escaped}
-                </td>
-            </tr>
-"""
+        rows.extend([
+            f'<tr bgcolor="{bg_col}" style="background-color: {bg_col}; border-bottom: 1px solid #E5E8EB;">',
+            f'<td bgcolor="{bg_col}" style="width: 28%; background-color: {bg_col}; padding: 11px 16px; font-weight: 700; color: {name_col}; border-right: 1px solid #E5E8EB; border-bottom: 1px solid #E5E8EB; vertical-align: top;">'
+            f'<span style="color: #DAA844; font-weight: 800; font-size: 13px; margin-right: 4px;">{it["num"]:02d}.</span>{it["name"]}'
+            f'</td>',
+            f'<td bgcolor="{bg_col}" style="width: 72%; background-color: {bg_col}; padding: 11px 16px; {val_style} border-bottom: 1px solid #E5E8EB; line-height: 1.6;">'
+            f'{val_escaped}'
+            f'</td>',
+            '</tr>',
+        ])
 
     if data.get("include_office_info", True):
         office_name = data.get('office_name', '참좋은공인중개사사무소')
@@ -278,22 +280,21 @@ def generate_commercial_blog_html_table(data: dict) -> str:
         as_phone = data.get("assistant_phone", "").strip()
         as_tag = f" | 👤 담당: {as_name} ({as_phone})" if (as_name or as_phone) else ""
 
-        html += f"""
-        </tbody>
-    </table>
-    <div style="background: #181C24; color: #FFFFFF; padding: 14px 20px; font-size: 14px; font-weight: 600; text-align: center; border-top: 1px solid #DAA844;">
-        <span style="color: #DAA844; font-weight: 700;">🏢 {office_name}</span> (대표 {office_owner}) ☎ {office_phone}{as_tag}<br/>
-        <span style="font-size: 12px; color: #A0AEC0;">소재지: {office_addr} | 등록번호: {data.get('office_reg_no', '제 26530-2026-00009 호')}</span>
-    </div>
-</div>
-"""
-    else:
-        html += """
-        </tbody>
-    </table>
-</div>
-"""
-    return html.strip()
+        rows.extend([
+            '<tr bgcolor="#181C24" style="background-color: #181C24;">',
+            '<td colspan="2" bgcolor="#181C24" style="background-color: #181C24; color: #FFFFFF; padding: 14px 20px; font-size: 14px; font-weight: 600; text-align: center; border-top: 2px solid #DAA844;">',
+            f'<span style="color: #DAA844; font-weight: 700;">🏢 {office_name}</span> (대표 {office_owner}) ☎ {office_phone}{as_tag}<br/>'
+            f'<span style="font-size: 12px; color: #CBD5E0;">소재지: {office_addr} | 등록번호: {data.get("office_reg_no", "제 26530-2026-00009 호")}</span>',
+            '</td>',
+            '</tr>',
+        ])
+
+    rows.extend([
+        '</tbody>',
+        '</table>',
+        '</div>',
+    ])
+    return "\n".join(rows)
 
 
 def generate_commercial_clipboard_text(data: dict) -> str:
