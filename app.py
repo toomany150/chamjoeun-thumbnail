@@ -199,78 +199,248 @@ def render_copy_button(text_to_copy: str, button_label: str, btn_id: str = "") -
     </div>
     """
 
-def get_default_download_path() -> str:
-    """기본 다운로드 경로(바탕화면 -> 다운로드 -> 현재폴더)를 안전하게 탐색하여 반환합니다."""
-    user_home = os.environ.get("USERPROFILE") or os.path.expanduser("~")
-    desktop = os.path.join(user_home, "Desktop")
-    if os.path.exists(desktop):
-        return desktop
-    downloads = os.path.join(user_home, "Downloads")
-    if os.path.exists(downloads):
-        return downloads
-    try:
-        os.makedirs(desktop, exist_ok=True)
-        return desktop
-    except Exception:
-        pass
-    return os.path.abspath(os.path.dirname(__file__))
-
-def browse_folder_dialog(initial_dir: str = "") -> str:
-    """GUI 폴더 선택창(PowerShell Windows Forms 또는 Tkinter)을 안전하게 호출하여 선택한 폴더 경로를 반환합니다."""
-    init_dir = initial_dir if (initial_dir and os.path.exists(initial_dir)) else get_default_download_path()
+def render_pc_save_button(file_bytes: bytes, filename: str, label: str, uid_key: str, bg_color: str = "#FF4B4B") -> str:
+    """
+    클릭 시 PC의 저장 위치(경로)를 직접 지정할 수 있는 네이티브 파일 저장 다이얼로그(showSaveFilePicker)를 호출하고,
+    미지원 브라우저에서는 표준 다운로드로 안전하게 자동 전환되는 스마트 다운로드 버튼입니다.
+    """
+    clean_name = re.sub(r'[\\/*?:"<>|\'\"]', '', filename).strip()
+    if not clean_name:
+        clean_name = "thumbnail.png"
+    if not clean_name.lower().endswith(".png"):
+        clean_name += ".png"
     
-    # 1. PowerShell Windows Forms 다이얼로그 (Windows 환경에서 Tkinter 라이브러리 누락 오류 없이 가장 안정적)
-    try:
-        ps_cmd = (
-            'Add-Type -AssemblyName System.Windows.Forms; '
-            '[System.Windows.Forms.Application]::EnableVisualStyles(); '
-            '$f = New-Object System.Windows.Forms.FolderBrowserDialog; '
-            f'$f.SelectedPath = "{init_dir}"; '
-            '$f.Description = "이미지를 저장할 컴퓨터 폴더를 선택하세요"; '
-            'if ($f.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) { Write-Output $f.SelectedPath }'
-        )
-        res = subprocess.run(["powershell", "-NoProfile", "-Command", ps_cmd], capture_output=True, text=True, timeout=30)
-        chosen = res.stdout.strip()
-        if chosen and os.path.exists(chosen):
-            return chosen
-    except Exception:
-        pass
+    b64_data = base64.b64encode(file_bytes).decode("ascii")
+    uid = abs(hash(f"{uid_key}_{filename}_{len(file_bytes)}")) % 10000000
 
-    # 2. Tkinter 다이얼로그 fallback (libtk 오류 발생 시 조용히 무시)
-    try:
-        import tkinter as tk
-        from tkinter import filedialog
-        root = tk.Tk()
-        root.withdraw()
-        root.attributes("-topmost", True)
-        chosen = filedialog.askdirectory(initialdir=init_dir, title="저장할 폴더를 선택하세요")
-        root.destroy()
-        if chosen and os.path.exists(chosen):
-            return chosen
-    except Exception:
-        pass
+    clean_label = label.replace("(기본 다운로드)", "").strip()
+    if not clean_label.startswith("📥"):
+        clean_label = f"📥 {clean_label}"
 
-    return ""
+    js_code = (
+        "(async function(){"
+        f"var btn=document.getElementById('save_btn_{uid}');"
+        "if(!btn||btn.disabled)return;"
+        "var origHtml=btn.innerHTML;"
+        "var origBg=btn.style.backgroundColor;"
+        "btn.disabled=true;"
+        "btn.innerHTML='<span style=\"color:#FFF!important;font-weight:800;font-size:17px;\">⏳ 저장 위치 선택 중...</span>';"
+        "try{"
+        f"var ta=document.getElementById('save_data_{uid}');"
+        "if(!ta)throw new Error('Data not found');"
+        "var b64=ta.value;"
+        "var byteChars=atob(b64);"
+        "var byteNums=new Array(byteChars.length);"
+        "for(var i=0;i<byteChars.length;i++){byteNums[i]=byteChars.charCodeAt(i);}"
+        "var byteArray=new Uint8Array(byteNums);"
+        "var blob=new Blob([byteArray],{type:'image/png'});"
+        f"var fname='{clean_name}';"
+        "if(window.showSaveFilePicker){"
+        "try{"
+        "var handle=await window.showSaveFilePicker({"
+        "suggestedName:fname,"
+        "types:[{description:'PNG 이미지 파일 (*.png)',accept:{'image/png':['.png']}}]"
+        "});"
+        "var writable=await handle.createWritable();"
+        "await writable.write(blob);"
+        "await writable.close();"
+        "btn.innerHTML='<span style=\"color:#FFF!important;font-weight:800;font-size:17px;\">✅ PC 지정 폴더에 저장 완료!</span>';"
+        "btn.style.backgroundColor='#10B981';"
+        "setTimeout(function(){btn.innerHTML=origHtml;btn.style.backgroundColor=origBg;btn.disabled=false;},3000);"
+        "return;"
+        "}catch(pickerErr){"
+        "if(pickerErr.name==='AbortError'){"
+        "btn.innerHTML=origHtml;btn.style.backgroundColor=origBg;btn.disabled=false;"
+        "return;"
+        "}"
+        "console.warn('showSaveFilePicker error, falling back:',pickerErr);"
+        "}"
+        "}"
+        "var url=URL.createObjectURL(blob);"
+        "var a=document.createElement('a');"
+        "a.href=url;"
+        "a.download=fname;"
+        "document.body.appendChild(a);"
+        "a.click();"
+        "document.body.removeChild(a);"
+        "setTimeout(function(){URL.revokeObjectURL(url);},15000);"
+        "btn.innerHTML='<span style=\"color:#FFF!important;font-weight:800;font-size:17px;\">📥 PC 다운로드 완료!</span>';"
+        "btn.style.backgroundColor='#10B981';"
+        "setTimeout(function(){btn.innerHTML=origHtml;btn.style.backgroundColor=origBg;btn.disabled=false;},3000);"
+        "}catch(err){"
+        "alert('저장 중 오류가 발생했습니다: '+err);"
+        "btn.innerHTML=origHtml;btn.style.backgroundColor=origBg;btn.disabled=false;"
+        "}"
+        "})();"
+    )
 
-def save_file_to_directory(file_bytes: bytes, filename: str, target_dir: str) -> tuple[bool, str]:
-    """지정된 폴더 경로에 파일을 직접 저장합니다."""
-    try:
-        if not target_dir or not str(target_dir).strip():
-            target_dir = get_default_download_path()
-        target_dir = os.path.abspath(str(target_dir).strip())
-        os.makedirs(target_dir, exist_ok=True)
-        
-        clean_fn = re.sub(r'[\\/*?:"<>|]', "", filename).strip()
-        if not clean_fn:
-            clean_fn = "thumbnail.png"
-        out_path = os.path.join(target_dir, clean_fn)
-        
-        with open(out_path, "wb") as f:
-            f.write(file_bytes)
-            
-        return True, out_path
-    except Exception as e:
-        return False, f"저장 중 오류가 발생했습니다: {str(e)}"
+    box_shadow = "0 4px 14px rgba(255, 75, 75, 0.35)" if bg_color == "#FF4B4B" else "0 4px 14px rgba(43, 108, 176, 0.35)"
+
+    return f"""
+    <div style="margin: 6px 0 10px 0;">
+        <textarea id="save_data_{uid}" style="display:none;">{b64_data}</textarea>
+        <button id="save_btn_{uid}" onclick="{js_code}" 
+                style="width: 100%; display: flex; align-items: center; justify-content: center; gap: 8px; 
+                       background-color: {bg_color}; color: #FFFFFF !important; -webkit-text-fill-color: #FFFFFF !important;
+                       padding: 14px 20px; border-radius: 9px; font-weight: 800; border: none; cursor: pointer;
+                       font-size: 17px; box-shadow: {box_shadow}; transition: all 0.2s ease-in-out;">
+            <span style="color: #FFFFFF !important; -webkit-text-fill-color: #FFFFFF !important; font-weight: 800; font-size: 17px; letter-spacing: -0.3px;">
+                {clean_label}
+            </span>
+        </button>
+        <div style="font-size: 13px; color: #64748B; margin-top: 6px; text-align: center; line-height: 1.4;">
+            💡 클릭 시 PC의 원하는 폴더(바탕화면, 내문서 등)를 직접 지정하여 저장할 수 있습니다.
+        </div>
+    </div>
+    """
+
+def render_poster_action_bar(
+    file_bytes: bytes,
+    filename: str,
+    key_prefix: str,
+    title_label: str = "300dpi 초고화질 A4포스터 파일저장"
+) -> str:
+    """
+    포스터 전용 가로형 통합 액션 바:
+    - 좌측: '300dpi 초고화질 A4포스터 파일저장' 타이틀 라벨
+    - 우측: [출력] 버튼 및 [저장] 버튼 나란히 배치
+    - [저장] 클릭 시: 브라우저 showSaveFilePicker API로 PC 내 저장 폴더를 직접 지정하여 파일 저장
+    - [출력] 클릭 시: 창문부착용 즉시 인쇄(A4 세로 맞춤) 대화상자 호출
+    """
+    clean_name = re.sub(r'[\\/*?:"<>|\'\"]', '', filename).strip()
+    if not clean_name:
+        clean_name = "poster_a4.png"
+    if not clean_name.lower().endswith(".png"):
+        clean_name += ".png"
+    
+    b64_data = base64.b64encode(file_bytes).decode("ascii")
+    uid = abs(hash(f"{key_prefix}_{filename}_{len(file_bytes)}")) % 10000000
+
+    print_js = (
+        "(function(){"
+        "try{"
+        f"var ta=document.getElementById('poster_data_{uid}');"
+        "if(!ta)return;"
+        "var b64=ta.value;"
+        "var iframe=document.createElement('iframe');"
+        "iframe.style.position='fixed';"
+        "iframe.style.right='0';"
+        "iframe.style.bottom='0';"
+        "iframe.style.width='0';"
+        "iframe.style.height='0';"
+        "iframe.style.border='0';"
+        "document.body.appendChild(iframe);"
+        "var doc=iframe.contentWindow.document;"
+        "doc.open();"
+        "doc.write('<!DOCTYPE html><html><head><title>포스터 인쇄</title><style>@page{size:A4 portrait;margin:0;}body{margin:0;padding:0;display:flex;justify-content:center;align-items:center;background:#fff;}img{width:100%;height:auto;max-height:100vh;object-fit:contain;}</style></head><body></body></html>');"
+        "doc.close();"
+        "var img=doc.createElement('img');"
+        "img.src='data:image/png;base64,'+b64;"
+        "img.onload=function(){"
+        "setTimeout(function(){"
+        "try{"
+        "iframe.contentWindow.focus();"
+        "iframe.contentWindow.print();"
+        "}catch(err){window.print();}"
+        "},300);"
+        "};"
+        "doc.body.appendChild(img);"
+        "setTimeout(function(){try{document.body.removeChild(iframe);}catch(e){}},60000);"
+        "}catch(e){alert('인쇄 호출 중 오류가 발생했습니다: '+e);}"
+        "})();"
+    )
+
+    save_js = (
+        "(async function(){"
+        f"var btn=document.getElementById('poster_save_btn_{uid}');"
+        "if(!btn||btn.disabled)return;"
+        "var origHtml=btn.innerHTML;"
+        "var origBg=btn.style.backgroundColor;"
+        "btn.disabled=true;"
+        "btn.innerHTML='<span style=\"color:#FFF!important;font-weight:800;font-size:15px;\">⏳ 폴더 선택 중...</span>';"
+        "try{"
+        f"var ta=document.getElementById('poster_data_{uid}');"
+        "if(!ta)throw new Error('Data not found');"
+        "var b64=ta.value;"
+        "var byteChars=atob(b64);"
+        "var byteNums=new Array(byteChars.length);"
+        "for(var i=0;i<byteChars.length;i++){byteNums[i]=byteChars.charCodeAt(i);}"
+        "var byteArray=new Uint8Array(byteNums);"
+        "var blob=new Blob([byteArray],{type:'image/png'});"
+        f"var fname='{clean_name}';"
+        "if(window.showSaveFilePicker){"
+        "try{"
+        "var handle=await window.showSaveFilePicker({"
+        "suggestedName:fname,"
+        "types:[{description:'PNG 이미지 파일 (*.png)',accept:{'image/png':['.png']}}]"
+        "});"
+        "var writable=await handle.createWritable();"
+        "await writable.write(blob);"
+        "await writable.close();"
+        "btn.innerHTML='<span style=\"color:#FFF!important;font-weight:800;font-size:15px;\">✅ 저장 완료!</span>';"
+        "btn.style.backgroundColor='#10B981';"
+        "setTimeout(function(){btn.innerHTML=origHtml;btn.style.backgroundColor=origBg;btn.disabled=false;},3000);"
+        "return;"
+        "}catch(pickerErr){"
+        "if(pickerErr.name==='AbortError'){"
+        "btn.innerHTML=origHtml;btn.style.backgroundColor=origBg;btn.disabled=false;"
+        "return;"
+        "}"
+        "console.warn('showSaveFilePicker fallback:',pickerErr);"
+        "}"
+        "}"
+        "var url=URL.createObjectURL(blob);"
+        "var a=document.createElement('a');"
+        "a.href=url;"
+        "a.download=fname;"
+        "document.body.appendChild(a);"
+        "a.click();"
+        "document.body.removeChild(a);"
+        "setTimeout(function(){URL.revokeObjectURL(url);},15000);"
+        "btn.innerHTML='<span style=\"color:#FFF!important;font-weight:800;font-size:15px;\">📥 다운로드 완료!</span>';"
+        "btn.style.backgroundColor='#10B981';"
+        "setTimeout(function(){btn.innerHTML=origHtml;btn.style.backgroundColor=origBg;btn.disabled=false;},3000);"
+        "}catch(err){"
+        "alert('저장 중 오류가 발생했습니다: '+err);"
+        "btn.innerHTML=origHtml;btn.style.backgroundColor=origBg;btn.disabled=false;"
+        "}"
+        "})();"
+    )
+
+    return f"""
+    <div style="background: #FFFFFF; border: 1.5px solid #CBD5E1; border-radius: 12px; padding: 14px 18px; margin: 8px 0 14px 0; box-shadow: 0 3px 10px rgba(0,0,0,0.04);">
+        <textarea id="poster_data_{uid}" style="display:none;">{b64_data}</textarea>
+        <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px;">
+            <div style="display: flex; align-items: center; gap: 8px;">
+                <span style="font-size: 20px;">📄</span>
+                <span style="font-size: 16.5px; font-weight: 800; color: #1E293B; letter-spacing: -0.3px;">
+                    {title_label}
+                </span>
+            </div>
+            <div style="display: flex; align-items: center; gap: 10px;">
+                <button id="poster_print_btn_{uid}" onclick="{print_js}"
+                        style="display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+                               background-color: #1E293B; color: #FFFFFF !important; -webkit-text-fill-color: #FFFFFF !important;
+                               padding: 10px 22px; border-radius: 8px; font-weight: 800; font-size: 15px; border: none;
+                               cursor: pointer; box-shadow: 0 3px 10px rgba(30,41,59,0.25); transition: all 0.2s ease-in-out;">
+                    <span style="font-size: 16px;">🖨️</span>
+                    <span style="color: #FFFFFF !important; -webkit-text-fill-color: #FFFFFF !important; font-weight: 800;">출력</span>
+                </button>
+                <button id="poster_save_btn_{uid}" onclick="{save_js}"
+                        style="display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+                               background-color: #2563EB; color: #FFFFFF !important; -webkit-text-fill-color: #FFFFFF !important;
+                               padding: 10px 22px; border-radius: 8px; font-weight: 800; font-size: 15px; border: none;
+                               cursor: pointer; box-shadow: 0 3px 10px rgba(37,99,235,0.3); transition: all 0.2s ease-in-out;">
+                    <span style="font-size: 16px;">💾</span>
+                    <span style="color: #FFFFFF !important; -webkit-text-fill-color: #FFFFFF !important; font-weight: 800;">저장</span>
+                </button>
+            </div>
+        </div>
+        <div style="font-size: 12.5px; color: #64748B; margin-top: 8px; line-height: 1.4;">
+            💡 <b>출력</b> 클릭 시 창문부착용 즉시 인쇄(A4 세로 맞춤), <b>저장</b> 클릭 시 PC의 다운로드 받을 폴더를 직접 지정하여 저장합니다.
+        </div>
+    </div>
+    """
 
 def render_download_save_controller(
     file_bytes: bytes,
@@ -279,104 +449,28 @@ def render_download_save_controller(
     key_prefix: str,
     is_poster: bool = False,
     print_bytes: bytes = None,
-    print_label: str = "창문부착용A4바로출력",
+    print_label: str = "출력",
     print_bg: str = "#1E293B"
 ):
     """
-    1) 포스터인 경우 원클릭 즉시 인쇄 버튼 제공
-    2) 사용자가 지정한 다운로드 폴더 경로에 파일 즉시 저장
-    3) 폴더 경로 직접 입력, 폴더 선택창(PowerShell/GUI), 빠른 프리셋 바로가기 제공
+    1) 포스터인 경우: '300dpi 초고화질 A4포스터 파일저장' 옆에 [출력]과 [저장] 버튼 제공 (클릭 시 PC 저장 폴더 직접 지정)
+    2) 썸네일인 경우: PC의 저장 위치(경로)를 직접 지정하여 다운로드하는 스마트 다운로드 버튼 제공
     """
-    # 전역 저장 경로 초기화
-    if "custom_download_path" not in st.session_state or not st.session_state.custom_download_path:
-        st.session_state.custom_download_path = get_default_download_path()
-
-    # 1. 인쇄 버튼 (창문부착용 포스터 전용)
-    if is_poster and print_bytes:
-        st.markdown(render_direct_print_button(print_bytes, default_filename, print_label, bg_color=print_bg), unsafe_allow_html=True)
-        st.markdown("<div style='height: 4px;'></div>", unsafe_allow_html=True)
-
-    # 2. 다운로드 경로 지정 컨트롤
-    st.markdown("""
-    <div style="font-size: 14px; font-weight: 700; color: #1E293B; margin: 8px 0 4px 0;">
-        📂 파일 저장 폴더 경로 지정
-    </div>
-    """, unsafe_allow_html=True)
-
-    col_path, col_browse = st.columns([3.8, 1.2])
-    with col_path:
-        input_path = st.text_input(
-            "저장 폴더 경로",
-            value=st.session_state.custom_download_path,
-            key=f"{key_prefix}_input_path",
-            label_visibility="collapsed",
-            placeholder="예: C:\\Users\\...\\Desktop 또는 D:\\썸네일저장"
-        )
-        if input_path and input_path.strip() != st.session_state.custom_download_path:
-            st.session_state.custom_download_path = input_path.strip()
-
-    with col_browse:
-        if st.button("📁 폴더 선택", key=f"{key_prefix}_btn_browse", use_container_width=True, help="컴퓨터 탐색기 창을 열어 저장할 폴더를 선택합니다."):
-            chosen = browse_folder_dialog(st.session_state.custom_download_path)
-            if chosen:
-                st.session_state.custom_download_path = chosen
-                st.rerun()
-
-    # 빠른 폴더 바로가기 프리셋 버튼
-    c_pre1, c_pre2, c_pre3 = st.columns(3)
-    user_home = os.environ.get("USERPROFILE") or os.path.expanduser("~")
-    desktop_dir = os.path.join(user_home, "Desktop")
-    down_dir = os.path.join(user_home, "Downloads")
-    proj_dir = os.path.abspath(os.path.dirname(__file__))
-
-    with c_pre1:
-        if st.button("🖥️ 바탕화면으로 지정", key=f"{key_prefix}_btn_pre_desk", use_container_width=True):
-            st.session_state.custom_download_path = desktop_dir
-            st.rerun()
-    with c_pre2:
-        if st.button("📥 다운로드 폴더로 지정", key=f"{key_prefix}_btn_pre_down", use_container_width=True):
-            st.session_state.custom_download_path = down_dir
-            st.rerun()
-    with c_pre3:
-        if st.button("📂 현재 작업폴더로 지정", key=f"{key_prefix}_btn_pre_proj", use_container_width=True):
-            st.session_state.custom_download_path = proj_dir
-            st.rerun()
-
-    st.markdown("<div style='height: 4px;'></div>", unsafe_allow_html=True)
-
-    # 3. 메인 저장 버튼 (지정된 경로로 직접 저장)
-    clean_label = label_download.replace("(기본 다운로드)", "").strip()
-    if not clean_label.startswith("📥"):
-        clean_label = f"📥 {clean_label}"
-
-    if st.button(clean_label, type="primary", key=f"{key_prefix}_btn_pick_save", use_container_width=True):
-        ok, res_path = save_file_to_directory(
+    if is_poster:
+        st.markdown(render_poster_action_bar(
             file_bytes=file_bytes,
             filename=default_filename,
-            target_dir=st.session_state.custom_download_path
-        )
-        if ok:
-            st.session_state[f"{key_prefix}_save_status"] = ("ok", res_path)
-        else:
-            st.session_state[f"{key_prefix}_save_status"] = ("err", res_path)
-
-    # 4. 저장 결과 피드백 안내
-    status = st.session_state.get(f"{key_prefix}_save_status")
-    if status:
-        st_type, st_msg = status
-        if st_type == "ok":
-            st.success(f"🎉 파일이 지정하신 폴더에 성공적으로 저장되었습니다!\n\n📍 **저장 위치:** `{st_msg}`")
-            save_folder = os.path.dirname(st_msg)
-            if st.button("📂 저장된 폴더 열기", key=f"{key_prefix}_btn_open_folder"):
-                try:
-                    if os.name == 'nt':
-                        os.startfile(save_folder)
-                    else:
-                        subprocess.Popen(["xdg-open", save_folder])
-                except Exception:
-                    pass
-        else:
-            st.error(f"⚠️ 저장 오류: {st_msg}")
+            key_prefix=key_prefix,
+            title_label="300dpi 초고화질 A4포스터 파일저장"
+        ), unsafe_allow_html=True)
+    else:
+        st.markdown(render_pc_save_button(
+            file_bytes=file_bytes,
+            filename=default_filename,
+            label=label_download,
+            uid_key=key_prefix,
+            bg_color="#FF4B4B"
+        ), unsafe_allow_html=True)
 
 def render_deal_done_controller(key_prefix: str, default_color: str = "#FF0101"):
     """
@@ -1768,6 +1862,43 @@ def render_tab_apt_thumb():
             default_filename=download_filename,
             label_download="📥 1080x1080 썸네일 저장",
             key_prefix="apt_thumb_down"
+        )
+
+        # 첫번째 화면에서 바로 A4 포스터 인쇄 및 파일저장 연동
+        with st.spinner("창문 부착용 A4 포스터 준비 중..."):
+            a4_poster_img = render_a4_window_poster(
+                thumbnail_img=thumbnail_img,
+                bg_image=uploaded_bg,
+                item_no=st.session_state.item_no,
+                main_title=st.session_state.main_title,
+                sub_title=st.session_state.sub_title,
+                feature_text=st.session_state.feature_text,
+                trade_type=st.session_state.thumb_trade_type,
+                price_text=st.session_state.thumb_price_text,
+                spec_lines=spec_lines,
+                office_name=st.session_state.get("ad_office_name", "참좋은공인중개사사무소"),
+                office_owner=st.session_state.get("ad_office_owner", "신제환"),
+                office_phone=st.session_state.get("ad_office_phone", "010-9667-4201"),
+                office_reg_no=st.session_state.get("ad_office_reg_no", "제 26530-2026-00009 호"),
+                office_address=st.session_state.get("ad_office_address", "부산광역시 사상구 강선로 9, 1층"),
+                is_commercial=False,
+                office_tel=st.session_state.get("office_tel_input", "010-9667-4201"),
+                assistant_phone=st.session_state.get("assistant_phone_input", ""),
+                primary_color_override=selected_design.get("primary_color", "#F48A26"),
+                accent_color_override=selected_design.get("accent_color", "#EB5E28")
+            )
+            a4_io = io.BytesIO()
+            a4_poster_img.save(a4_io, format="PNG", quality=98)
+            a4_bytes = a4_io.getvalue()
+            a4_filename = f"창문부착용_아파트포스터_{clean_title}_{clean_price}.png"
+
+        render_download_save_controller(
+            file_bytes=a4_bytes,
+            default_filename=a4_filename,
+            label_download="300dpi 초고화질 A4포스터 파일저장",
+            key_prefix="apt_thumb_a4_down",
+            is_poster=True,
+            print_bytes=a4_bytes
         )
 
         st.info("💡 아파트 썸네일을 만드셨다면, 상단의 **'🖨️ 창문부착용A4'** 또는 **'📋 중개대상물표시'** 탭을 클릭하여 포스터 출력과 네이버 광고 서식을 바로 확인하세요!")
