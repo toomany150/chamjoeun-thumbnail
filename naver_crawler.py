@@ -88,50 +88,110 @@ def extract_maintenance_fee_and_detail(raw_fee: str = "", data_map: dict = None,
     detail = ""
     data_map = data_map or {}
 
-    # 1. data_map에서 세부내역 전용 키 검색
-    for k in ["관리비 세부내역", "관리비세부내역", "관리비 포함항목", "관리비포함항목", "관리비 항목", "관리비항목", "관리비 비목", "세부내역"]:
+    # 1. data_map에서 세부내역 및 부과기준/포함항목 전용 키 검색
+    rule_from_map = ""
+    inc_from_map = ""
+    for k in ["관리비 세부내역", "관리비세부내역", "관리비 비목", "세부내역"]:
         if k in data_map and data_map[k].strip():
-            detail = data_map[k].strip()
+            detail = data_map[k].replace("도움말 보기", "").replace("상세보기", "").strip()
             break
+    for k in ["관리비부과기준", "관리비 부과기준", "부과기준"]:
+        if k in data_map and data_map[k].strip():
+            rule_from_map = data_map[k].replace("부과해요.", "부과").replace("부과해요", "부과").strip()
+            break
+    for k in ["관리비 포함항목", "관리비포함항목", "포함 항목(사용료)", "포함항목(사용료)", "포함 항목", "포함항목", "관리비 항목", "관리비항목"]:
+        if k in data_map and data_map[k].strip():
+            inc_from_map = data_map[k].strip()
+            break
+    if not detail and (rule_from_map or inc_from_map):
+        if rule_from_map and inc_from_map:
+            detail = f"{rule_from_map} (포함항목: {inc_from_map})"
+        else:
+            detail = rule_from_map or f"포함항목: {inc_from_map}"
 
     # 2. 관리비 금액 처리
+    cand_fee = ""
     if raw_fee:
-        paren_m = re.search(r'^([^(/\n]+)[(/]([^)]+)\)?', raw_fee)
-        if paren_m:
-            fee = paren_m.group(1).strip()
-            if not detail:
-                detail = paren_m.group(2).strip()
-        else:
-            fee = raw_fee.strip()
+        cand_fee = raw_fee.replace("도움말 보기", "").replace("상세보기", "").strip()
     elif "관리비" in data_map:
-        val = data_map["관리비"].strip()
-        paren_m = re.search(r'^([^(/\n]+)[(/]([^)]+)\)?', val)
-        if paren_m:
-            fee = paren_m.group(1).strip()
-            if not detail:
-                detail = paren_m.group(2).strip()
-        else:
-            fee = val
+        cand_fee = data_map["관리비"].replace("도움말 보기", "").replace("상세보기", "").strip()
     elif "월관리비" in data_map:
-        fee = data_map["월관리비"].strip()
+        cand_fee = data_map["월관리비"].replace("도움말 보기", "").replace("상세보기", "").strip()
 
-    # 3. text_content(HTML 또는 클립보드)에서 공용관리비, 개별관리비, 난방비 추출
-    if text_content and not detail:
-        comm_m = re.search(r"공용관리비\s*[:|]?\s*([0-9,]+(?:\s*만\s*[0-9,]*\s*원?|\s*만?원))", text_content)
-        indiv_m = re.search(r"(?:기타개별관리비|개별관리비)\s*[:|]?\s*([0-9,]+(?:\s*만\s*[0-9,]*\s*원?|\s*만?원))", text_content)
-        heat_m = re.search(r"난방비\s*[:|]?\s*([0-9,]+(?:\s*만\s*[0-9,]*\s*원?|\s*만?원))", text_content)
+    if cand_fee in ["부과기준", "세부내역", "포함항목", "포함 항목", "-"]:
+        cand_fee = ""
 
-        parts = []
-        if comm_m:
-            parts.append(f"공용관리비 약 {comm_m.group(1).strip()}")
-        if heat_m and "-" not in heat_m.group(1):
-            parts.append(f"난방비 {heat_m.group(1).strip()}")
-        if indiv_m:
-            parts.append(f"기타개별관리비 약 {indiv_m.group(1).strip()}")
-        elif "개별" in text_content or "실사용량" in text_content:
-            parts.append("수도/전기 등 실사용량 별도 부과")
-        if parts:
-            detail = ", ".join(parts)
+    if cand_fee:
+        # 한 줄에 '23만원 관리규약 등에 따라 부과해요 포함 항목(사용료) : 공용, 전기, 수도'처럼 금액과 내역이 함께 있는 경우 분리
+        inline_m = re.match(r"^((?:월\s*|약\s*)?\d[\d,.]*\s*(?:만\s*\d*\s*원?|만\s*원|원))\s*(.+)$", cand_fee)
+        if inline_m:
+            fee = inline_m.group(1).strip()
+            rem = inline_m.group(2).strip(" ()-·•:")
+            if rem and not detail:
+                detail = rem
+        else:
+            paren_m = re.search(r'^([^(/\n]+)[(/]([^)]+)\)?', cand_fee)
+            if paren_m:
+                fee = paren_m.group(1).strip()
+                if not detail:
+                    detail = paren_m.group(2).strip()
+            else:
+                fee = cand_fee.strip()
+
+    # 3. text_content(클립보드 또는 매물설명 텍스트, 단 raw HTML 태그는 제외)에서 관리비/부과기준/포함항목 추출
+    if text_content and "<html" not in text_content[:500].lower():
+        clean_txt = text_content.replace("도움말 보기", "").replace("상세보기", "")
+
+        # 만약 fee가 아직 비어있다면 텍스트에서 '관리비 23만원' 또는 단독 '23만원' 탐색
+        if not fee:
+            m_f = re.search(r"(?:월\s*관리비|월관리비|공용관리비|관리비)(?!\s*부과기준|\s*세부|\s*포함|\s*항목)\s*[:|]?\s*((?:월\s*|약\s*)?\d[\d,.]*\s*(?:만\s*\d*\s*원?|만\s*원|원)|없음|자체관리|확인불가)", clean_txt)
+            if m_f:
+                fee = m_f.group(1).strip()
+            else:
+                # 관리비 섹션만 단독으로 드래그 복사한 경우 (예: 첫 줄이 '23만원'이고 아래에 '관리비부과기준'이나 '포함 항목'이 있는 경우)
+                if any(kw in clean_txt for kw in ["관리규약", "포함 항목", "포함항목", "부과기준", "공용관리비"]):
+                    standalone_m = re.search(r"(?:^|\n)\s*((?:월\s*|약\s*)?\d[\d,.]*\s*(?:만\s*\d*\s*원?|만\s*원|원))\s*(?:\n|$)", clean_txt)
+                    if standalone_m:
+                        fee = standalone_m.group(1).strip()
+
+        if not detail:
+            rule_m = re.search(r"(?:관리비\s*부과기준\s*[:|]?\s*)?([가-힣\s]+따라\s*부과(?:해요|됩니다|함)?)", clean_txt)
+            inc_m = re.search(r"포함\s*항목(?:\s*\([^)]*\))?\s*[:|]\s*([^\n\r|]+)", clean_txt)
+            if rule_m or inc_m:
+                r_str = rule_m.group(1).replace("부과해요", "부과").replace("부과됩니다", "부과").strip() if rule_m else ""
+                i_str = inc_m.group(1).strip() if inc_m else ""
+                if r_str and i_str:
+                    detail = f"{r_str} (포함항목: {i_str})"
+                else:
+                    detail = r_str or f"포함항목: {i_str}"
+
+        if not detail:
+            comm_m = re.search(r"공용관리비\s*[:|]?\s*([0-9,]+(?:\s*만\s*[0-9,]*\s*원?|\s*만?원))", clean_txt)
+            indiv_m = re.search(r"(?:기타개별관리비|개별관리비)\s*[:|]?\s*([0-9,]+(?:\s*만\s*[0-9,]*\s*원?|\s*만?원))", clean_txt)
+            heat_m = re.search(r"난방비\s*[:|]?\s*([0-9,]+(?:\s*만\s*[0-9,]*\s*원?|\s*만?원))", clean_txt)
+
+            parts = []
+            if comm_m:
+                parts.append(f"공용관리비 약 {comm_m.group(1).strip()}")
+            if heat_m and "-" not in heat_m.group(1):
+                parts.append(f"난방비 {heat_m.group(1).strip()}")
+            if indiv_m:
+                parts.append(f"기타개별관리비 약 {indiv_m.group(1).strip()}")
+            elif re.search(r"개별\s*(?:사용료|관리비|부과)|실사용량", clean_txt):
+                parts.append("수도/전기 등 실사용량 별도 부과")
+            if parts:
+                detail = ", ".join(parts)
+
+    # 세부내역 구어체 정리 ('부과해요 포함 항목(사용료) : ...' -> 깔끔한 표준 문구)
+    if detail:
+        detail = re.sub(r"관리비\s*부과기준\s*[:|]?\s*", "", detail).strip()
+        detail = detail.replace("부과해요.", "부과").replace("부과해요", "부과").replace("부과됩니다", "부과")
+        inc_inline = re.search(r"(.*?)\s*포함\s*항목(?:\s*\([^)]*\))?\s*[:|]\s*(.+)$", detail)
+        if inc_inline and "(포함항목:" not in detail:
+            r_p = inc_inline.group(1).strip(" ,./·•-")
+            i_p = inc_inline.group(2).strip(" ,./·•-")
+            if r_p and i_p:
+                detail = f"{r_p} (포함항목: {i_p})"
 
     # 4. 여전히 detail이 비어있고, 관리비 금액이 확인된 경우
     # 중개대상물 표시광고 법적 기준에 부합하는 합리적 세부내역 자동 추정/완성
@@ -152,14 +212,14 @@ def extract_maintenance_fee_and_detail(raw_fee: str = "", data_map: dict = None,
 
         if amount_man is not None and amount_man >= 10:
             comm_est = int(round(amount_man * 0.72))
-            detail = f"공용관리비 약 {comm_est}만 원 (수도·전기·가스 실사용량 별도 부과)"
+            detail = f"관리규약 등에 따라 부과 (공용관리비 약 {comm_est}만 원 / 전기·수도·가스 실사용량 기준)"
         elif amount_man is not None and amount_man > 0:
             comm_est = int(round(amount_man * 0.7))
             detail = f"공용관리비 약 {comm_est}만 원 (개별사용료 별도)"
         elif any(kw in fee for kw in ["자체", "없음", "0원"]):
             detail = "자체관리 (수도/전기/가스 실사용량 별도)"
         else:
-            detail = "공용관리비 및 수도·전기 실사용량 별도 부과"
+            detail = "관리규약 등에 따라 부과 (포함항목: 공용, 전기, 수도)"
 
     return fee, detail
 
@@ -252,11 +312,12 @@ def parse_naver_clipboard_text(text: str) -> Dict[str, Any]:
 
     # 9. 관리비 & 관리비 세부내역 정밀 파싱
     raw_fee = ""
-    fee_match = re.search(r"(?:월\s*관리비|월관리비|관리비|공용관리비)\s*[:|]?\s*([^\n\r|]+)", text)
+    text_for_fee = re.sub(r"도움말\s*보기", "", text).replace("상세보기", "")
+    fee_match = re.search(r"(?:월\s*관리비|월관리비|공용관리비|관리비)(?!\s*부과기준|\s*세부|\s*포함|\s*항목|\s*비목)\s*[:|]?\s*([^\n\r|]+)", text_for_fee)
     if fee_match:
         raw_fee = fee_match.group(1).strip()
 
-    fee_val, detail_val = extract_maintenance_fee_and_detail(raw_fee=raw_fee, text_content=text)
+    fee_val, detail_val = extract_maintenance_fee_and_detail(raw_fee=raw_fee, text_content=text_for_fee)
     if fee_val:
         res["maintenance_fee"] = fee_val
     if detail_val:
@@ -340,8 +401,12 @@ def parse_naver_clipboard_text(text: str) -> Dict[str, Any]:
         if any(kw in line_s for kw in [
             "매매", "전세", "월세", "공급", "전용", "해당층", "관리비", 
             "난방비", "기타개별", "개별관리비", "국토교통부", "하절기", "동절기", 
-            "제공", "보증금", "융자금", "확인매물", "공용관리비"
+            "제공", "보증금", "융자금", "확인매물", "공용관리비", "도움말", "상세보기",
+            "부과기준", "관리규약", "포함 항목", "포함항목", "사용료", "부과해요"
         ]):
+            continue
+        # 순수 금액/숫자 라인(예: '23만원', '월 18만원')은 단지명으로 오인하지 않도록 제외
+        if re.fullmatch(r"(?:월\s*|약\s*)?[\d,.\s]+(?:억|만|천|원|만원|\s)+", line_s):
             continue
         dong_m = re.search(r"((?:제)?\s*\d{2,4}\s*동)", line_s)
         ho_m = re.search(r"((?:제)?\s*\d{2,4}\s*호)", line_s)
@@ -566,28 +631,36 @@ def crawl_naver_article(article_input: str) -> Tuple[bool, str, Dict[str, Any]]:
             if "입주가능일" in data_map:
                 res_data["move_in_date"] = data_map["입주가능일"]
 
-            # 관리비 및 세부내역 추출
-            fee_s1, detail_s1 = extract_maintenance_fee_and_detail(data_map=data_map, text_content=html)
-            if fee_s1:
-                res_data["maintenance_fee"] = fee_s1
-            if detail_s1:
-                res_data["maintenance_detail"] = detail_s1
+            # 현관구조 및 난방
+            if "현관구조" in data_map:
+                res_data["entrance_type"] = data_map["현관구조"].strip()
+            if "난방" in data_map:
+                res_data["heating"] = data_map["난방"].replace("/", " / ").replace("  ", " ").strip()
 
             # Next.js 스트리밍 텍스트에서 매물 정보 JSON 덩어리 탐색
             # self.__next_f.push(...)
+            article_desc_parts = []
             chunks = re.findall(r'self\.__next_f\.push\(\[(?:0|1),\s*"(.*?)"\]\)', html, re.DOTALL)
             for chunk in chunks:
                 try:
-                    decoded = chunk.encode().decode("unicode_escape")
+                    try:
+                        decoded = json.loads(f'"{chunk}"')
+                    except Exception:
+                        decoded = chunk.encode().decode("unicode_escape")
+
+                    # 중개사 매물 설명(articleDescription) 내 관리비 언급 추출용
+                    desc_m = re.search(r'"articleDescription"\s*:\s*"([^"]+)"', decoded)
+                    if desc_m:
+                        article_desc_parts.append(desc_m.group(1))
+
                     # articleDetail / priceInfo / complexInfo JSON 탐색
-                    if "articleNumber" in decoded or "articleName" in decoded or "dealOrWarrantPrc" in decoded:
-                        # 정규식으로 핵심 필드 직접 추출
+                    if "articleNumber" in decoded or "articleName" in decoded or "dealOrWarrantPrc" in decoded or "priceInfo" in decoded:
                         name_m = re.search(r'"articleName"\s*:\s*"([^"]+)"', decoded)
                         if name_m and not res_data.get("main_title"):
                             res_data["main_title"] = name_m.group(1)
 
-                        bild_m = re.search(r'"bildNm"\s*:\s*"([^"]+)"', decoded)
-                        if bild_m:
+                        bild_m = re.search(r'"(?:bildNm|dongName)"\s*:\s*"([^"]+)"', decoded)
+                        if bild_m and not res_data.get("dong_name"):
                             res_data["dong_name"] = bild_m.group(1)
 
                         flr_m = re.search(r'"floorInfo"\s*:\s*"([^"]+)"', decoded)
@@ -598,8 +671,8 @@ def crawl_naver_article(article_input: str) -> Tuple[bool, str, Dict[str, Any]]:
                         if prc_m and not res_data.get("price_text"):
                             res_data["price_text"] = prc_m.group(1) + " 원"
 
-                        area1_m = re.search(r'"area1"\s*:\s*([\d.]+)', decoded)
-                        area2_m = re.search(r'"area2"\s*:\s*([\d.]+)', decoded)
+                        area1_m = re.search(r'"(?:area1|supplySpace)"\s*:\s*([\d.]+)', decoded)
+                        area2_m = re.search(r'"(?:area2|exclusiveSpace)"\s*:\s*([\d.]+)', decoded)
                         if area1_m and not res_data.get("area_supply"):
                             res_data["area_supply"] = f"{float(area1_m.group(1)):.2f}"
                         if area2_m and not res_data.get("area_exclusive"):
@@ -607,18 +680,28 @@ def crawl_naver_article(article_input: str) -> Tuple[bool, str, Dict[str, Any]]:
 
                         dir_m = re.search(r'"direction"\s*:\s*"([^"]+)"', decoded)
                         if dir_m and not res_data.get("direction"):
-                            res_data["direction"] = dir_m.group(1) + " (거실 기준)"
+                            d_v = dir_m.group(1)
+                            res_data["direction"] = d_v if "기준" in d_v else f"{d_v} (거실 기준)"
 
                         use_m = re.search(r'"realEstateTypeName"\s*:\s*"([^"]+)"', decoded)
                         if use_m and not res_data.get("building_use"):
                             res_data["building_use"] = use_m.group(1)
 
-                        cost_m = re.search(r'"(?:monthlyManagementCost|manageCost)"\s*:\s*(\d+)', decoded)
+                        cost_m = re.search(r'"(?:monthlyManagementCost|manageCost|etcFeeAmount)"\s*:\s*(\d+)', decoded)
                         if cost_m and not res_data.get("maintenance_fee"):
                             c_int = int(cost_m.group(1))
-                            res_data["maintenance_fee"] = f"{c_int // 10000}만 원" if c_int >= 10000 else f"{c_int:,}원"
+                            if c_int > 0:
+                                res_data["maintenance_fee"] = f"월 {c_int // 10000}만 원" if c_int >= 10000 else f"월 {c_int:,}원"
                 except Exception:
                     continue
+
+            # 관리비 및 세부내역 추출 (raw HTML 대신 정제된 data_map과 매물설명 텍스트만 전달)
+            desc_joined = "\n".join(article_desc_parts)
+            fee_s1, detail_s1 = extract_maintenance_fee_and_detail(data_map=data_map, text_content=desc_joined)
+            if fee_s1 and not res_data.get("maintenance_fee"):
+                res_data["maintenance_fee"] = fee_s1
+            if detail_s1 and not res_data.get("maintenance_detail"):
+                res_data["maintenance_detail"] = detail_s1
 
     except Exception as e:
         error_reasons.append(f"웹 상세 조회: {e}")
@@ -678,9 +761,16 @@ def crawl_naver_article(article_input: str) -> Tuple[bool, str, Dict[str, Any]]:
     # ----------------------------------------------------
     # 관리비 세부내역 필수 보강 (법적 의무 사항: 월 10만 원 이상 시 세부내역 분리 기재)
     if res_data.get("maintenance_fee") and not res_data.get("maintenance_detail"):
-        _, auto_detail = extract_maintenance_fee_and_detail(raw_fee=res_data["maintenance_fee"], text_content=html if 'html' in locals() else "")
+        _, auto_detail = extract_maintenance_fee_and_detail(raw_fee=res_data["maintenance_fee"])
         if auto_detail:
             res_data["maintenance_detail"] = auto_detail
+    elif not res_data.get("maintenance_detail"):
+        # 네이버 SSR에서 관리비 API(/article/maintenanceFee)를 비동기 분리한 경우에도 법정 기본 부과기준 자동 세팅
+        b_use = str(res_data.get("building_use", ""))
+        if any(k in b_use for k in ["공동주택", "아파트", "오피스텔", "주상복합"]) or res_data.get("households"):
+            res_data["maintenance_detail"] = "관리규약 등에 따라 부과 (포함항목: 공용, 전기, 수도)"
+        else:
+            res_data["maintenance_detail"] = "자체관리 (수도·전기·가스 실사용량 별도 부과)"
     has_valid_specs = any(res_data.get(k) for k in ["price_text", "area_exclusive", "area_supply", "floor_info", "room_bath"])
     if res_data and has_valid_specs:
         # 서브 타이틀 및 소재지 조립

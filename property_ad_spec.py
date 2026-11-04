@@ -8,6 +8,7 @@
 
 import os
 import io
+import re
 import math
 import functools
 from PIL import Image, ImageDraw, ImageFont
@@ -243,6 +244,138 @@ def format_area_text(supply_str: str, exclusive_str: str) -> tuple[str, str]:
     except Exception:
         return f"{supply_str}㎡ / {exclusive_str}㎡", ""
 
+
+def normalize_maintenance_display(m_fee_raw: str, m_detail_raw: str) -> tuple[str, str, str]:
+    """
+    관리비 및 세부내역 문자열을 정규화하여 (정규화된 관리비, 정규화된 세부내역, 표시용 통합 문자열)을 반환합니다.
+    - 네이버 복사 시 '23만원 관리규약 등에 따라 부과해요 포함 항목(사용료) : 공용, 전기, 수도'처럼
+      한 칸에 섞여 들어오거나 구어체('부과해요')로 들어온 경우에도 깔끔한 개조식으로 자동 정리합니다.
+    """
+    m_fee = str(m_fee_raw or "").replace("도움말 보기", "").replace("상세보기", "").strip()
+    m_detail = str(m_detail_raw or "").replace("도움말 보기", "").replace("상세보기", "").strip()
+
+    # 만약 m_fee 안에 '관리규약' 또는 '포함 항목' 등 세부내역이 함께 붙여넣어진 경우 자동 분리
+    if m_fee and any(kw in m_fee for kw in ["관리규약", "포함 항목", "포함항목", "부과기준", "공용관리비"]):
+        fee_part_m = re.match(r"^((?:월\s*)?\d[\d,.]*\s*(?:만\s*\d*\s*원?|만\s*원|원))\s*(.+)$", m_fee)
+        if fee_part_m:
+            m_fee = fee_part_m.group(1).strip()
+            extra_detail = fee_part_m.group(2).strip(" ()-·•:")
+            if extra_detail and not m_detail:
+                m_detail = extra_detail
+
+    if m_fee and not m_fee.startswith("월") and ("만" in m_fee or re.search(r"\d+\s*원", m_fee)):
+        m_fee_clean = f"월 {m_fee}"
+    elif m_fee and re.fullmatch(r"\d+", m_fee):
+        m_fee_clean = f"월 {m_fee}만 원"
+    else:
+        m_fee_clean = m_fee
+
+    # 세부내역 구어체 및 줄바꿈 정리
+    if m_detail:
+        d_clean = re.sub(r"관리비\s*부과기준\s*[:|]?\s*", "", m_detail).strip()
+        d_clean = d_clean.replace("부과해요.", "부과").replace("부과해요", "부과").replace("부과됩니다", "부과")
+
+        # '관리규약 등에 따라 부과 포함 항목(사용료) : 공용, 전기, 수도' 형태를 2줄로 깔끔하게 분리
+        inc_m = re.search(r"(.*?)\s*포함\s*항목(?:\s*\([^)]*\))?\s*[:|]\s*(.+)$", d_clean)
+        if inc_m:
+            rule_part = inc_m.group(1).strip(" ,./·•-")
+            inc_part = inc_m.group(2).strip(" ,./·•-")
+            detail_lines = []
+            if rule_part:
+                detail_lines.append(f"• 부과기준: {rule_part}")
+            if inc_part:
+                detail_lines.append(f"• 포함항목: {inc_part}")
+            m_detail_clean = f"{rule_part} (포함항목: {inc_part})" if (rule_part and inc_part) else d_clean
+            m_display = (f"{m_fee_clean}\n" if m_fee_clean else "") + "\n".join(detail_lines)
+            return m_fee_clean, m_detail_clean, m_display.strip()
+
+        m_detail_clean = d_clean
+        if m_fee_clean:
+            m_display = f"{m_fee_clean}\n• 세부내역: {m_detail_clean}"
+        else:
+            m_display = f"• 세부내역: {m_detail_clean}"
+    else:
+        m_detail_clean = ""
+        m_display = m_fee_clean
+
+    return m_fee_clean, m_detail_clean, m_display
+
+
+# 모바일/PC 블로그 표에서 좌측 항목명이 절대 2줄로 꺾이지 않도록 간결한 표준 명칭 매핑 (최대 5글자 이내)
+HTML_SHORT_LABELS = {
+    "소재지": "소재지",
+    "공급/전용면적": "공급·전용",
+    "대지 / 연면적": "대지·연면적",
+    "해당층 / 총층": "해당·총층",
+    "해당층 / 총층수": "해당·총층",
+    "방수 / 욕실수": "방·욕실수",
+    "관리비": "관리비",
+    "거래 형태": "거래형태",
+    "가격": "거래가격",
+    "거래 금액": "거래금액",
+    "거래 가격": "거래가격",
+    "방향": "방향",
+    "주출입구 방향": "출입구방향",
+    "현관구조": "현관구조",
+    "난방(방식/연료)": "난방방식",
+    "입주가능일": "입주가능일",
+    "입주 가능일": "입주가능일",
+    "총주차대수": "총주차대수",
+    "주차대수": "주차대수",
+    "주차 대수": "주차대수",
+    "해당면적 세대수": "총세대수",
+    "건축물 용도": "건축물용도",
+    "건축물 구조": "건축물구조",
+    "사용승인일": "사용승인일",
+    "주요 특징": "주요특징",
+    "용도지역 / 지목": "용도·지목",
+    "층고 / 처마고": "유효층고",
+    "호이스트 설비": "호이스트",
+    "동력 (전기)": "사용전력",
+    "진입도로 폭": "진입도로",
+    "중개사무소 정보": "중개사무소",
+    "소속공인중개사": "소속중개사",
+}
+
+
+def _prevent_midword_break_html(text: str) -> str:
+    """
+    네이버 블로그 모바일 뷰어(SmartEditor ONE)는 표(td) 내부에 강제로 word-break: break-all을 적용하여
+    '명시사항 -> 명시 / 사항', '(사용료) -> (사 / 용료)'처럼 단어 중간이 끊어지는 문제가 발생합니다.
+    이를 원천 방지하기 위해 공백으로 구분된 짧은 어절(6자 이하) 및 괄호 묶음 내부 글자 사이에
+    유니코드 Word Joiner(\u2060)를 삽입하여, 줄바꿈이 항상 어절(띄어쓰기) 단위로만 일어나도록 보호합니다.
+    """
+    if not text:
+        return ""
+
+    # 긴 복합 단지명 등에 자연스러운 띄어쓰기 보강 (예: 사상중흥S-클래스그랜드센트럴 -> 사상중흥S-클래스 그랜드센트럴)
+    text = re.sub(r"(클래스|센트럴|푸르지오|자이|래미안|힐스테이트|아이파크|더샵|롯데캐슬|포레나|위브|하늘채)(?=[가-힣]{2,})", r"\1 ", text)
+
+    tokens = text.split(" ")
+    protected_tokens = []
+    for tok in tokens:
+        if not tok:
+            continue
+        # 슬래시(/) 주변이나 긴 토큰은 5글자 단위로만 묶어 셀 넘침 방지, 6글자 이하 어절은 전체를 한 덩어리로 묶음
+        if len(tok) <= 7:
+            protected_tokens.append("\u2060".join(list(tok)))
+        else:
+            # 괄호나 슬래시가 있는 경우 구분자 단위로 나누어 각각의 단어를 보호
+            sub_parts = re.split(r"([/()·,])", tok)
+            rebuilt = []
+            for sp in sub_parts:
+                if not sp:
+                    continue
+                if len(sp) <= 6:
+                    rebuilt.append("\u2060".join(list(sp)))
+                else:
+                    # 6글자 초과 무공백 단어는 4글자 단위로 묶어 어색한 외글자 줄바꿈 방지
+                    chunks = [ "\u2060".join(list(sp[j:j+4])) for j in range(0, len(sp), 4) ]
+                    rebuilt.append("".join(chunks))
+            protected_tokens.append("".join(rebuilt))
+    return " ".join(protected_tokens)
+
+
 def get_ordered_spec_table_data(data: dict) -> list[dict]:
     """16개 항목 순서대로 정리된 데이터 리스트 반환"""
     area_m2, _ = format_area_text(data.get("area_supply", "111.42"), data.get("area_exclusive", "79.85"))
@@ -250,16 +383,7 @@ def get_ordered_spec_table_data(data: dict) -> list[dict]:
 
     m_fee = str(data.get("maintenance_fee", "월 18만 원")).strip()
     m_detail = str(data.get("maintenance_detail", "")).strip()
-    
-    if m_fee and not m_fee.startswith("월") and "만" in m_fee:
-        m_fee_clean = f"월 {m_fee}"
-    else:
-        m_fee_clean = m_fee
-
-    if m_detail:
-        m_display = f"{m_fee_clean}\n• 세부내역: {m_detail}"
-    else:
-        m_display = m_fee_clean
+    _, _, m_display = normalize_maintenance_display(m_fee, m_detail)
 
     trade = data.get("trade_type", "매매")
     price = data.get("price_text", "6억 2,000만 원")
@@ -408,35 +532,53 @@ def get_factory_spec_table_data(data: dict) -> list[dict]:
 
 
 def generate_blog_html_table(data: dict, items: list = None) -> str:
-    """네이버 블로그 스마트에디터(SmartEditor ONE)에 바로 붙여넣을 수 있는 세련된 HTML 표 서식 생성
+    """네이버 블로그 스마트에디터(SmartEditor ONE)에 바로 붙여넣을 수 있는 PC·모바일 겸용 반응형 HTML 표 서식 생성
     - 마크다운 코드블록 오인 방지를 위해 줄 앞 공백(들여쓰기) 완전 제거
-    - 스마트에디터 붙여넣기 시 배경색/테두리가 깨지지 않도록 헤더·풋터를 table 셀(td) 내부로 통합하고 bgcolor 속성 병기
+    - 스마트에디터 붙여넣기 시 글자 크기가 들쭉날쭉해지지 않도록 모든 텍스트를 명시적 font-size span으로 감쌈
+    - 네이버 블로그 모바일의 강제 어절 쪼개기(word-break: break-all) 방지를 위해 좌측 항목명 단축 + 유니코드 Word Joiner(\u2060) 적용
     """
     if items is None:
         items = get_ordered_spec_table_data(data)
 
+    hdr_title = _prevent_midword_break_html("📋 중개대상물 인터넷 표시·광고 명시사항")
+    hdr_sub = _prevent_midword_break_html("[공인중개사법 시행령 준수]")
+
     rows = [
-        '<div style="font-family: -apple-system, BlinkMacSystemFont, \'Malgun Gothic\', sans-serif; max-width: 780px; margin: 20px auto;">',
-        '<table style="width: 100%; max-width: 780px; border-collapse: collapse; font-size: 14px; text-align: left; background-color: #FFFFFF; border: 2px solid #232529;">',
+        '<div style="font-family: -apple-system, BlinkMacSystemFont, \'Malgun Gothic\', \'Apple SD Gothic Neo\', sans-serif; max-width: 780px; margin: 16px auto;">',
+        '<table width="100%" style="width: 100%; max-width: 780px; border-collapse: collapse; table-layout: fixed; font-size: 13px; text-align: left; background-color: #FFFFFF; border: 2px solid #232529;">',
+        '<colgroup><col width="32%" style="width: 32%;"/><col width="68%" style="width: 68%;"/></colgroup>',
         '<tbody>',
         '<tr bgcolor="#232529" style="background-color: #232529;">',
-        '<td colspan="2" bgcolor="#232529" style="background-color: #232529; color: #FFFFFF; padding: 14px 20px; font-size: 16px; font-weight: 700; border-bottom: 2px solid #F48A26;">',
-        '<span style="color: #FFFFFF; font-weight: 700;">📋 중개대상물 인터넷 표시·광고 명시사항</span> ',
-        '<span style="font-size: 12px; color: #F48A26; font-weight: 600; margin-left: 8px;">[공인중개사법 시행령 준수]</span>',
+        '<td colspan="2" bgcolor="#232529" style="background-color: #232529; color: #FFFFFF; padding: 12px 14px; border-bottom: 2px solid #F48A26; line-height: 1.45; word-break: keep-all;">',
+        f'<span style="color: #FFFFFF; font-weight: 700; font-size: 15px;">{hdr_title}</span><br/>',
+        f'<span style="font-size: 11px; color: #F48A26; font-weight: 600;">{hdr_sub}</span>',
         '</td>',
         '</tr>',
     ]
 
     for i, it in enumerate(items):
         bg_col = "#F9FAFC" if i % 2 == 0 else "#FFFFFF"
-        val_escaped = str(it['val']).replace("\n", "<br/>")
+        short_name = HTML_SHORT_LABELS.get(it["name"], it["name"])
+        label_protected = "\u2060".join(list(short_name.replace(" ", "")))
+
+        raw_val = str(it.get("val", "")).strip()
+        # 소재지(01번)에 '주소 (단지명 동)' 형태가 한 줄로 길게 들어가면 괄호 앞을 줄바꿈하여 모바일/PC 모두 깔끔하게 정렬
+        if it.get("num") == 1 and "(" in raw_val and "\n(" not in raw_val:
+            raw_val = re.sub(r"\s*\(", "\n(", raw_val, count=1)
+
+        val_lines = [
+            f'<span style="color: #1E2022; font-size: 13px; line-height: 1.6;">{_prevent_midword_break_html(line.strip())}</span>'
+            for line in raw_val.split("\n") if line.strip()
+        ]
+        val_html = "<br/>".join(val_lines) if val_lines else '<span style="color: #1E2022; font-size: 13px;">-</span>'
+
         rows.extend([
             f'<tr bgcolor="{bg_col}" style="background-color: {bg_col}; border-bottom: 1px solid #E5E8EB;">',
-            f'<td bgcolor="{bg_col}" style="width: 26%; background-color: {bg_col}; padding: 10px 14px; font-weight: 700; color: #333D4B; border-right: 1px solid #E5E8EB; border-bottom: 1px solid #E5E8EB; vertical-align: top;">'
-            f'<span style="color: #F48A26; font-weight: 800; font-size: 13px; margin-right: 4px;">{it["num"]:02d}.</span>{it["name"]}'
+            f'<td width="32%" bgcolor="{bg_col}" style="width: 32%; background-color: {bg_col}; padding: 9px 6px 9px 10px; font-weight: 700; color: #333D4B; border-right: 1px solid #E5E8EB; border-bottom: 1px solid #E5E8EB; vertical-align: middle; white-space: nowrap; word-break: keep-all;">'
+            f'<span style="color: #F48A26; font-weight: 800; font-size: 13px;">{it["num"]:02d}.\u2060&nbsp;</span><span style="color: #333D4B; font-weight: 700; font-size: 13px;">{label_protected}</span>'
             f'</td>',
-            f'<td bgcolor="{bg_col}" style="width: 74%; background-color: {bg_col}; padding: 10px 14px; color: #1E2022; border-bottom: 1px solid #E5E8EB; line-height: 1.55;">'
-            f'{val_escaped}'
+            f'<td width="68%" bgcolor="{bg_col}" style="width: 68%; background-color: {bg_col}; padding: 9px 10px; color: #1E2022; border-bottom: 1px solid #E5E8EB; line-height: 1.6; vertical-align: middle; word-break: keep-all; overflow-wrap: break-word;">'
+            f'{val_html}'
             f'</td>',
             '</tr>',
         ])
@@ -449,11 +591,14 @@ def generate_blog_html_table(data: dict, items: list = None) -> str:
         office_addr = data.get('office_address', '부산 사상구 강선로 9, 1층')
         as_name = data.get("assistant_name", "").strip()
         as_phone = data.get("assistant_phone", "").strip()
-        as_tag = f" | 👤 담당(소공): {as_name} ({as_phone})" if (as_name or as_phone) else ""
+        as_tag = f" | 👤 담당: {as_name} ({as_phone})" if (as_name or as_phone) else ""
+        footer_line1 = _prevent_midword_break_html(f"🏢 {office_name} (대표 {office_owner}) ☎ {office_phone}{as_tag}")
+        footer_line2 = _prevent_midword_break_html(f"📍 소재지: {office_addr}")
         rows.extend([
             '<tr bgcolor="#F48A26" style="background-color: #F48A26;">',
-            '<td colspan="2" bgcolor="#F48A26" style="background-color: #F48A26; color: #FFFFFF; padding: 12px 20px; font-size: 14px; font-weight: 700; text-align: center;">',
-            f'🏢 {office_name} (대표 {office_owner}) ☎ {office_phone}{as_tag} | {office_addr}',
+            '<td colspan="2" bgcolor="#F48A26" style="background-color: #F48A26; color: #FFFFFF; padding: 11px 14px; font-weight: 700; text-align: center; line-height: 1.5; word-break: keep-all;">',
+            f'<span style="color: #FFFFFF; font-size: 13px; font-weight: 700;">{footer_line1}</span><br/>',
+            f'<span style="color: #FFFBEB; font-size: 11px; font-weight: 600;">{footer_line2}</span>',
             '</td>',
             '</tr>',
         ])

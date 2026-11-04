@@ -176,30 +176,33 @@ def crawl_naver_core(article_no: str) -> Tuple[bool, str, Dict[str, Any]]:
             if "입주가능일" in data_map:
                 res_data["move_in_date"] = data_map["입주가능일"]
 
-            # 관리비 & 세부내역 추출
-            try:
-                from naver_crawler import extract_maintenance_fee_and_detail
-                fee_p, detail_p = extract_maintenance_fee_and_detail(data_map=data_map, text_content=html)
-                if fee_p:
-                    res_data["maintenance_fee"] = fee_p
-                if detail_p:
-                    res_data["maintenance_detail"] = detail_p
-            except Exception:
-                if "관리비" in data_map:
-                    res_data["maintenance_fee"] = data_map["관리비"]
+            # 현관구조 및 난방
+            if "현관구조" in data_map:
+                res_data["entrance_type"] = data_map["현관구조"].strip()
+            if "난방" in data_map:
+                res_data["heating"] = data_map["난방"].replace("/", " / ").replace("  ", " ").strip()
 
             # 3. Next.js 스트리밍 내부 검색 (추가 보강)
+            article_desc_parts = []
             chunks = re.findall(r'self\.__next_f\.push\(\[(?:0|1),\s*"(.*?)"\]\)', html, re.DOTALL)
             for chunk in chunks:
                 try:
-                    decoded = chunk.encode().decode("unicode_escape")
-                    if "articleNumber" in decoded or "articleName" in decoded or "dealOrWarrantPrc" in decoded:
+                    try:
+                        decoded = json.loads(f'"{chunk}"')
+                    except Exception:
+                        decoded = chunk.encode().decode("unicode_escape")
+
+                    desc_m = re.search(r'"articleDescription"\s*:\s*"([^"]+)"', decoded)
+                    if desc_m:
+                        article_desc_parts.append(desc_m.group(1))
+
+                    if "articleNumber" in decoded or "articleName" in decoded or "dealOrWarrantPrc" in decoded or "priceInfo" in decoded:
                         name_m = re.search(r'"articleName"\s*:\s*"([^"]+)"', decoded)
                         if name_m and not res_data.get("main_title"):
                             res_data["main_title"] = name_m.group(1)
 
-                        bild_m = re.search(r'"bildNm"\s*:\s*"([^"]+)"', decoded)
-                        if bild_m:
+                        bild_m = re.search(r'"(?:bildNm|dongName)"\s*:\s*"([^"]+)"', decoded)
+                        if bild_m and not res_data.get("dong_name"):
                             res_data["dong_name"] = bild_m.group(1)
 
                         flr_m = re.search(r'"floorInfo"\s*:\s*"([^"]+)"', decoded)
@@ -210,8 +213,8 @@ def crawl_naver_core(article_no: str) -> Tuple[bool, str, Dict[str, Any]]:
                         if prc_m and not res_data.get("price_text"):
                             res_data["price_text"] = prc_m.group(1) + " 원"
 
-                        area1_m = re.search(r'"area1"\s*:\s*([\d.]+)', decoded)
-                        area2_m = re.search(r'"area2"\s*:\s*([\d.]+)', decoded)
+                        area1_m = re.search(r'"(?:area1|supplySpace)"\s*:\s*([\d.]+)', decoded)
+                        area2_m = re.search(r'"(?:area2|exclusiveSpace)"\s*:\s*([\d.]+)', decoded)
                         if area1_m and not res_data.get("area_supply"):
                             res_data["area_supply"] = f"{float(area1_m.group(1)):.2f}"
                         if area2_m and not res_data.get("area_exclusive"):
@@ -219,13 +222,33 @@ def crawl_naver_core(article_no: str) -> Tuple[bool, str, Dict[str, Any]]:
 
                         dir_m = re.search(r'"direction"\s*:\s*"([^"]+)"', decoded)
                         if dir_m and not res_data.get("direction"):
-                            res_data["direction"] = dir_m.group(1) + " (거실 기준)"
+                            d_v = dir_m.group(1)
+                            res_data["direction"] = d_v if "기준" in d_v else f"{d_v} (거실 기준)"
 
                         use_m = re.search(r'"realEstateTypeName"\s*:\s*"([^"]+)"', decoded)
                         if use_m and not res_data.get("building_use"):
                             res_data["building_use"] = use_m.group(1)
+
+                        cost_m = re.search(r'"(?:monthlyManagementCost|manageCost|etcFeeAmount)"\s*:\s*(\d+)', decoded)
+                        if cost_m and not res_data.get("maintenance_fee"):
+                            c_int = int(cost_m.group(1))
+                            if c_int > 0:
+                                res_data["maintenance_fee"] = f"월 {c_int // 10000}만 원" if c_int >= 10000 else f"월 {c_int:,}원"
                 except Exception:
                     continue
+
+            # 관리비 & 세부내역 추출
+            try:
+                from naver_crawler import extract_maintenance_fee_and_detail
+                desc_joined = "\n".join(article_desc_parts)
+                fee_p, detail_p = extract_maintenance_fee_and_detail(data_map=data_map, text_content=desc_joined)
+                if fee_p and not res_data.get("maintenance_fee"):
+                    res_data["maintenance_fee"] = fee_p
+                if detail_p and not res_data.get("maintenance_detail"):
+                    res_data["maintenance_detail"] = detail_p
+            except Exception:
+                if "관리비" in data_map:
+                    res_data["maintenance_fee"] = data_map["관리비"]
     except Exception as e:
         error_reasons.append(f"웹조회: {e}")
 

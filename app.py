@@ -1572,6 +1572,42 @@ if "comm_lease_main_title" not in st.session_state:
 if "comm_sale_main_sub" not in st.session_state:
     apply_comm_preset("sale")
 
+def _on_apt_maint_fee_change():
+    """월 관리비 입력 시 숫자만 입력해도 '월 23만 원'으로 보정하고, 네이버 문구 통째로 붙여넣기 시 세부내역까지 자동 분리"""
+    raw_in = str(st.session_state.get("ad_maintenance_fee", "")).strip()
+    if not raw_in:
+        return
+    if re.fullmatch(r"\d+(?:\.\d+)?", raw_in):
+        raw_in = f"월 {raw_in}만 원"
+    fee_c, det_c = extract_maintenance_fee_and_detail(raw_fee=raw_in, text_content=raw_in)
+    if fee_c:
+        if not fee_c.startswith("월") and ("만" in fee_c or re.search(r"\d+\s*원", fee_c)):
+            fee_c = f"월 {fee_c}"
+        st.session_state.ad_maintenance_fee = fee_c
+    if det_c:
+        cur_det = str(st.session_state.get("ad_maintenance_detail", "")).strip()
+        if not cur_det or any(kw in raw_in for kw in ["관리규약", "포함", "부과", "공용"]) or "실사용량 별도 부과" in cur_det:
+            st.session_state.ad_maintenance_detail = det_c
+
+
+def _on_comm_maint_fee_change():
+    """상가 월 관리비 입력 시 숫자 보정 및 세부내역 자동 분리"""
+    raw_in = str(st.session_state.get("comm_ad_maintenance_fee", "")).strip()
+    if not raw_in:
+        return
+    if re.fullmatch(r"\d+(?:\.\d+)?", raw_in):
+        raw_in = f"월 {raw_in}만 원"
+    fee_c, det_c = extract_maintenance_fee_and_detail(raw_fee=raw_in, text_content=raw_in)
+    if fee_c:
+        if not fee_c.startswith("월") and ("만" in fee_c or re.search(r"\d+\s*원", fee_c)):
+            fee_c = f"월 {fee_c}"
+        st.session_state.comm_ad_maintenance_fee = fee_c
+    if det_c:
+        cur_det = str(st.session_state.get("comm_ad_maintenance_detail", "")).strip()
+        if not cur_det or any(kw in raw_in for kw in ["관리규약", "포함", "부과", "공용"]):
+            st.session_state.comm_ad_maintenance_detail = det_c
+
+
 def safe_set_session_state(key: str, val: any):
     """위젯이 이미 화면에 렌더링된 이후 session_state를 변경할 때 발생하는 StreamlitWidgetAlreadyInstantiatedError 원천 방지"""
     try:
@@ -3412,7 +3448,8 @@ def render_tab_apt_ad():
                     with st.spinner("네이버 부동산 매물 정보 실시간 조회 중..."):
                         is_ok, msg, c_data = crawl_naver_article(input_article_val.strip())
                         if is_ok:
-                            queue_state_update("apply_apt", data=c_data, clean_previous=True, success_msg=f"🎉 {msg} 16대 점검항목과 썸네일에 즉시 자동 반영되었습니다.", target_tab="📝 ③ 아파트 중개대상물 표시")
+                            maint_note = "" if c_data.get("maintenance_fee") else " (※ 네이버 보안 정책상 관리비 금액만 암호화 분리되어 있어 부과기준만 먼저 채워졌습니다. 아래 '05. 월 관리비' 칸에 금액만 입력해 주세요!)"
+                            queue_state_update("apply_apt", data=c_data, clean_previous=True, success_msg=f"🎉 {msg} 16대 점검항목과 썸네일에 즉시 자동 반영되었습니다.{maint_note}", target_tab="📝 ③ 아파트 중개대상물 표시")
                         else:
                             st.error(f"⚠️ {msg}")
                 else:
@@ -3758,14 +3795,22 @@ def render_tab_apt_ad():
         """, unsafe_allow_html=True)
         c_mf1, c_mf2 = st.columns([1, 1.4])
         with c_mf1:
-            st.text_input("월 관리비", key="ad_maintenance_fee", placeholder="예: 월 18만 원")
+            st.text_input(
+                "월 관리비 (숫자만 입력해도 자동 변환)",
+                key="ad_maintenance_fee",
+                placeholder="예: 23 또는 월 23만 원",
+                on_change=_on_apt_maint_fee_change,
+                help="숫자(예: 23)만 입력 후 엔터(Enter)를 치시거나 네이버 관리비 문구를 통째로 붙여넣으시면 세부내역까지 자동 완성됩니다."
+            )
         with c_mf2:
             st.text_input(
                 "세부내역 (알아보기 쉬운 분리 기재)",
                 key="ad_maintenance_detail",
-                placeholder="예: 공용관리비 약 13만 원 (수도·전기·가스 실사용량 별도 부과)",
+                placeholder="예: 관리규약 등에 따라 부과 (포함항목: 공용, 전기, 수도)",
                 help="공용관리비와 개별 사용량(전기/수도/가스)을 명확히 구분하여 기재"
             )
+        if not str(st.session_state.get("ad_maintenance_fee", "")).strip():
+            st.caption("💡 네이버 매물번호 조회 시 네이버 보안 정책으로 관리비 금액만 암호화되어 비워집니다. 위 **월 관리비** 칸에 숫자(예: `23`)만 입력 후 **Enter**를 누르시면 즉시 반영됩니다!")
 
         # 6. 거래 형태 & 7. 가격
         st.markdown("""
@@ -4450,7 +4495,12 @@ def render_tab_comm_ad():
         """, unsafe_allow_html=True)
         cmf1, cmf2 = st.columns([1, 1.4])
         with cmf1:
-            st.text_input("월 관리비", key="comm_ad_maintenance_fee", placeholder="예: 월 15만 원 또는 자체관리")
+            st.text_input(
+                "월 관리비 (숫자만 입력해도 자동 변환)",
+                key="comm_ad_maintenance_fee",
+                placeholder="예: 15 또는 월 15만 원 또는 자체관리",
+                on_change=_on_comm_maint_fee_change
+            )
         with cmf2:
             st.text_input("세부내역", key="comm_ad_maintenance_detail", placeholder="예: 공용청소, 승강기유지비 등")
 
