@@ -2,4 +2,6 @@ streamlit
 pillow
 numpy
 pdfplumber
+pypdfium2
+pytesseract
 requests
