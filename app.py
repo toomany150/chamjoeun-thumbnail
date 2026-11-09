@@ -1613,14 +1613,14 @@ def _on_comm_maint_fee_change():
         return
     if re.fullmatch(r"\d+(?:\.\d+)?", raw_in):
         raw_in = f"월 {raw_in}만 원"
-    fee_c, det_c = extract_maintenance_fee_and_detail(raw_fee=raw_in, text_content=raw_in)
+    fee_c, det_c = extract_maintenance_fee_and_detail(raw_fee=raw_in, text_content=raw_in, is_commercial=True)
     if fee_c:
         if not fee_c.startswith("월") and ("만" in fee_c or re.search(r"\d+\s*원", fee_c)):
             fee_c = f"월 {fee_c}"
         st.session_state.comm_ad_maintenance_fee = fee_c
     if det_c:
         cur_det = str(st.session_state.get("comm_ad_maintenance_detail", "")).strip()
-        if not cur_det or any(kw in raw_in for kw in ["관리규약", "포함", "부과", "공용"]):
+        if not cur_det or any(kw in raw_in for kw in ["관리규약", "포함", "부과", "공용", "미표기", "실사용량", "없음"]):
             st.session_state.comm_ad_maintenance_detail = det_c
 
 
@@ -1777,7 +1777,7 @@ def apply_commercial_crawled_or_doc_data(data: dict):
     if data.get("maintenance_detail"):
         safe_set_session_state("comm_ad_maintenance_detail", str(data["maintenance_detail"]))
     elif data.get("maintenance_fee"):
-        _, auto_cd = extract_maintenance_fee_and_detail(raw_fee=str(data["maintenance_fee"]))
+        _, auto_cd = extract_maintenance_fee_and_detail(raw_fee=str(data["maintenance_fee"]), is_commercial=True)
         if auto_cd:
             safe_set_session_state("comm_ad_maintenance_detail", auto_cd)
     if data.get("restroom"):
@@ -1803,13 +1803,25 @@ def apply_commercial_crawled_or_doc_data(data: dict):
     except Exception:
         pass
 
-    loc_short = data.get("main_title") or (data.get("location", "").split(" ")[-1] if data.get("location") else "상가")
+    # 타이틀용 지역명 추출 (main_title이 '상가' 등 일반 명사인 경우 주소의 동/읍/면 활용)
+    m_tit_raw = data.get("main_title", "")
+    loc_full = data.get("location", "")
+    if m_tit_raw and m_tit_raw not in ["상가", "근린상가", "상가건물", "점포", "사무실"]:
+        loc_short = m_tit_raw
+    elif loc_full:
+        # 주소에서 동/리/로 추출 (예: '부산시 사상구 괘법동 123' -> '괘법동')
+        dong_m = re.search(r'([가-힣]+(?:동|리|로|길))\b', loc_full)
+        loc_short = dong_m.group(1) if dong_m else (loc_full.split(" ")[-1] if loc_full else "상가")
+    else:
+        loc_short = "상가"
     
+    prem_val = data.get("premium_fee") or st.session_state.get("comm_ad_premium_fee", "무권리 (권리금 없음)")
+
     if not is_sale_mode:
         # 임차 썸네일 동기화
         if loc_short:
             safe_set_session_state("comm_lease_main_title", f"{loc_short} 상가 임차")
-            safe_set_session_state("comm_lease_top_badge", f"{loc_short} 추천 매물 · {st.session_state.get('comm_ad_premium_fee', '무권리')}")
+            safe_set_session_state("comm_lease_top_badge", f"{loc_short} 추천 매물 · {prem_val}")
         price_summary = st.session_state.get("comm_ad_price_text", "")
         if py_val and price_summary:
             safe_set_session_state("comm_lease_spec1", f"{py_val} | {price_summary}")

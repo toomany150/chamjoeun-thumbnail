@@ -79,19 +79,143 @@ def format_thumb_price(price_text: str) -> str:
     return txt
 
 
-def extract_maintenance_fee_and_detail(raw_fee: str = "", data_map: dict = None, text_content: str = "") -> tuple:
+def format_premium_fee(raw_val: Any) -> str:
+    """
+    상가 권리금 텍스트 또는 숫자를 표준 표기로 변환합니다.
+    - 없음 / 0 / 무권리 -> '무권리 (권리금 없음)'
+    - 협의 -> '협의가능'
+    - 숫자(만원/원) -> '3,000만 원'
+    """
+    if raw_val is None:
+        return ""
+    s = str(raw_val).strip()
+    if not s:
+        return ""
+    if any(kw in s for kw in ["무권리", "없음", "0원", "없 음", "무"]):
+        return "무권리 (권리금 없음)"
+    if s == "0":
+        return "무권리 (권리금 없음)"
+    if "협의" in s:
+        return "협의가능"
+
+    # 순수 숫자 또는 만/억 단위 처리
+    nums = re.findall(r'\d+', s.replace(",", ""))
+    if nums and not ("만" in s or "억" in s):
+        try:
+            val_int = int("".join(nums))
+            if val_int == 0:
+                return "무권리 (권리금 없음)"
+            if val_int >= 100000000:  # 원 단위 (예: 30,000,000)
+                val_int = val_int // 10000
+            if val_int >= 10000:
+                uk = val_int // 10000
+                rem = val_int % 10000
+                return f"{uk}억 {rem:,}만 원".replace(" 0만 원", "만 원")
+            return f"{val_int:,}만 원"
+        except Exception:
+            pass
+
+    # "3000만원" -> "3,000만 원"
+    m_man = re.search(r'([\d,]+)\s*만원?', s)
+    if m_man:
+        clean_n = int(m_man.group(1).replace(",", ""))
+        if clean_n >= 10000:
+            uk = clean_n // 10000
+            rem = clean_n % 10000
+            return f"{uk}억 {rem:,}만 원".replace(" 0만 원", "만 원")
+        return f"{clean_n:,}만 원"
+
+    m_uk = re.search(r'(\d+)\s*억(?:\s*([\d,]+)\s*만?원?)?', s)
+    if m_uk:
+        uk = int(m_uk.group(1))
+        rem = int(m_uk.group(2).replace(",", "")) if m_uk.group(2) else 0
+        if rem > 0:
+            return f"{uk}억 {rem:,}만 원"
+        return f"{uk}억 원"
+
+    return s
+
+
+def normalize_approval_date(raw_date: Any) -> str:
+    """
+    네이버 매물 및 건축물대장의 사용승인일/준공일자 텍스트를
+    표준 'YYYY년 MM월 DD일' 또는 'YYYY년 MM월' 형식으로 정규화합니다.
+    """
+    if not raw_date:
+        return ""
+    s = str(raw_date).strip()
+    if not s or s in ["-", "미상", "확인불가"]:
+        return ""
+
+    # 1. YYYY년 MM월 DD일 or YYYY년 M월 D일
+    m_full_kr = re.search(r'(\d{4})\s*년\s*(\d{1,2})\s*월\s*(\d{1,2})\s*일', s)
+    if m_full_kr:
+        y, m, d = m_full_kr.group(1), int(m_full_kr.group(2)), int(m_full_kr.group(3))
+        return f"{y}년 {m:02d}월 {d:02d}일"
+
+    # 2. YYYY.MM.DD or YYYY-MM-DD or YYYY/MM/DD
+    m_ymd = re.search(r'(\d{4})[./-](\d{1,2})[./-](\d{1,2})', s)
+    if m_ymd:
+        y, m, d = m_ymd.group(1), int(m_ymd.group(2)), int(m_ymd.group(3))
+        return f"{y}년 {m:02d}월 {d:02d}일"
+
+    # 3. YYYYMMDD (8자리 숫자 예: 20180520)
+    m_8 = re.search(r'\b(19\d{2}|20\d{2})(\d{2})(\d{2})\b', s)
+    if m_8:
+        y, m, d = m_8.group(1), int(m_8.group(2)), int(m_8.group(3))
+        return f"{y}년 {m:02d}월 {d:02d}일"
+
+    # 4. YYYY년 MM월 or YYYY년 M월
+    m_ym_kr = re.search(r'(\d{4})\s*년\s*(\d{1,2})\s*월', s)
+    if m_ym_kr:
+        y, m = m_ym_kr.group(1), int(m_ym_kr.group(2))
+        return f"{y}년 {m:02d}월"
+
+    # 5. YYYY.MM or YYYY-MM or YYYY/MM
+    m_ym = re.search(r'(\d{4})[./-](\d{1,2})\b', s)
+    if m_ym:
+        y, m = m_ym.group(1), int(m_ym.group(2))
+        return f"{y}년 {m:02d}월"
+
+    # 6. YYYY년 or YYYY
+    m_y = re.search(r'\b(19\d{2}|20\d{2})\b', s)
+    if m_y:
+        return f"{m_y.group(1)}년"
+
+    return s
+
+
+def extract_maintenance_fee_and_detail(raw_fee: str = "", data_map: dict = None, text_content: str = "", is_commercial: bool = None) -> tuple:
     """
     네이버 매물 크롤링 또는 텍스트에서 관리비와 관리비 세부내역을 정밀 추출/보강합니다.
-    법적 명시사항(월 10만원 이상 시 세부내역 필수)을 완벽히 충족하도록 처리합니다.
+    - 상가(근린생활시설/업무시설)의 경우 비목별 미표기, 실사용량 별도 등 상가 특성에 맞는 실데이터 유지
+    - 주거용의 경우 법적 명시사항(월 10만원 이상 시 세부내역 필수) 충족
     """
     fee = ""
     detail = ""
     data_map = data_map or {}
 
+    # 상가 여부 자동 판단
+    if is_commercial is None:
+        is_commercial = False
+        comm_keys = [
+            "권리금", "권리금 유무", "권리금유무", "추천업종", "추천 업종", 
+            "현재업종", "현업종", "현재상태", "현재 상태", "용도지역", "주구조", 
+            "계약면적", "비목별 부과금액", "비목별부과금액"
+        ]
+        if any(k in data_map for k in comm_keys):
+            is_commercial = True
+        b_use = str(data_map.get("건축물용도", "") or data_map.get("건축물 용도", ""))
+        if any(k in b_use for k in ["근린생활", "상가", "판매", "업무", "점포", "사무실"]):
+            is_commercial = True
+        if not is_commercial and text_content:
+            if any(k in text_content for k in ["상가", "근린생활", "권리금", "무권리", "추천업종", "현재업종", "현재상태"]):
+                is_commercial = True
+
     # 1. data_map에서 세부내역 및 부과기준/포함항목 전용 키 검색
     rule_from_map = ""
     inc_from_map = ""
-    for k in ["관리비 세부내역", "관리비세부내역", "관리비 비목", "세부내역"]:
+    for k in ["비목별 부과금액", "비목별부과금액", "비목별금액", "관리비 세부내역", "관리비세부내역", "관리비 비목", "세부내역", "비목"]:
         if k in data_map and data_map[k].strip():
             detail = data_map[k].replace("도움말 보기", "").replace("상세보기", "").strip()
             break
@@ -122,8 +246,8 @@ def extract_maintenance_fee_and_detail(raw_fee: str = "", data_map: dict = None,
         cand_fee = ""
 
     if cand_fee:
-        # 한 줄에 '23만원 관리규약 등에 따라 부과해요 포함 항목(사용료) : 공용, 전기, 수도'처럼 금액과 내역이 함께 있는 경우 분리
-        inline_m = re.match(r"^((?:월\s*|약\s*)?\d[\d,.]*\s*(?:만\s*\d*\s*원?|만\s*원|원))\s*(.+)$", cand_fee)
+        # 한 줄에 '23만원 관리규약 등에 따라 부과해요 ...'처럼 금액과 내역이 함께 있는 경우 분리
+        inline_m = re.match(r"^((?:월\s*|약\s*)?\d[\d,.]*\s*(?:만\s*\d*\s*원|만원|원))\s+([^\d].*)$", cand_fee)
         if inline_m:
             fee = inline_m.group(1).strip()
             rem = inline_m.group(2).strip(" ()-·•:")
@@ -142,13 +266,32 @@ def extract_maintenance_fee_and_detail(raw_fee: str = "", data_map: dict = None,
     if text_content and "<html" not in text_content[:500].lower():
         clean_txt = text_content.replace("도움말 보기", "").replace("상세보기", "")
 
+        # 상가 실데이터 문구 우선 확인
+        for phrase in [
+            "비목별 부과금액을 확인할 수 없어 미표기",
+            "비목별 금액 미표기",
+            "비목별 부과금액 미표기",
+            "비목별부과금액을 확인할수없어 미표기",
+            "정액관리비 없음",
+            "실사용량 별도 부과",
+            "실사용량에 따라 별도 부과",
+            "확인불가 (관리규약 등에 따라 부과)",
+        ]:
+            if phrase in clean_txt and not detail:
+                if phrase == "정액관리비 없음":
+                    detail = "정액관리비 없음 (실사용량 별도 부과)"
+                elif "미표기" in phrase and "관리규약" not in phrase:
+                    detail = f"{phrase} (관리규약 등에 따라 부과 / 실사용량 별도)"
+                else:
+                    detail = phrase
+                break
+
         # 만약 fee가 아직 비어있다면 텍스트에서 '관리비 23만원' 또는 단독 '23만원' 탐색
         if not fee:
-            m_f = re.search(r"(?:월\s*관리비|월관리비|공용관리비|관리비)(?!\s*부과기준|\s*세부|\s*포함|\s*항목)\s*[:|]?\s*((?:월\s*|약\s*)?\d[\d,.]*\s*(?:만\s*\d*\s*원?|만\s*원|원)|없음|자체관리|확인불가)", clean_txt)
+            m_f = re.search(r"(?:월\s*관리비|월관리비|공용관리비|관리비)(?!\s*부과기준|\s*세부|\s*포함|\s*항목|\s*비목)\s*[:|]?\s*(?:\n|\r\n)?\s*((?:월\s*|약\s*)?\d[\d,.]*\s*(?:만\s*\d*\s*원?|만\s*원|원)|없음|자체관리|확인불가)", clean_txt)
             if m_f:
                 fee = m_f.group(1).strip()
             else:
-                # 관리비 섹션만 단독으로 드래그 복사한 경우 (예: 첫 줄이 '23만원'이고 아래에 '관리비부과기준'이나 '포함 항목'이 있는 경우)
                 if any(kw in clean_txt for kw in ["관리규약", "포함 항목", "포함항목", "부과기준", "공용관리비"]):
                     standalone_m = re.search(r"(?:^|\n)\s*((?:월\s*|약\s*)?\d[\d,.]*\s*(?:만\s*\d*\s*원?|만\s*원|원))\s*(?:\n|$)", clean_txt)
                     if standalone_m:
@@ -165,7 +308,7 @@ def extract_maintenance_fee_and_detail(raw_fee: str = "", data_map: dict = None,
                 else:
                     detail = r_str or f"포함항목: {i_str}"
 
-        if not detail:
+        if not detail and not is_commercial:
             comm_m = re.search(r"공용관리비\s*[:|]?\s*([0-9,]+(?:\s*만\s*[0-9,]*\s*원?|\s*만?원))", clean_txt)
             indiv_m = re.search(r"(?:기타개별관리비|개별관리비)\s*[:|]?\s*([0-9,]+(?:\s*만\s*[0-9,]*\s*원?|\s*만?원))", clean_txt)
             heat_m = re.search(r"난방비\s*[:|]?\s*([0-9,]+(?:\s*만\s*[0-9,]*\s*원?|\s*만?원))", clean_txt)
@@ -182,7 +325,7 @@ def extract_maintenance_fee_and_detail(raw_fee: str = "", data_map: dict = None,
             if parts:
                 detail = ", ".join(parts)
 
-    # 세부내역 구어체 정리 ('부과해요 포함 항목(사용료) : ...' -> 깔끔한 표준 문구)
+    # 세부내역 구어체 정리
     if detail:
         detail = re.sub(r"관리비\s*부과기준\s*[:|]?\s*", "", detail).strip()
         detail = detail.replace("부과해요.", "부과").replace("부과해요", "부과").replace("부과됩니다", "부과")
@@ -193,33 +336,43 @@ def extract_maintenance_fee_and_detail(raw_fee: str = "", data_map: dict = None,
             if r_p and i_p:
                 detail = f"{r_p} (포함항목: {i_p})"
 
-    # 4. 여전히 detail이 비어있고, 관리비 금액이 확인된 경우
-    # 중개대상물 표시광고 법적 기준에 부합하는 합리적 세부내역 자동 추정/완성
+    # 4. 여전히 detail이 비어있는 경우 정밀 분기 처리
     if fee and not detail:
-        num_m = re.search(r'(\d+(?:\.\d+)?)\s*만', fee)
-        won_m = re.search(r'(\d[\d,]*)\s*원', fee)
-
-        amount_man = None
-        if num_m:
-            amount_man = float(num_m.group(1))
-        elif won_m:
-            try:
-                raw_num = int(won_m.group(1).replace(",", ""))
-                if raw_num >= 10000:
-                    amount_man = raw_num / 10000.0
-            except Exception:
-                pass
-
-        if amount_man is not None and amount_man >= 10:
-            comm_est = int(round(amount_man * 0.72))
-            detail = f"관리규약 등에 따라 부과 (공용관리비 약 {comm_est}만 원 / 전기·수도·가스 실사용량 기준)"
-        elif amount_man is not None and amount_man > 0:
-            comm_est = int(round(amount_man * 0.7))
-            detail = f"공용관리비 약 {comm_est}만 원 (개별사용료 별도)"
-        elif any(kw in fee for kw in ["자체", "없음", "0원"]):
-            detail = "자체관리 (수도/전기/가스 실사용량 별도)"
+        if is_commercial:
+            clean_fee_dig = re.sub(r'[^\d]', '', fee)
+            is_zero_fee = clean_fee_dig in ["0", "00"] or any(kw in fee for kw in ["자체", "없음", "없 음", "무료"])
+            if is_zero_fee:
+                detail = "정액관리비 없음 (실사용량에 따라 별도 부과)"
+            elif "확인불가" in fee:
+                detail = "확인불가 (관리규약 등에 따라 부과 / 실사용량 별도)"
+            else:
+                detail = "비목별 부과금액 미표기 (관리규약 등에 따라 부과 / 실사용량 별도)"
         else:
-            detail = "관리규약 등에 따라 부과 (포함항목: 공용, 전기, 수도)"
+            # 주거용 기본 로직
+            num_m = re.search(r'(\d+(?:\.\d+)?)\s*만', fee)
+            won_m = re.search(r'(\d[\d,]*)\s*원', fee)
+
+            amount_man = None
+            if num_m:
+                amount_man = float(num_m.group(1))
+            elif won_m:
+                try:
+                    raw_num = int(won_m.group(1).replace(",", ""))
+                    if raw_num >= 10000:
+                        amount_man = raw_num / 10000.0
+                except Exception:
+                    pass
+
+            if amount_man is not None and amount_man >= 10:
+                comm_est = int(round(amount_man * 0.72))
+                detail = f"관리규약 등에 따라 부과 (공용관리비 약 {comm_est}만 원 / 전기·수도·가스 실사용량 기준)"
+            elif amount_man is not None and amount_man > 0:
+                comm_est = int(round(amount_man * 0.7))
+                detail = f"공용관리비 약 {comm_est}만 원 (개별사용료 별도)"
+            elif any(kw in fee for kw in ["자체", "없음", "0원"]):
+                detail = "자체관리 (수도/전기/가스 실사용량 별도)"
+            else:
+                detail = "관리규약 등에 따라 부과 (포함항목: 공용, 전기, 수도)"
 
     return fee, detail
 
@@ -243,15 +396,20 @@ def parse_naver_clipboard_text(text: str) -> Dict[str, Any]:
         res["thumb_trade_type"] = t_type
         res["thumb_price_text"] = format_thumb_price(res["price_text"])
 
-    # 2. 면적 탐색 (공급/전용 면적)
-    # 예: 111.42㎡/79.85㎡ 또는 111.42/79.85㎡ 또는 공급 111.42㎡, 전용 79.85㎡
-    area_match = re.search(r"([\d,.]+)\s*㎡?\s*[/|]\s*([\d,.]+)\s*㎡", text)
+    # 2. 면적 탐색 (공급/전용 면적 또는 상가 계약/전용 면적)
+    # 예: 111.42㎡/79.85㎡ 또는 계약 125.00㎡ / 전용 82.64㎡ 또는 공급 111.42㎡, 전용 79.85㎡
+    area_match = re.search(r"(?:공급|계약)?\s*[:|]?\s*([\d,.]+)\s*㎡?\s*[/|]\s*(?:전용)?\s*[:|]?\s*([\d,.]+)\s*㎡", text)
     if not area_match:
-        area_match = re.search(r"공급\s*[:|]?\s*([\d,.]+)\s*㎡?.*?전용\s*[:|]?\s*([\d,.]+)\s*㎡?", text)
-    if area_match:
+        area_match = re.search(r"(?:공급|계약)\s*[:|]?\s*([\d,.]+)\s*㎡?.*?전용\s*[:|]?\s*([\d,.]+)\s*㎡?", text)
+    if not area_match:
+        area_rev = re.search(r"전용\s*[:|]?\s*([\d,.]+)\s*㎡?.*?(?:공급|계약)\s*[:|]?\s*([\d,.]+)\s*㎡?", text)
+        if area_rev:
+            res["area_exclusive"] = area_rev.group(1).replace(",", "")
+            res["area_supply"] = area_rev.group(2).replace(",", "")
+    if area_match and not res.get("area_exclusive"):
         res["area_supply"] = area_match.group(1).replace(",", "")
         res["area_exclusive"] = area_match.group(2).replace(",", "")
-    else:
+    elif not res.get("area_exclusive"):
         # 단일 전용면적 탐색
         single_area = re.search(r"전용\s*[:|]?\s*([\d,.]+)\s*㎡?", text)
         if single_area:
@@ -310,48 +468,59 @@ def parse_naver_clipboard_text(text: str) -> Dict[str, Any]:
     if mov_match:
         res["move_in_date"] = mov_match.group(1).strip()
 
+    # 상가 여부 감지
+    is_comm = any(kw in text for kw in ["상가", "근린생활", "권리금", "무권리", "추천업종", "현재업종", "현재상태", "점포", "사무실"])
+
     # 9. 관리비 & 관리비 세부내역 정밀 파싱
     raw_fee = ""
     text_for_fee = re.sub(r"도움말\s*보기", "", text).replace("상세보기", "")
-    fee_match = re.search(r"(?:월\s*관리비|월관리비|공용관리비|관리비)(?!\s*부과기준|\s*세부|\s*포함|\s*항목|\s*비목)\s*[:|]?\s*([^\n\r|]+)", text_for_fee)
+    fee_match = re.search(r"(?:월\s*관리비|월관리비|공용관리비|관리비)(?!\s*부과기준|\s*세부|\s*포함|\s*항목|\s*비목)\s*[:|]?\s*(?:\n|\r\n)?\s*([^\n\r|]+)", text_for_fee)
     if fee_match:
         raw_fee = fee_match.group(1).strip()
 
-    fee_val, detail_val = extract_maintenance_fee_and_detail(raw_fee=raw_fee, text_content=text_for_fee)
+    fee_val, detail_val = extract_maintenance_fee_and_detail(raw_fee=raw_fee, text_content=text_for_fee, is_commercial=is_comm)
     if fee_val:
         res["maintenance_fee"] = fee_val
     if detail_val:
         res["maintenance_detail"] = detail_val
 
     # 10. 세대수
-    hh_match = re.search(r"(?:세대수|총세대수|해당면적\s*세대수)\s*[:|]?\s*([^|\n\r]+)", text)
+    hh_match = re.search(r"(?:세대수|총세대수|해당면적\s*세대수)\s*[:|]?\s*(?:\n|\r\n)?\s*([^\n\r|]+)", text)
     if hh_match:
         res["households"] = hh_match.group(1).strip()
 
     # 11. 주차대수
-    pk_match = re.search(r"(?:총주차대수|주차대수)\s*[:|]?\s*([^|\n\r]+)", text)
+    pk_match = re.search(r"(?:총주차대수|주차대수)\s*[:|]?\s*(?:\n|\r\n)?\s*([^\n\r|]+)", text)
     if pk_match:
         res["parking"] = pk_match.group(1).strip()
 
     # 12. 건축물 용도 (용도지역/지구 제외)
-    use_match = re.search(r"(?:건축물\s*용도|주용도|주\s*용도|건축물용도|(?:^|\s)용도(?!\s*지역|\s*지구|\s*구역))\s*[:|]?\s*([^|\n\r]+)", text)
+    use_match = re.search(r"(?:건축물\s*용도|주용도|주\s*용도|건축물용도|(?:^|\s)용도(?!\s*지역|\s*지구|\s*구역))\s*[:|]?\s*(?:\n|\r\n)?\s*([^\n\r|]+)", text)
     if use_match:
         clean_u = use_match.group(1).strip()
         if "상업지역" not in clean_u and "주거지역" not in clean_u and "공업지역" not in clean_u:
             res["building_use"] = clean_u
 
-    # 13. 사용승인일
-    app_match = re.search(r"(?:사용승인일|준공년월|준공일)\s*[:|]?\s*([^|\n\r]+)", text)
+    # 13. 사용승인일 (준공일/준공년월)
+    app_match = re.search(r"(?:사용승인일자|사용승인일|준공년월|준공일자|준공일|준공년도|사용검사일)\s*[:|]?\s*(?:\n|\r\n)?\s*([^\n\r|]+)", text)
     if app_match:
-        res["approval_date"] = app_match.group(1).strip()
+        res["approval_date"] = normalize_approval_date(app_match.group(1).strip())
 
     # 14. 소재지 및 단지명
-    loc_match = re.search(r"(?:소재지|위치)\s*[:|]?\s*([^|\n\r]+)", text)
+    loc_match = re.search(r"(?:소재지\s*및\s*단지명|소재지|위치|매물위치|주소|대지위치)\s*[:|]?\s*(?:\n|\r\n)?\s*([^\n\r|]+)", text)
     if loc_match:
-        res["location"] = loc_match.group(1).strip()
+        c_loc = loc_match.group(1).strip()
+        c_loc = re.sub(r"도움말\s*보기|상세보기", "", c_loc).strip()
+        if c_loc and c_loc not in ["상가", "근린상가", "점포", "사무실"]:
+            res["location"] = c_loc
+    if not res.get("location"):
+        # 도로명 또는 지번 한국 주소 정규식 패턴 탐색
+        kr_addr_m = re.search(r"((?:서울|부산|대구|인천|광주|대전|울산|세종|경기|강원|충북|충남|전북|전남|경북|경남|제주)(?:특별시|광역시|특별자치시|도)?\s+[가-힣0-9\s\-~,·()]+(?:동|리|로|길)\s*[\d\-]+(?:\s*[\d]+[동호])?)", text)
+        if kr_addr_m:
+            res["location"] = kr_addr_m.group(1).strip()
 
     # 15. 상가 특화 항목: 주구조, 용도지역, 용도지구, 권리금, 추천업종, 화장실
-    struct_m = re.search(r"(?:주구조|주\s*구조|구조)\s*[:|]?\s*([^|\n\r]+)", text)
+    struct_m = re.search(r"(?:주구조|주\s*구조|구조)\s*[:|]?\s*(?:\n|\r\n)?\s*([^\n\r|]+)", text)
     if struct_m:
         res["structure"] = struct_m.group(1).strip()
     else:
@@ -360,7 +529,7 @@ def parse_naver_clipboard_text(text: str) -> Dict[str, Any]:
                 res["structure"] = cs
                 break
 
-    zone_m = re.search(r"(?:용도지역|지역)\s*[:|]?\s*([^|\n\r]+)", text)
+    zone_m = re.search(r"(?:용도지역|지역)\s*[:|]?\s*(?:\n|\r\n)?\s*([^\n\r|]+)", text)
     if zone_m:
         res["zone_region"] = zone_m.group(1).strip()
     else:
@@ -369,7 +538,7 @@ def parse_naver_clipboard_text(text: str) -> Dict[str, Any]:
                 res["zone_region"] = z
                 break
 
-    dist_m = re.search(r"(?:용도지구|지구|구역)\s*[:|]?\s*([^|\n\r]+)", text)
+    dist_m = re.search(r"(?:용도지구|지구|구역)\s*[:|]?\s*(?:\n|\r\n)?\s*([^\n\r|]+)", text)
     if dist_m:
         res["zone_district"] = dist_m.group(1).strip()
     else:
@@ -377,21 +546,21 @@ def parse_naver_clipboard_text(text: str) -> Dict[str, Any]:
         if found_dists:
             res["zone_district"] = ", ".join(found_dists)
 
-    prem_m = re.search(r"(?:권리금)\s*[:|]?\s*([^|\n\r]+)", text)
+    prem_m = re.search(r"(?:권리금\s*유무|권리금\(원\)|권리금)\s*[:|]?\s*(?:\n|\r\n)?\s*([^\n\r|]+)", text)
     if prem_m:
-        res["premium_fee"] = prem_m.group(1).strip()
+        res["premium_fee"] = format_premium_fee(prem_m.group(1).strip())
     elif "무권리" in text:
         res["premium_fee"] = "무권리 (권리금 없음)"
 
-    rec_m = re.search(r"(?:추천업종|추천\s*업종)\s*[:|]?\s*([^|\n\r]+)", text)
+    rec_m = re.search(r"(?:추천업종|추천\s*업종|적합업종|권장업종)\s*[:|]?\s*(?:\n|\r\n)?\s*([^\n\r|]+)", text)
     if rec_m:
         res["recommended_use"] = rec_m.group(1).strip()
 
-    cur_m = re.search(r"(?:현재업종|현\s*업종|현재상태)\s*[:|]?\s*([^|\n\r]+)", text)
+    cur_m = re.search(r"(?:현재업종|현\s*업종|현재상태|현재\s*상태|현재\s*업종|기존업종)\s*[:|]?\s*(?:\n|\r\n)?\s*([^\n\r|]+)", text)
     if cur_m:
         res["current_use"] = cur_m.group(1).strip()
 
-    rest_m = re.search(r"(?:화장실)\s*[:|]?\s*([^|\n\r]+)", text)
+    rest_m = re.search(r"(?:화장실)\s*[:|]?\s*(?:\n|\r\n)?\s*([^\n\r|]+)", text)
     if rest_m:
         res["restroom"] = rest_m.group(1).strip()
 
@@ -430,13 +599,15 @@ def parse_naver_clipboard_text(text: str) -> Dict[str, Any]:
         if res.get("main_title"):
             break
 
-    # 소재지와 건물명 조합
-    if res.get("location") and res.get("main_title"):
-        b_full = res["main_title"]
-        if res.get("sub_title"):
-            b_full += f" {res['sub_title']}"
-        if b_full not in res["location"]:
-            res["location"] = f"{res['location']} ({b_full})"
+    # 소재지와 건물명 조합 (아파트/오피스텔 등 주거 단지명에만 한정하고, 상가 설명 문구는 소재지에 덧붙이지 않음)
+    if res.get("location") and res.get("main_title") and not is_comm:
+        is_complex = bool(res.get("dong_name") or any(kw in res["main_title"] for kw in ["아파트", "단지", "오피스텔", "빌라", "타워", "클래스", "자이", "푸르지오", "힐스테이트", "래미안", "아이파크", "더샵", "e편한세상", "롯데캐슬"]))
+        if is_complex and not any(kw in res["main_title"] for kw in ["상가", "점포", "사무실", "근린"]):
+            b_full = res["main_title"]
+            if res.get("sub_title"):
+                b_full += f" {res['sub_title']}"
+            if b_full not in res["location"]:
+                res["location"] = f"{res['location']} ({b_full})"
 
     # 특징 문구 자동 생성
     feat_parts = []
@@ -546,14 +717,24 @@ def crawl_naver_article(article_input: str) -> Tuple[bool, str, Dict[str, Any]]:
                 parsed_desc = parse_naver_clipboard_text(desc_text)
                 res_data.update({k: v for k, v in parsed_desc.items() if v})
 
-            # [핵심] SSR DataList __term / __definition 정밀 파싱
-            pairs = re.findall(r'__term">(.*?)</div>\s*<div[^>]*__definition">(.*?)</div>', html, re.DOTALL)
+            # [핵심] SSR DataList __term / __definition 및 th/td, dt/dd 정밀 파싱
+            pairs = []
+            for p_pat in [
+                r'__term">(.*?)</div>\s*<div[^>]*__definition">(.*?)</div>',
+                r'<th[^>]*>(.*?)</th>\s*<td[^>]*>(.*?)</td>',
+                r'<dt[^>]*>(.*?)</dt>\s*<dd[^>]*>(.*?)</dd>',
+                r'class="[^"]*(?:title|term|th|label)[^"]*">(.*?)</div>\s*<div[^"]*(?:data|definition|desc|val)[^"]*">(.*?)</div>',
+            ]:
+                found_pairs = re.findall(p_pat, html, re.DOTALL)
+                if found_pairs:
+                    pairs.extend(found_pairs)
+
             data_map = {}
             for k, v in pairs:
                 clean_k = re.sub(r'<[^>]+>', '', k).replace("도움말 보기", "").strip()
                 clean_v = re.sub(r'<[^>]+>', ' ', v).strip()
                 clean_v = ' '.join(clean_v.split())
-                if clean_k not in data_map:
+                if clean_k and clean_k not in data_map:
                     data_map[clean_k] = clean_v
 
             # 가격
@@ -567,12 +748,21 @@ def crawl_naver_article(article_input: str) -> Tuple[bool, str, Dict[str, Any]]:
                 res_data["price_text"] = data_map["보증금/월세"]
                 res_data["trade_type"] = "월세"
 
-            # 공급 / 전용면적
-            if "공급면적" in data_map:
+            # 공급 / 전용면적 / 계약면적
+            if "계약/전용면적" in data_map:
+                m_both = re.search(r'([\d.]+)\s*㎡?\s*[/|]\s*([\d.]+)\s*㎡', data_map["계약/전용면적"])
+                if m_both:
+                    res_data["area_supply"] = m_both.group(1)
+                    res_data["area_exclusive"] = m_both.group(2)
+            if "공급면적" in data_map and not res_data.get("area_supply"):
                 m_sup = re.search(r'([\d.]+)\s*㎡', data_map["공급면적"])
                 if m_sup:
                     res_data["area_supply"] = m_sup.group(1)
-            if "전용면적" in data_map:
+            elif "계약면적" in data_map and not res_data.get("area_supply"):
+                m_sup = re.search(r'([\d.]+)\s*㎡', data_map["계약면적"])
+                if m_sup:
+                    res_data["area_supply"] = m_sup.group(1)
+            if "전용면적" in data_map and not res_data.get("area_exclusive"):
                 m_exc = re.search(r'([\d.]+)\s*㎡', data_map["전용면적"])
                 if m_exc:
                     res_data["area_exclusive"] = m_exc.group(1)
@@ -596,28 +786,66 @@ def crawl_naver_article(article_input: str) -> Tuple[bool, str, Dict[str, Any]]:
 
             # 향
             if "향" in data_map:
-                raw_dir = data_map["향"].replace("(거실 기준)", "").replace("거실 기준", "").strip()
+                raw_dir = data_map["향"].replace("(거실 기준)", "").replace("거실 기준", "").replace("(주된 출입구 기준)", "").strip()
                 res_data["direction"] = f"{raw_dir} (거실 기준)" if raw_dir else data_map["향"]
 
-            # 위치 / 소재지
-            if "위치" in data_map:
-                loc = data_map["위치"]
-                if res_data.get("main_title") and res_data["main_title"] not in loc:
-                    res_data["location"] = f"{loc} ({res_data['main_title']})"
-                else:
-                    res_data["location"] = loc
+            # 1. 위치 / 소재지 (상가 소재지 및 단지명 정밀 추출)
+            for loc_k in ["소재지", "소재지 및 단지명", "소재지및단지명", "위치", "매물위치", "주소", "대지위치"]:
+                if loc_k in data_map and data_map[loc_k].strip():
+                    loc_val = data_map[loc_k].strip()
+                    loc_val = re.sub(r"도움말\s*보기|상세보기", "", loc_val).strip()
+                    m_tit = res_data.get("main_title", "")
+                    is_apt_complex = bool(
+                        res_data.get("dong_name") or 
+                        any(kw in m_tit for kw in ["아파트", "오피스텔", "타워", "스퀘어", "팰리스", "클래스", "자이", "푸르지오", "힐스테이트", "래미안", "아이파크", "더샵"])
+                    )
+                    # 아파트 단지명인 경우에만 괄호로 단지명을 붙이고, 상가/임대/설명 문구는 소재지에 덧붙이지 않음
+                    if is_apt_complex and not any(kw in m_tit for kw in ["상가", "점포", "사무실", "근린", "임대", "임차", "매매", "대로변"]) and m_tit not in loc_val:
+                        res_data["location"] = f"{loc_val} ({m_tit})"
+                    else:
+                        res_data["location"] = loc_val
+                    break
 
             # 건축물용도
             if "건축물용도" in data_map:
                 res_data["building_use"] = data_map["건축물용도"]
 
-            # 사용승인일
-            if "사용승인일" in data_map:
-                m_date = re.search(r'(\d{4}[.-]\d{2}[.-]\d{2})', data_map["사용승인일"])
-                if m_date:
-                    res_data["approval_date"] = m_date.group(1).replace(".", "-")
-                else:
-                    res_data["approval_date"] = data_map["사용승인일"]
+            # 2. 사용승인일 (준공년월/준공일자/사용승인일자)
+            for app_k in ["사용승인일", "사용승인일자", "준공년월", "준공일자", "준공일", "준공년도", "사용검사일", "사용검사일자", "준공"]:
+                if app_k in data_map and data_map[app_k].strip():
+                    norm_date = normalize_approval_date(data_map[app_k])
+                    if norm_date:
+                        res_data["approval_date"] = norm_date
+                        break
+
+            # 3. 권리금 유무 및 금액
+            for prem_k in ["권리금", "권리금 유무", "권리금유무", "권리금(원)", "권리금 (원)", "권리금액"]:
+                if prem_k in data_map and data_map[prem_k].strip():
+                    res_data["premium_fee"] = format_premium_fee(data_map[prem_k])
+                    break
+
+            # 4. 현재 상태 업종 및 추천업종
+            for curr_k in ["현재업종", "현업종", "현재상태", "현재 상태", "현재 업종", "기존업종"]:
+                if curr_k in data_map and data_map[curr_k].strip():
+                    res_data["current_use"] = data_map[curr_k].strip()
+                    break
+
+            for rec_k in ["추천업종", "추천 업종", "적합업종", "추천", "권장업종"]:
+                if rec_k in data_map and data_map[rec_k].strip():
+                    res_data["recommended_use"] = data_map[rec_k].strip()
+                    break
+
+            # 상가 주구조, 용도지역, 용도지구, 화장실
+            for st_k in ["주구조", "구조"]:
+                if st_k in data_map and data_map[st_k].strip():
+                    res_data["structure"] = data_map[st_k].strip()
+                    break
+            if "용도지역" in data_map:
+                res_data["zone_region"] = data_map["용도지역"].strip()
+            if "용도지구" in data_map:
+                res_data["zone_district"] = data_map["용도지구"].strip()
+            if "화장실" in data_map:
+                res_data["restroom"] = data_map["화장실"].strip()
 
             # 세대수
             if "세대수" in data_map:
@@ -692,12 +920,38 @@ def crawl_naver_article(article_input: str) -> Tuple[bool, str, Dict[str, Any]]:
                             c_int = int(cost_m.group(1))
                             if c_int > 0:
                                 res_data["maintenance_fee"] = f"월 {c_int // 10000}만 원" if c_int >= 10000 else f"월 {c_int:,}원"
+
+                        # JSON 내 소재지 (address / roadAddress / cortarAddress)
+                        addr_m = re.search(r'"(?:address|roadAddress|cortarAddress|jibunAddress)"\s*:\s*"([^"]+)"', decoded)
+                        if addr_m and not res_data.get("location"):
+                            res_data["location"] = addr_m.group(1).strip()
+
+                        # JSON 내 사용승인일
+                        date_m = re.search(r'"(?:useApproveYmd|approvalDate|useApproveDate|completionDate|buildYear)"\s*:\s*"([^"]+)"', decoded)
+                        if date_m and not res_data.get("approval_date"):
+                            res_data["approval_date"] = normalize_approval_date(date_m.group(1))
+
+                        # JSON 내 권리금
+                        prem_m = re.search(r'"(?:premiumPrc|premiumFee|premiumPrice|premiumAmount)"\s*:\s*(?:\"([^\"]+)\"|(\d+))', decoded)
+                        if prem_m and not res_data.get("premium_fee"):
+                            raw_p = (prem_m.group(1) or prem_m.group(2) or "").strip()
+                            res_data["premium_fee"] = format_premium_fee(raw_p)
+
+                        # JSON 내 업종
+                        curr_biz_m = re.search(r'"(?:currentBusinessTypeName|currentBusiTypeName|currBiz|currentBizType)"\s*:\s*"([^"]+)"', decoded)
+                        if curr_biz_m and not res_data.get("current_use"):
+                            res_data["current_use"] = curr_biz_m.group(1).strip()
+
+                        rec_biz_m = re.search(r'"(?:recommendedBusinessTypeName|recommendBusiTypeName|recommendBiz|recommendBizType)"\s*:\s*"([^"]+)"', decoded)
+                        if rec_biz_m and not res_data.get("recommended_use"):
+                            res_data["recommended_use"] = rec_biz_m.group(1).strip()
                 except Exception:
                     continue
 
             # 관리비 및 세부내역 추출 (raw HTML 대신 정제된 data_map과 매물설명 텍스트만 전달)
             desc_joined = "\n".join(article_desc_parts)
-            fee_s1, detail_s1 = extract_maintenance_fee_and_detail(data_map=data_map, text_content=desc_joined)
+            is_comm_ssr = any(k in str(res_data.get("building_use", "")) for k in ["근린생활", "상가", "판매", "업무", "점포", "사무실"]) or bool(res_data.get("premium_fee"))
+            fee_s1, detail_s1 = extract_maintenance_fee_and_detail(data_map=data_map, text_content=desc_joined, is_commercial=is_comm_ssr)
             if fee_s1 and not res_data.get("maintenance_fee"):
                 res_data["maintenance_fee"] = fee_s1
             if detail_s1 and not res_data.get("maintenance_detail"):
@@ -742,6 +996,35 @@ def crawl_naver_article(article_input: str) -> Tuple[bool, str, Dict[str, Any]]:
                 if article.get("totalHouseholdCount"):
                     res_data["households"] = f"총 {article.get('totalHouseholdCount')}세대"
                 
+                # API 소재지 추출
+                api_addr = article.get("address") or article.get("roadAddress") or article.get("cortarAddress")
+                if api_addr and not res_data.get("location"):
+                    d_addr = article.get("detailAddress")
+                    if d_addr and d_addr not in str(api_addr):
+                        res_data["location"] = f"{api_addr} {d_addr}".strip()
+                    else:
+                        res_data["location"] = str(api_addr).strip()
+
+                # API 사용승인일 추출
+                api_date = article.get("useApproveYmd") or article.get("approvalDate") or article.get("useApproveDate") or article.get("completionDate")
+                if api_date and not res_data.get("approval_date"):
+                    res_data["approval_date"] = normalize_approval_date(str(api_date))
+
+                # API 권리금 추출
+                api_prem = article.get("premiumPrc") or article.get("premiumFee") or article.get("premiumPrice")
+                if api_prem is not None and not res_data.get("premium_fee"):
+                    res_data["premium_fee"] = format_premium_fee(api_prem)
+
+                # API 현재/추천 업종 추출
+                if article.get("currentBusinessTypeName") and not res_data.get("current_use"):
+                    res_data["current_use"] = str(article.get("currentBusinessTypeName")).strip()
+                if article.get("recommendedBusinessTypeName") and not res_data.get("recommended_use"):
+                    res_data["recommended_use"] = str(article.get("recommendedBusinessTypeName")).strip()
+
+                # API 주구조
+                if article.get("buildingStructureName") and not res_data.get("structure"):
+                    res_data["structure"] = str(article.get("buildingStructureName")).strip()
+
                 # API 관리비 & 세부내역 추출
                 api_cost = article.get("monthlyManagementCost") or article.get("manageCost")
                 if api_cost and not res_data.get("maintenance_fee"):
@@ -751,27 +1034,48 @@ def crawl_naver_article(article_input: str) -> Tuple[bool, str, Dict[str, Any]]:
                         res_data["maintenance_fee"] = f"{c_val // 10000}만 원" if c_val >= 10000 else f"{c_val:,}원"
                     else:
                         res_data["maintenance_fee"] = c_str
-                if article.get("manageCostItem") and not res_data.get("maintenance_detail"):
-                    res_data["maintenance_detail"] = str(article.get("manageCostItem"))
+                if (article.get("manageCostItem") or article.get("manageCostItemName")) and not res_data.get("maintenance_detail"):
+                    m_item = str(article.get("manageCostItemName") or article.get("manageCostItem"))
+                    m_rule = str(article.get("chargeRuleName") or "관리규약 등에 따라 부과")
+                    res_data["maintenance_detail"] = f"{m_rule} (포함항목: {m_item})"
         except Exception as e:
             error_reasons.append(f"API 조회: {e}")
 
     # ----------------------------------------------------
     # 데이터 후처리 및 완성도 보강
     # ----------------------------------------------------
-    # 관리비 세부내역 필수 보강 (법적 의무 사항: 월 10만 원 이상 시 세부내역 분리 기재)
+    # 상가 여부 종합 판정
+    b_use_str = str(res_data.get("building_use", ""))
+    is_comm_final = (
+        any(k in b_use_str for k in ["근린생활", "상가", "판매", "업무", "점포", "사무실"]) or 
+        bool(res_data.get("premium_fee")) or 
+        bool(res_data.get("current_use")) or 
+        bool(res_data.get("recommended_use")) or
+        bool(res_data.get("structure"))
+    )
+
+    # 상가 권리금 기본값 보완 (미추출 시 무권리)
+    if is_comm_final and not res_data.get("premium_fee"):
+        res_data["premium_fee"] = "무권리 (권리금 없음)"
+
+    # 관리비 세부내역 필수 보강 (상가 vs 주거용 엄격 분리)
     if res_data.get("maintenance_fee") and not res_data.get("maintenance_detail"):
-        _, auto_detail = extract_maintenance_fee_and_detail(raw_fee=res_data["maintenance_fee"])
+        _, auto_detail = extract_maintenance_fee_and_detail(raw_fee=res_data["maintenance_fee"], is_commercial=is_comm_final)
         if auto_detail:
             res_data["maintenance_detail"] = auto_detail
     elif not res_data.get("maintenance_detail"):
-        # 네이버 SSR에서 관리비 API(/article/maintenanceFee)를 비동기 분리한 경우에도 법정 기본 부과기준 자동 세팅
-        b_use = str(res_data.get("building_use", ""))
-        if any(k in b_use for k in ["공동주택", "아파트", "오피스텔", "주상복합"]) or res_data.get("households"):
-            res_data["maintenance_detail"] = "관리규약 등에 따라 부과 (포함항목: 공용, 전기, 수도)"
+        if is_comm_final:
+            if any(kw in str(res_data.get("maintenance_fee", "")) for kw in ["없음", "0원", "자체", "0만", "0"]):
+                res_data["maintenance_detail"] = "정액관리비 없음 (실사용량 별도 부과)"
+            else:
+                res_data["maintenance_detail"] = "비목별 부과금액 미표기 (관리규약 등에 따라 부과 / 실사용량 별도)"
         else:
-            res_data["maintenance_detail"] = "자체관리 (수도·전기·가스 실사용량 별도 부과)"
-    has_valid_specs = any(res_data.get(k) for k in ["price_text", "area_exclusive", "area_supply", "floor_info", "room_bath"])
+            if any(k in b_use_str for k in ["공동주택", "아파트", "오피스텔", "주상복합"]) or res_data.get("households"):
+                res_data["maintenance_detail"] = "관리규약 등에 따라 부과 (포함항목: 공용, 전기, 수도)"
+            else:
+                res_data["maintenance_detail"] = "자체관리 (수도·전기·가스 실사용량 별도 부과)"
+
+    has_valid_specs = any(res_data.get(k) for k in ["price_text", "area_exclusive", "area_supply", "floor_info", "room_bath", "location", "premium_fee"])
     if res_data and has_valid_specs:
         # 서브 타이틀 및 소재지 조립
         d_name = res_data.get("dong_name", "")
@@ -783,8 +1087,10 @@ def crawl_naver_article(article_input: str) -> Tuple[bool, str, Dict[str, Any]]:
         elif fl_info:
             res_data["sub_title"] = fl_info
 
+        # 소재지가 아직 없는 경우에만 단지명/동이름으로 구성 (단, 일반 단어 "상가"는 주소로 오용 방지)
         if m_title and not res_data.get("location"):
-            res_data["location"] = f"{m_title} {d_name}".strip()
+            if m_title not in ["상가", "근린상가", "상가건물", "점포", "사무실"]:
+                res_data["location"] = f"{m_title} {d_name}".strip()
 
         if res_data.get("price_text"):
             res_data["thumb_trade_type"] = res_data.get("trade_type", "매매")
