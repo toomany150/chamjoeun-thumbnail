@@ -5162,9 +5162,6 @@ with tab_main_poster:
         render_tab_factory_poster()
 
 with tab_main_ad:
-    # 썸네일 및 포스터 화면에서는 마스터 콘솔 안내문구가 노출되지 않고, 중개대상물표시 탭에서만 스마트 자동완성 콘솔이 제공됩니다.
-    render_smart_autocomplete_console()
-    
     ad_sub_apt, ad_sub_house, ad_sub_comm, ad_sub_factory = st.tabs([
         "🏢 아파트",
         "🏡 주택",

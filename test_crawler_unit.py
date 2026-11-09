@@ -126,5 +126,14 @@ class TestNaverCrawler(unittest.TestCase):
         self.assertIn("비목별 부과금액 미표기", det2)
         self.assertNotIn("약 7만", det2)
 
+    def test_crawl_article_rejects_bogus_shell(self):
+        from naver_crawler import crawl_naver_article
+        # 존재하지 않거나 만료된 번호로 크롤링 시 쓰레기 데이터가 아닌 False와 빈 dict 반환 검증
+        is_ok, msg, data = crawl_naver_article("9999999999")
+        self.assertFalse(is_ok)
+        self.assertEqual(data, {})
+        self.assertNotIn("Npay", data.get("location", ""))
+        self.assertNotIn("확인해보세요", data.get("main_title", ""))
+
 if __name__ == "__main__":
     unittest.main()

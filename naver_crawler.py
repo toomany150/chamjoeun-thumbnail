@@ -701,21 +701,31 @@ def crawl_naver_article(article_input: str) -> Tuple[bool, str, Dict[str, Any]]:
         if r.status_code == 200:
             html = r.text
             
-            # HTML 타이틀에서 단지명 및 기본 정보 추출
+            # 1. 만약 만료/종료된 매물이거나 네이버 지도 껍데기 에러 페이지인 경우 즉시 안내
+            if any(err_kw in html for err_kw in [
+                "article_expired", "ArticleExpiredMain", "MapLayerError", 
+                "거래가 완료되었거나", "등록이 취소된", "존재하지 않는 매물"
+            ]):
+                return False, f"네이버 매물 [{article_no}]은 이미 거래 완료 또는 등록 종료(취소)된 매물입니다. 네이버 부동산 상세 화면을 마우스로 복사(Ctrl+C)하여 옆의 [📋 네이버 화면 복사 텍스트 붙여넣기]를 이용해 주세요.", {}
+
+            BOGUS_PHRASES = ["확인해보세요", "Npay", "매물지도", "네이버페이", "주변 정보를", "매물, 단지, 학군", "로그인", "서비스 점검"]
+
+            # HTML 타이틀에서 단지명 및 기본 정보 추출 (사이트 기본 슬로건/지도 텍스트 배제)
             title_match = re.search(r"<title>(.*?)</title>", html)
             if title_match:
-                title_text = title_match.group(1).replace("Npay 부동산", "").replace(":", "").replace("매물", "").strip()
-                if title_text:
-                    res_data["main_title"] = title_text
+                raw_t = title_match.group(1).strip()
+                if not any(bw in raw_t for bw in BOGUS_PHRASES):
+                    title_text = re.sub(r"Npay\s*부동산|네이버\s*부동산|매물|:", "", raw_t).strip()
+                    if title_text and not any(bw in title_text for bw in BOGUS_PHRASES):
+                        res_data["main_title"] = title_text
 
-            # OpenGraph 메타 태그 파싱
-            og_title = re.search(r'<meta\s+property="og:title"\s+content="([^"]+)"', html)
+            # OpenGraph 메타 태그 파싱 (기본 사이트 슬로건 배제)
             og_desc = re.search(r'<meta\s+property="og:description"\s+content="([^"]+)"', html)
-            
             if og_desc:
-                desc_text = og_desc.group(1)
-                parsed_desc = parse_naver_clipboard_text(desc_text)
-                res_data.update({k: v for k, v in parsed_desc.items() if v})
+                desc_text = og_desc.group(1).strip()
+                if not any(bw in desc_text for bw in BOGUS_PHRASES):
+                    parsed_desc = parse_naver_clipboard_text(desc_text)
+                    res_data.update({k: v for k, v in parsed_desc.items() if v})
 
             # [핵심] SSR DataList __term / __definition 및 th/td, dt/dd 정밀 파싱
             pairs = []
@@ -899,8 +909,15 @@ def crawl_naver_article(article_input: str) -> Tuple[bool, str, Dict[str, Any]]:
                         if prc_m and not res_data.get("price_text"):
                             res_data["price_text"] = prc_m.group(1) + " 원"
 
-                        area1_m = re.search(r'"(?:area1|supplySpace)"\s*:\s*([\d.]+)', decoded)
-                        area2_m = re.search(r'"(?:area2|exclusiveSpace)"\s*:\s*([\d.]+)', decoded)
+                        # area1 / area2 추출: 실제 매물 정보가 있는 경우에만 추출 (단지 검색 필터의 supplySpace 오인 방지)
+                        area1_m = re.search(r'"area1"\s*:\s*([\d.]+)', decoded)
+                        if not area1_m and ("articleName" in decoded or "dealOrWarrantPrc" in decoded):
+                            area1_m = re.search(r'"supplySpace"\s*:\s*([\d.]+)', decoded)
+
+                        area2_m = re.search(r'"area2"\s*:\s*([\d.]+)', decoded)
+                        if not area2_m and ("articleName" in decoded or "dealOrWarrantPrc" in decoded):
+                            area2_m = re.search(r'"exclusiveSpace"\s*:\s*([\d.]+)', decoded)
+
                         if area1_m and not res_data.get("area_supply"):
                             res_data["area_supply"] = f"{float(area1_m.group(1)):.2f}"
                         if area2_m and not res_data.get("area_exclusive"):
@@ -921,10 +938,12 @@ def crawl_naver_article(article_input: str) -> Tuple[bool, str, Dict[str, Any]]:
                             if c_int > 0:
                                 res_data["maintenance_fee"] = f"월 {c_int // 10000}만 원" if c_int >= 10000 else f"월 {c_int:,}원"
 
-                        # JSON 내 소재지 (address / roadAddress / cortarAddress)
+                        # JSON 내 소재지 (address / roadAddress / cortarAddress) - 객체/슬로건 배제
                         addr_m = re.search(r'"(?:address|roadAddress|cortarAddress|jibunAddress)"\s*:\s*"([^"]+)"', decoded)
                         if addr_m and not res_data.get("location"):
-                            res_data["location"] = addr_m.group(1).strip()
+                            cand_addr = addr_m.group(1).strip()
+                            if not cand_addr.startswith("{") and not any(bw in cand_addr for bw in ["legalDivisionNumber", "Npay", "확인해보세요"]):
+                                res_data["location"] = cand_addr
 
                         # JSON 내 사용승인일
                         date_m = re.search(r'"(?:useApproveYmd|approvalDate|useApproveDate|completionDate|buildYear)"\s*:\s*"([^"]+)"', decoded)
@@ -1054,6 +1073,24 @@ def crawl_naver_article(article_input: str) -> Tuple[bool, str, Dict[str, Any]]:
         bool(res_data.get("structure"))
     )
 
+    # 사이트 슬로건 및 쓰레기 문자열 최종 정제
+    BOGUS_CLEANUP = ["확인해보세요", "Npay", "매물지도", "네이버페이", "부동산지도", "legalDivisionNumber", "주변 정보를", "매물, 단지, 학군"]
+    for k in ["main_title", "location", "dong_name", "sub_title", "feature_text"]:
+        if k in res_data:
+            val_s = str(res_data[k])
+            if any(bw in val_s for bw in BOGUS_CLEANUP) or val_s.startswith("{"):
+                res_data.pop(k, None)
+
+    # 상가 여부 종합 판정
+    b_use_str = str(res_data.get("building_use", ""))
+    is_comm_final = (
+        any(k in b_use_str for k in ["근린생활", "상가", "판매", "업무", "점포", "사무실"]) or 
+        bool(res_data.get("premium_fee")) or 
+        bool(res_data.get("current_use")) or 
+        bool(res_data.get("recommended_use")) or
+        bool(res_data.get("structure"))
+    )
+
     # 상가 권리금 기본값 보완 (미추출 시 무권리)
     if is_comm_final and not res_data.get("premium_fee"):
         res_data["premium_fee"] = "무권리 (권리금 없음)"
@@ -1075,8 +1112,15 @@ def crawl_naver_article(article_input: str) -> Tuple[bool, str, Dict[str, Any]]:
             else:
                 res_data["maintenance_detail"] = "자체관리 (수도·전기·가스 실사용량 별도 부과)"
 
-    has_valid_specs = any(res_data.get(k) for k in ["price_text", "area_exclusive", "area_supply", "floor_info", "room_bath", "location", "premium_fee"])
-    if res_data and has_valid_specs:
+    # ⭐ 핵심 유효성 판정:
+    # 단순 기본값이나 빈 껍데기가 아닌, 실제 매물 핵심 제원(가격 또는 전용면적+층수/동이름/소재지)이 반드시 존재해야 크롤링 성공으로 인정합니다.
+    has_real_core_specs = bool(res_data.get("price_text")) or (
+        bool(res_data.get("area_exclusive")) and (
+            bool(res_data.get("floor_info")) or bool(res_data.get("main_title")) or bool(res_data.get("location"))
+        )
+    )
+
+    if res_data and has_real_core_specs:
         # 서브 타이틀 및 소재지 조립
         d_name = res_data.get("dong_name", "")
         m_title = res_data.get("main_title", "")
@@ -1110,5 +1154,5 @@ def crawl_naver_article(article_input: str) -> Tuple[bool, str, Dict[str, Any]]:
 
         return True, f"네이버 매물 [{article_no}] 크롤링 성공!", res_data
 
-    # 만약 네이버 측의 봇 차단이나 유효하지 않은 매물 번호인 경우 친절한 안내 제공
-    return False, f"네이버 부동산 방화벽(Rate limit: TOO_MANY_REQUESTS) 정책으로 인해 프로그램의 직접 API 호출이 차단되었습니다. 네이버 부동산 상세 화면을 마우스로 드래그 복사(Ctrl+C)하여 옆의 [📋 네이버 화면 복사 텍스트 붙여넣기]를 이용하시면 100% 완벽하게 자동 완성됩니다!", {}
+    # 만약 네이버 측의 봇 차단이나 유효하지 않은 매물 번호인 경우 친절한 안내 제공 (엉뚱한 쓰레기 데이터 기입 방지)
+    return False, f"네이버 매물 [{article_no}]의 상세 정보가 비공개이거나 네이버 보안 정책으로 인해 직접 조회가 제한되었습니다. 네이버 부동산 매물 화면에서 매물 정보를 마우스로 드래그 복사(Ctrl+C)하여 옆의 [📋 네이버 화면 복사 텍스트 붙여넣기]에 넣으시면 0.1초 만에 100% 완벽하게 자동 완성됩니다!", {}
