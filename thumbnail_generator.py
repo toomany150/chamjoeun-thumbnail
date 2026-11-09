@@ -200,6 +200,7 @@ def render_thumbnail(
     accent_color: tuple = None,
     card_bg: tuple = None,
     overlay_image = None,
+    design_id: str = "",
     deal_done: bool = False,
     deal_color: str = "#FF0101",
     deal_text: str = "거래완료"
@@ -237,7 +238,8 @@ def render_thumbnail(
             bg_zoom=bg_zoom,
             W=W, H=H, bottom_h=bottom_h, content_h=content_h,
             show_footer=show_footer, footer_text=footer_text,
-            primary_color=primary_color, accent_color=accent_color, card_bg=card_bg
+            primary_color=primary_color, accent_color=accent_color, card_bg=card_bg,
+            design_id=design_id
         )
     else:
         # side_wide 또는 side_standard
@@ -453,18 +455,172 @@ def _render_side_split(
 
     return canvas.convert("RGB")
 
+def _render_premium_wave(
+    bg_image, item_no, main_title, sub_title, feature_text, trade_type, price_text, spec_lines,
+    bg_offset_x, bg_offset_y, bg_zoom, W, H, bottom_h, content_h,
+    show_footer: bool = True, footer_text: str = ""
+) -> Image.Image:
+    """프리미엄 웨이브 블루 모드: 우아한 파란 물결 곡선, 캡슐 뱃지, 캘리그래피 및 화이트 정보 카드 렌더링"""
+    canvas = Image.new("RGBA", (W, H), (255, 255, 255, 255))
+
+    # 1. 배경 사진 로드 및 배치 (상단 및 중앙 영역 꽉 채움)
+    bg_cropped = _load_bg_image(bg_image, W, 820, bg_zoom, bg_offset_x, bg_offset_y)
+    canvas.paste(bg_cropped, (0, 0))
+
+    # 2. 상단 좌측 웨이브 플레어
+    top_flare_path = os.path.join(ASSETS_DIR, "frame_premium_wave_top_flare.png")
+    if os.path.exists(top_flare_path):
+        top_flare = Image.open(top_flare_path).convert("RGBA")
+        canvas.paste(top_flare, (0, 0), top_flare)
+
+    # 3. 상단 우측 Premium House 캘리그래피 스크립트
+    script_path = os.path.join(ASSETS_DIR, "premium_house_script.png")
+    if os.path.exists(script_path):
+        script_img = Image.open(script_path).convert("RGBA")
+        glow_box = Image.new("RGBA", (script_img.width + 30, script_img.height + 20), (255, 255, 255, 0))
+        glow_draw = ImageDraw.Draw(glow_box)
+        glow_draw.rounded_rectangle([0, 0, glow_box.width, glow_box.height], radius=15, fill=(255, 255, 255, 120))
+        canvas.paste(glow_box, (785, 15), glow_box)
+        canvas.paste(script_img, (800, 25), script_img)
+
+    # 4. 상단 물건 번호 캡슐 뱃지 (집 아이콘 + No. APT001)
+    draw = ImageDraw.Draw(canvas)
+    clean_item = (item_no or "").strip()
+    if clean_item:
+        font_item = get_font("NanumGothicBold.ttf", 25)
+        tb = draw.textbbox((0, 0), clean_item, font=font_item)
+        tw = tb[2] - tb[0]
+        th = tb[3] - tb[1]
+
+        x0, y0 = 25, 24
+        cap_w = max(260, tw + 85)
+        cap_h = 62
+        r = cap_h // 2
+        draw.rounded_rectangle([x0, y0, x0 + cap_w, y0 + cap_h], radius=r, fill=(18, 55, 120, 245), outline=(120, 185, 245, 200), width=2)
+
+        hx = x0 + 22
+        hy = y0 + 16
+        hw, hh = 28, 28
+        draw.polygon([(hx + hw//2, hy), (hx, hy + 13), (hx + hw, hy + 13)], outline=(255, 255, 255, 255), width=2)
+        draw.rectangle([hx + 4, hy + 13, hx + hw - 4, hy + hh], outline=(255, 255, 255, 255), width=2)
+        draw.rectangle([hx + hw//2 - 3, hy + hh - 10, hx + hw//2 + 3, hy + hh], outline=(255, 255, 255, 255), fill=(18, 55, 120, 245), width=2)
+
+        tx = x0 + 64
+        ty = y0 + (cap_h - th) // 2 - 2
+        draw.text((tx, ty), clean_item, fill=(255, 255, 255, 255), font=font_item)
+
+    # 5. 하단 웨이브 카드 합성
+    bot_card_path = os.path.join(ASSETS_DIR, "frame_premium_wave_bottom.png")
+    if os.path.exists(bot_card_path):
+        bot_card = Image.open(bot_card_path).convert("RGBA")
+        canvas.paste(bot_card, (0, 0), bot_card)
+    else:
+        draw.rectangle([0, 750, W, content_h], fill=(255, 255, 255, 255))
+
+    # 6. 동적 텍스트 렌더링
+    font_main = get_font("NanumGothicExtraBold.ttf", 46)
+    font_sub = get_font("NanumGothicExtraBold.ttf", 42)
+    font_feat = get_font("NanumGothicBold.ttf", 25)
+    font_spec = get_font("NanumGothicBold.ttf", 27)
+
+    navy_color = (11, 37, 69, 255)
+    sub_color = (25, 45, 80, 255)
+    feat_color = (40, 50, 70, 255)
+    line_color = (175, 190, 205, 255)
+
+    clean_main = (main_title or "").strip()
+    clean_sub = (sub_title or "").strip()
+    clean_feat = (feature_text or "").strip()
+
+    title_y = 810
+    if clean_main:
+        draw.text((55, title_y), clean_main, fill=navy_color, font=font_main)
+    if clean_sub:
+        draw.text((55, title_y + 68), clean_sub, fill=sub_color, font=font_sub)
+
+    slogan_text = clean_feat if clean_feat else "좋은 집, 더 나은 생활의 시작"
+    slogan_y = 955
+    ft_box = draw.textbbox((0, 0), slogan_text, font=font_feat)
+    ft_w = ft_box[2] - ft_box[0]
+    draw.line([(55, slogan_y + 13), (115, slogan_y + 13)], fill=line_color, width=2)
+    draw.text((128, slogan_y), slogan_text, fill=feat_color, font=font_feat)
+    draw.line([(138 + ft_w, slogan_y + 13), (138 + ft_w + 60, slogan_y + 13)], fill=line_color, width=2)
+
+    # 우측 스펙 행 렌더링
+    valid_specs = []
+    default_icons = ["icon_building.png", "icon_area.png", "icon_bed.png", "icon_calendar.png", "icon_sun.png"]
+    for i, item in enumerate(spec_lines or []):
+        if isinstance(item, tuple) and len(item) == 2:
+            icon_file, txt = item
+        else:
+            icon_file = default_icons[i] if i < len(default_icons) else "icon_building.png"
+            txt = str(item) if item is not None else ""
+        if txt and txt.strip():
+            valid_specs.append((icon_file, txt.strip()))
+
+    count = len(valid_specs)
+    spec_color = (20, 30, 45, 255)
+
+    if count <= 3:
+        spec_y_list = [817, 877, 937]
+        for i in range(min(count, 3)):
+            _, txt = valid_specs[i]
+            draw.text((748, spec_y_list[i]), txt, fill=spec_color, font=font_spec)
+    else:
+        draw.rectangle([(680, 790), (740, 1000)], fill=(254, 254, 254, 255))
+        font_spec_multi = get_font("NanumGothicBold.ttf", 24 if count >= 5 else 26)
+        spec_start_y = 795 if count >= 5 else 805
+        spec_gap = 42 if count >= 5 else 50
+        icon_box = 28 if count >= 5 else 32
+        for i, (icon_file, txt) in enumerate(valid_specs[:5]):
+            cur_y = spec_start_y + i * spec_gap
+            icon_path = os.path.join(ASSETS_DIR, icon_file)
+            if not os.path.exists(icon_path):
+                icon_path = os.path.join(ASSETS_DIR, "icon_building.png")
+            if os.path.exists(icon_path):
+                ic = Image.open(icon_path).convert("RGBA")
+                scale = min(icon_box / ic.width, icon_box / ic.height)
+                nw, nh = int(ic.width * scale), int(ic.height * scale)
+                ic_resized = ic.resize((nw, nh), Image.Resampling.LANCZOS)
+                canvas.paste(ic_resized, (700 + (icon_box - nw) // 2, cur_y + (icon_box - nh) // 2), ic_resized)
+            draw.text((748, cur_y + 1), txt, fill=spec_color, font=font_spec_multi)
+
+    # 7. 하단 고정 바 렌더링
+    _draw_footer(canvas, draw, W, H, bottom_h, content_h, footer_text=footer_text, show_footer=show_footer)
+
+    return canvas.convert("RGB")
+
 def _render_top_panoramic(
     bg_image, item_no, main_title, sub_title, feature_text, trade_type, price_text, spec_lines,
     bg_offset_x, bg_offset_y, bg_zoom, W, H, bottom_h, content_h,
     show_footer: bool = True, footer_text: str = "",
     primary_color: tuple = (244, 138, 38, 255),
     accent_color: tuple = (235, 94, 40, 255),
-    card_bg: tuple = (246, 247, 249, 255)
+    card_bg: tuple = (246, 247, 249, 255),
+    design_id: str = ""
 ) -> Image.Image:
     """상하 파노라마 모드: 상단 약 68% 전체를 와이드 사진으로 노출 (사진 하단 잘림 방지 및 노출 극대화)"""
     primary_color = _to_rgba(primary_color, (244, 138, 38, 255))
     accent_color = _to_rgba(accent_color, (235, 94, 40, 255))
     card_bg = _to_rgba(card_bg, (246, 247, 249, 255))
+
+    # 프리미엄 웨이브 블루 모드 전용 고품질 렌더러 분기
+    if design_id == "blue_premium_wave" or primary_color[:3] == (30, 80, 160):
+        return _render_premium_wave(
+            bg_image=bg_image,
+            item_no=item_no,
+            main_title=main_title,
+            sub_title=sub_title,
+            feature_text=feature_text,
+            trade_type=trade_type,
+            price_text=price_text,
+            spec_lines=spec_lines,
+            bg_offset_x=bg_offset_x,
+            bg_offset_y=bg_offset_y,
+            bg_zoom=bg_zoom,
+            W=W, H=H, bottom_h=bottom_h, content_h=content_h,
+            show_footer=show_footer, footer_text=footer_text
+        )
 
     canvas = Image.new("RGBA", (W, H), (255, 255, 255, 255))
 

@@ -2117,6 +2117,7 @@ def render_tab_apt_thumb():
                 accent_color=selected_design["accent_color"],
                 card_bg=selected_design["card_bg"],
                 overlay_image=selected_design.get("overlay_image_path"),
+                design_id=selected_design.get("id", ""),
                 deal_done=st.session_state.get("apt_deal_done", False),
                 deal_color=st.session_state.get("apt_deal_color", "#FF0101")
             )
@@ -2322,6 +2323,7 @@ def render_tab_house_thumb():
                 accent_color=selected_design["accent_color"],
                 card_bg=selected_design["card_bg"],
                 overlay_image=selected_design.get("overlay_image_path"),
+                design_id=selected_design.get("id", ""),
                 deal_done=st.session_state.get("house_deal_done", False),
                 deal_color=st.session_state.get("house_deal_color", "#FF0101")
             )
@@ -2686,6 +2688,7 @@ def render_tab_factory_thumb():
                 accent_color=selected_design["accent_color"],
                 card_bg=selected_design["card_bg"],
                 overlay_image=selected_design.get("overlay_image_path"),
+                design_id=selected_design.get("id", ""),
                 deal_done=st.session_state.get("factory_deal_done", False),
                 deal_color=st.session_state.get("factory_deal_color", "#FF0101")
             )
