@@ -1530,10 +1530,10 @@ def render_a4_window_poster(
 
     # 썸네일/배경 이미지가 전혀 없을 때 기본 샘플 사진으로 자동 대체
     if target_photo is None:
-        default_fn = "sample_comm_lease.jpg" if is_commercial else "sample_living_room.jpg"
+        default_fn = "sample_comm_corner_night.jpg" if is_commercial else "sample_living_room.jpg"
         default_path = os.path.join(ASSETS_DIR, default_fn)
         if not os.path.exists(default_path):
-            default_path = os.path.join(ASSETS_DIR, "sample_living_room.jpg")
+            default_path = os.path.join(ASSETS_DIR, "sample_comm_lease.jpg")
         if not os.path.exists(default_path):
             default_path = os.path.join(ASSETS_DIR, "default_bg.jpg")
         if os.path.exists(default_path):

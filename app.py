@@ -3235,27 +3235,47 @@ def render_tab_comm_poster():
         except Exception:
             pass
 
-    # 포스터 사진 소스 결정 (썸네일에 들어간 원본 사진 vs 블로그 완성 썸네일 vs 별도 업로드)
-    photo_choice = st.session_state.get("comm_poster_photo_choice", "📸 썸네일에 들어간 현장 사진 (추천)")
-    custom_poster_bytes = st.session_state.get("saved_comm_poster_custom_bytes")
+    # 슬롯별 커스텀 이미지 로드 헬퍼
+    def get_comm_slot_image_bytes(slot_idx, default_filename):
+        custom_key = f"saved_comm_slot_{slot_idx}_bytes"
+        if st.session_state.get(custom_key):
+            return st.session_state[custom_key]
+        def_path = os.path.join(ASSETS_DIR, default_filename)
+        if os.path.exists(def_path):
+            try:
+                with open(def_path, "rb") as f:
+                    return f.read()
+            except Exception:
+                pass
+        return None
+
+    # 포스터 사진 소스 결정 (5개 슬롯 갤러리 vs 썸네일 원본 vs 블로그 완성 썸네일)
+    photo_choice = st.session_state.get("comm_poster_photo_choice", "🏬 슬롯 1: 야경 코너 상가 빌딩 (기본 추천)")
 
     chosen_thumb = None
     chosen_bg = None
 
-    if photo_choice == "🎨 블로그 완성 썸네일 전체 (디자인 포함)":
+    if "슬롯 1" in photo_choice:
+        chosen_bg = get_comm_slot_image_bytes(1, "sample_comm_corner_night.jpg")
+    elif "슬롯 2" in photo_choice:
+        chosen_bg = get_comm_slot_image_bytes(2, "sample_comm_lease.jpg")
+    elif "슬롯 3" in photo_choice:
+        chosen_bg = get_comm_slot_image_bytes(3, "sample_comm_sale.jpg")
+    elif "슬롯 4" in photo_choice:
+        chosen_bg = get_comm_slot_image_bytes(4, "sample_comm_modern_facade.jpg")
+    elif "슬롯 5" in photo_choice:
+        chosen_bg = get_comm_slot_image_bytes(5, "sample_comm_corner_night.jpg")
+    elif "블로그 완성 썸네일" in photo_choice:
         chosen_thumb = saved_comm_thumb
-        if chosen_thumb is None and raw_comm_photo:
-            chosen_bg = raw_comm_photo
-    elif photo_choice == "📁 창문 포스터 전용 새 사진 직접 업로드":
-        chosen_bg = custom_poster_bytes or raw_comm_photo
-        if not chosen_bg and saved_comm_thumb:
-            chosen_thumb = saved_comm_thumb
+        if chosen_thumb is None:
+            chosen_bg = raw_comm_photo or get_comm_slot_image_bytes(1, "sample_comm_corner_night.jpg")
+    elif "썸네일에 넣었던 현장 사진" in photo_choice:
+        chosen_bg = raw_comm_photo or get_comm_slot_image_bytes(1, "sample_comm_corner_night.jpg")
     else:
-        # 기본값: "📸 썸네일에 들어간 현장 사진 (추천)"
-        if raw_comm_photo:
-            chosen_bg = raw_comm_photo
-        elif saved_comm_thumb:
-            chosen_thumb = saved_comm_thumb
+        chosen_bg = get_comm_slot_image_bytes(1, "sample_comm_corner_night.jpg")
+
+    if chosen_bg is None and chosen_thumb is None:
+        chosen_bg = get_comm_slot_image_bytes(1, "sample_comm_corner_night.jpg")
     
     if not is_comm_sale:
         comm_a4_title = st.session_state.get("poster_comm_l_title", st.session_state.get("comm_lease_main_title", "코너 상가 임차"))
@@ -3351,26 +3371,61 @@ def render_tab_comm_poster():
             print_bytes=comm_a4_bytes
         )
 
-        with st.expander("🖼️ 창문 포스터 사진 설정 및 미세 조정", expanded=True):
+        with st.expander("🖼️ 창문 포스터 배경 이미지 (5개 슬롯 갤러리) & 미세 조정", expanded=True):
+            slot_options = [
+                "🏬 슬롯 1: 야경 코너 상가 빌딩 (기본 추천)",
+                "☕ 슬롯 2: 1층 모던 카페·디저트 상가",
+                "🏢 슬롯 3: 대로변 수익형 상가 빌딩",
+                "🛍️ 슬롯 4: 모던 스트리트 상가 전경",
+                "📁 슬롯 5: 소장님 직접 등록 상가 사진",
+                "📸 썸네일에 넣었던 현장 사진",
+                "🎨 블로그 완성 썸네일 전체 (디자인 포함)"
+            ]
+            current_choice = st.session_state.get("comm_poster_photo_choice", slot_options[0])
+            c_idx = slot_options.index(current_choice) if current_choice in slot_options else 0
             st.radio(
-                "포스터에 넣을 이미지 선택",
-                [
-                    "📸 썸네일에 들어간 현장 사진 (추천)", 
-                    "🎨 블로그 완성 썸네일 전체 (디자인 포함)", 
-                    "📁 창문 포스터 전용 새 사진 직접 업로드"
-                ],
+                "포스터에 넣을 배경 이미지 선택",
+                slot_options,
+                index=c_idx,
                 key="comm_poster_photo_choice"
             )
-            
-            if st.session_state.get("comm_poster_photo_choice") == "📁 창문 포스터 전용 새 사진 직접 업로드":
-                poster_custom_file = st.file_uploader(
-                    "창문 포스터용 새 사진 업로드",
-                    type=["jpg", "jpeg", "png", "webp"],
-                    key="comm_poster_custom_photo_file"
-                )
-                if poster_custom_file:
-                    st.session_state["saved_comm_poster_custom_bytes"] = poster_custom_file.getvalue()
-            
+
+            st.markdown("---")
+            st.markdown("#### 📂 5개 슬롯 사진 등록 및 교체 (원클릭 이미지 칸)")
+            st.caption("각 슬롯별로 원하시는 상가 현장 사진을 자유롭게 업로드하여 영구 저장 및 교체할 수 있습니다.")
+
+            slot_tabs = st.tabs(["슬롯 1", "슬롯 2", "슬롯 3", "슬롯 4", "슬롯 5"])
+            slot_defaults = [
+                ("sample_comm_corner_night.jpg", "야경 코너 상가"),
+                ("sample_comm_lease.jpg", "1층 카페 상가"),
+                ("sample_comm_sale.jpg", "대로변 상가 빌딩"),
+                ("sample_comm_modern_facade.jpg", "모던 스트리트"),
+                ("sample_comm_corner_night.jpg", "직접 등록 슬롯")
+            ]
+
+            for s_idx, (stab, (def_fn, slot_label)) in enumerate(zip(slot_tabs, slot_defaults), start=1):
+                with stab:
+                    c_up1, c_up2 = st.columns([1.1, 1.9])
+                    s_bytes = get_comm_slot_image_bytes(s_idx, def_fn)
+                    with c_up1:
+                        if s_bytes:
+                            st.image(s_bytes, caption=f"슬롯 {s_idx} 현재 사진", use_container_width=True)
+                    with c_up2:
+                        up_f = st.file_uploader(
+                            f"슬롯 {s_idx} 새 사진 등록",
+                            type=["jpg", "jpeg", "png", "webp"],
+                            key=f"comm_slot_{s_idx}_file_uploader"
+                        )
+                        if up_f:
+                            st.session_state[f"saved_comm_slot_{s_idx}_bytes"] = up_f.getvalue()
+                            st.success(f"🎉 슬롯 {s_idx}에 새 사진이 성공적으로 등록되었습니다!")
+                        if st.session_state.get(f"saved_comm_slot_{s_idx}_bytes"):
+                            if st.button(f"🔄 슬롯 {s_idx} 초기화", key=f"btn_reset_slot_{s_idx}"):
+                                st.session_state.pop(f"saved_comm_slot_{s_idx}_bytes", None)
+                                st.rerun()
+
+            st.markdown("---")
+            st.markdown("#### 🔍 사진 구도 및 위치 미세 조정")
             st.slider("사진 확대/축소", 0.6, 2.0, 1.0, 0.05, key="comm_poster_zoom_slider")
             c_pz1, c_pz2 = st.columns(2)
             with c_pz1:
