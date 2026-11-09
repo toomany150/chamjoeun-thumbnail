@@ -14,6 +14,8 @@ import document_parser
 import naver_crawler
 import design_manager
 # 매 클릭/렌더링마다 모듈 및 폰트 캐시(@lru_cache)가 초기화되어 속도가 느려지는 현상을 방지하기 위해 importlib.reload 제거
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+ASSETS_DIR = getattr(thumbnail_generator, "ASSETS_DIR", os.path.join(BASE_DIR, "assets"))
 
 
 
@@ -33,7 +35,8 @@ from thumbnail_generator import (
     render_thumbnail,
     render_commercial_lease_thumbnail,
     render_commercial_sale_thumbnail,
-    render_a4_window_poster
+    render_a4_window_poster,
+    ASSETS_DIR
 )
 from property_ad_spec import (
     DEFAULT_SPEC,
