@@ -2103,8 +2103,14 @@ def render_tab_apt_thumb():
         )
         if uploaded_bg:
             st.session_state["saved_apt_uploaded_bg"] = uploaded_bg
+            try:
+                uploaded_bg.seek(0)
+                st.session_state["saved_apt_uploaded_bg_bytes"] = uploaded_bg.getvalue()
+                uploaded_bg.seek(0)
+            except Exception:
+                pass
         else:
-            uploaded_bg = st.session_state.get("saved_apt_uploaded_bg")
+            uploaded_bg = st.session_state.get("saved_apt_uploaded_bg_bytes") or st.session_state.get("saved_apt_uploaded_bg")
 
         with st.expander("🔍 사진 위치 / 확대 미세 조정", expanded=False):
             c_z1, c_z2, c_z3 = st.columns(3)
@@ -2150,6 +2156,7 @@ def render_tab_apt_thumb():
                 deal_color=st.session_state.get("apt_deal_color", "#FF0101")
             )
 
+        st.session_state["saved_apt_thumb_img"] = thumbnail_img
         st.image(thumbnail_img, caption="블로그 썸네일 실시간 완성 미리보기 (1080 x 1080 px)", use_container_width=True)
 
     with col_t_right:
@@ -2458,8 +2465,14 @@ def render_tab_comm_thumb():
         )
         if uploaded_comm_bg:
             st.session_state["saved_comm_uploaded_bg"] = uploaded_comm_bg
+            try:
+                uploaded_comm_bg.seek(0)
+                st.session_state["saved_comm_uploaded_bg_bytes"] = uploaded_comm_bg.getvalue()
+                uploaded_comm_bg.seek(0)
+            except Exception:
+                pass
         else:
-            uploaded_comm_bg = st.session_state.get("saved_comm_uploaded_bg")
+            uploaded_comm_bg = st.session_state.get("saved_comm_uploaded_bg_bytes") or st.session_state.get("saved_comm_uploaded_bg")
 
         with st.expander("🔍 사진 위치 / 확대 미세 조정", expanded=False):
             cz1, cz2, cz3 = st.columns(3)
@@ -2511,6 +2524,7 @@ def render_tab_comm_thumb():
                     deal_color=st.session_state.get("comm_deal_color", "#FF0101")
                 )
 
+        st.session_state["saved_comm_thumb_img"] = comm_thumb_img
         caption_title = "실시간 완성 미리보기: 상가 임차 (1080 x 1080 px)" if not is_sale_mode else "실시간 완성 미리보기: 상가 매매 (1080 x 1080 px)"
         st.image(comm_thumb_img, caption=caption_title, use_container_width=True)
 
@@ -3189,7 +3203,59 @@ def render_tab_comm_poster():
 
     col_l, col_r = st.columns([1.2, 1.1])
     
-    uploaded_comm_bg = st.session_state.get("saved_comm_uploaded_bg")
+    # 썸네일 원본 사진 및 완성 썸네일 안전 로드
+    raw_comm_photo = st.session_state.get("saved_comm_uploaded_bg_bytes") or st.session_state.get("saved_comm_uploaded_bg")
+    saved_comm_thumb = st.session_state.get("saved_comm_thumb_img")
+
+    # 만약 아직 썸네일이 렌더링된 적이 없다면 즉시 현재 설정으로 썸네일 자동 렌더링
+    if saved_comm_thumb is None:
+        try:
+            if not is_comm_sale:
+                saved_comm_thumb = render_commercial_lease_thumbnail(
+                    bg_image=raw_comm_photo,
+                    top_badge_text=st.session_state.get("comm_lease_top_badge", "사상역 초역세권 · 무권리 추천매물"),
+                    catchphrase_top=st.session_state.get("comm_lease_cp_top", "유동인구 1등! 대로변 1층"),
+                    main_title=st.session_state.get("comm_lease_main_title", "코너 상가 임차"),
+                    catchphrase_bot=st.session_state.get("comm_lease_cp_bot", "가시성 최고! 즉시 입점 가능"),
+                    pin_bubble_text=st.session_state.get("comm_lease_pin_bubble", "목 좋은 자리!"),
+                    show_pin=st.session_state.get("comm_lease_show_pin", True),
+                    spec_line1=st.session_state.get("comm_lease_spec1", "전용 25평 | 보증금 3,000만 / 월 180만"),
+                    spec_line2=st.session_state.get("comm_lease_spec2", "추천 : 카페 · 음식점 · 판매점")
+                )
+            else:
+                saved_comm_thumb = render_commercial_sale_thumbnail(
+                    bg_image=raw_comm_photo,
+                    top_badge_left=st.session_state.get("comm_sale_top_left", "사상 핵심상권 매매"),
+                    top_badge_right=st.session_state.get("comm_sale_top_right", "우량 임차인 성업중"),
+                    main_highlight_title=st.session_state.get("comm_sale_main_hl", "확정 수익률 6.8%"),
+                    main_sub_title=st.session_state.get("comm_sale_main_sub", "안정적인 알짜 상가 매매"),
+                    price_spec_text=st.session_state.get("comm_sale_price_spec", "매매가 15억 | 보증금 8천 / 월수익 650만")
+                )
+            st.session_state["saved_comm_thumb_img"] = saved_comm_thumb
+        except Exception:
+            pass
+
+    # 포스터 사진 소스 결정 (썸네일에 들어간 원본 사진 vs 블로그 완성 썸네일 vs 별도 업로드)
+    photo_choice = st.session_state.get("comm_poster_photo_choice", "📸 썸네일에 들어간 현장 사진 (추천)")
+    custom_poster_bytes = st.session_state.get("saved_comm_poster_custom_bytes")
+
+    chosen_thumb = None
+    chosen_bg = None
+
+    if photo_choice == "🎨 블로그 완성 썸네일 전체 (디자인 포함)":
+        chosen_thumb = saved_comm_thumb
+        if chosen_thumb is None and raw_comm_photo:
+            chosen_bg = raw_comm_photo
+    elif photo_choice == "📁 창문 포스터 전용 새 사진 직접 업로드":
+        chosen_bg = custom_poster_bytes or raw_comm_photo
+        if not chosen_bg and saved_comm_thumb:
+            chosen_thumb = saved_comm_thumb
+    else:
+        # 기본값: "📸 썸네일에 들어간 현장 사진 (추천)"
+        if raw_comm_photo:
+            chosen_bg = raw_comm_photo
+        elif saved_comm_thumb:
+            chosen_thumb = saved_comm_thumb
     
     if not is_comm_sale:
         comm_a4_title = st.session_state.get("poster_comm_l_title", st.session_state.get("comm_lease_main_title", "코너 상가 임차"))
@@ -3232,7 +3298,8 @@ def render_tab_comm_poster():
     with col_l:
         with st.spinner("상가 창문 부착용 150DPI A4 포스터 렌더링 중..."):
             comm_a4_poster_img = render_a4_window_poster(
-                bg_image=uploaded_comm_bg,
+                thumbnail_img=chosen_thumb,
+                bg_image=chosen_bg,
                 item_no=st.session_state.get("comm_item_no", "No. COMM-01"),
                 main_title=comm_a4_title,
                 sub_title=comm_a4_sub,
@@ -3246,6 +3313,9 @@ def render_tab_comm_poster():
                 office_reg_no=st.session_state.get("comm_ad_office_reg_no", "제 26530-2026-00009 호"),
                 office_address=st.session_state.get("comm_ad_office_address", "부산광역시 사상구 강선로 9, 1층"),
                 is_commercial=True,
+                bg_zoom=st.session_state.get("comm_poster_zoom_slider", 1.0),
+                bg_offset_x=st.session_state.get("comm_poster_off_x", 0),
+                bg_offset_y=st.session_state.get("comm_poster_off_y", 0),
                 office_tel=st.session_state.get("comm_office_tel_input", "010-9667-4201"),
                 assistant_phone=st.session_state.get("comm_assistant_phone_input", ""),
                 primary_color_override=selected_comm_design.get("primary_color", "#DAA844"),
@@ -3280,6 +3350,33 @@ def render_tab_comm_poster():
             is_poster=True,
             print_bytes=comm_a4_bytes
         )
+
+        with st.expander("🖼️ 창문 포스터 사진 설정 및 미세 조정", expanded=True):
+            st.radio(
+                "포스터에 넣을 이미지 선택",
+                [
+                    "📸 썸네일에 들어간 현장 사진 (추천)", 
+                    "🎨 블로그 완성 썸네일 전체 (디자인 포함)", 
+                    "📁 창문 포스터 전용 새 사진 직접 업로드"
+                ],
+                key="comm_poster_photo_choice"
+            )
+            
+            if st.session_state.get("comm_poster_photo_choice") == "📁 창문 포스터 전용 새 사진 직접 업로드":
+                poster_custom_file = st.file_uploader(
+                    "창문 포스터용 새 사진 업로드",
+                    type=["jpg", "jpeg", "png", "webp"],
+                    key="comm_poster_custom_photo_file"
+                )
+                if poster_custom_file:
+                    st.session_state["saved_comm_poster_custom_bytes"] = poster_custom_file.getvalue()
+            
+            st.slider("사진 확대/축소", 0.6, 2.0, 1.0, 0.05, key="comm_poster_zoom_slider")
+            c_pz1, c_pz2 = st.columns(2)
+            with c_pz1:
+                st.slider("사진 좌우 이동 (px)", -400, 400, 0, 10, key="comm_poster_off_x")
+            with c_pz2:
+                st.slider("사진 상하 이동 (px)", -400, 400, 0, 10, key="comm_poster_off_y")
 
         with st.expander("🛠️ 상가 포스터 주요 문구 간편 수정", expanded=True):
             if not is_comm_sale:

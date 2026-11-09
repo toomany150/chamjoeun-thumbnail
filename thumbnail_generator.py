@@ -1522,8 +1522,25 @@ def render_a4_window_poster(
         elif isinstance(bg_image, (bytes, bytearray)):
             target_photo = Image.open(io.BytesIO(bg_image)).convert("RGBA")
         elif hasattr(bg_image, "read"):
-            bg_image.seek(0)
+            try:
+                bg_image.seek(0)
+            except Exception:
+                pass
             target_photo = Image.open(bg_image).convert("RGBA")
+
+    # 썸네일/배경 이미지가 전혀 없을 때 기본 샘플 사진으로 자동 대체
+    if target_photo is None:
+        default_fn = "sample_comm_lease.jpg" if is_commercial else "sample_living_room.jpg"
+        default_path = os.path.join(ASSETS_DIR, default_fn)
+        if not os.path.exists(default_path):
+            default_path = os.path.join(ASSETS_DIR, "sample_living_room.jpg")
+        if not os.path.exists(default_path):
+            default_path = os.path.join(ASSETS_DIR, "default_bg.jpg")
+        if os.path.exists(default_path):
+            try:
+                target_photo = Image.open(default_path).convert("RGBA")
+            except Exception:
+                pass
 
     if target_photo is not None:
         try:
@@ -1534,12 +1551,16 @@ def render_a4_window_poster(
         pw, ph = target_photo.size
 
         # ⭐ 요구사항: "썸네일 사진밑에 해당정보는 중복정보니깐 없어도 돼. 썸네일 디자인된 사진을 크기에 맞게 넣고"
-        # 썸네일에서 하단 중복 텍스트(매물명, 가격, 스펙 등)가 적힌 하단 영역(약 32%)을 제외하고,
-        # 상단의 디자인된 사진 영역(0 ~ 68%)만 취하여 비주얼 박스 전체에 꽉 채웁니다!
+        # 주거용 썸네일은 하단 중복 텍스트(약 32%)를 제외하고 상단 사진 영역(0 ~ 68%)을 취하며,
+        # 상가 및 일반 사진은 전체를 비주얼 박스 전체에 꽉 채웁니다.
         if is_from_thumb:
-            valid_h = int(ph * 0.68)
-            photo_to_fit = target_photo.crop((0, 0, pw, valid_h))
-            src_w, src_h = photo_to_fit.size
+            if not is_commercial:
+                valid_h = int(ph * 0.68)
+                photo_to_fit = target_photo.crop((0, 0, pw, valid_h))
+                src_w, src_h = photo_to_fit.size
+            else:
+                photo_to_fit = target_photo
+                src_w, src_h = pw, ph
         else:
             photo_to_fit = target_photo
             src_w, src_h = pw, ph
