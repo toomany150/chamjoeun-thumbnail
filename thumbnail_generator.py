@@ -477,18 +477,11 @@ def _render_premium_wave(
         top_flare = Image.open(top_flare_path).convert("RGBA")
         canvas.paste(top_flare, (0, 0), top_flare)
 
-    # 3. 상단 우측 Premium House 캘리그래피 스크립트
+    # 3. 상단 우측 Premium House 캘리그래피 스크립트 (투명 오버레이로 원본 느낌 그대로 부착)
     script_path = os.path.join(ASSETS_DIR, "premium_house_script.png")
     if os.path.exists(script_path):
         script_img = Image.open(script_path).convert("RGBA")
-        glow_box = Image.new("RGBA", (script_img.width + 30, script_img.height + 20), (255, 255, 255, 0))
-        glow_draw = ImageDraw.Draw(glow_box)
-        try:
-            glow_draw.rounded_rectangle([0, 0, glow_box.width, glow_box.height], radius=15, fill=(255, 255, 255, 120))
-        except Exception:
-            glow_draw.rectangle([0, 0, glow_box.width, glow_box.height], fill=(255, 255, 255, 120))
-        canvas.paste(glow_box, (785, 15), glow_box)
-        canvas.paste(script_img, (800, 25), script_img)
+        canvas.paste(script_img, (810, 28), script_img)
 
     # 4. 상단 물건 번호 캡슐 뱃지 (집 아이콘 + No. APT001)
     draw = ImageDraw.Draw(canvas)
