@@ -21,6 +21,15 @@ os.makedirs(CUSTOM_DESIGN_ASSETS_DIR, exist_ok=True)
 
 DEFAULT_DESIGNS = [
     {
+        "id": "blue_premium_wave",
+        "name": "💎 프리미엄 웨이브 블루 (아파트 추천)",
+        "primary_color": [30, 80, 160, 255],      # #1E50A0 (품격있는 로열블루)
+        "accent_color": [50, 130, 220, 255],      # #3282DC
+        "banner_bg": [20, 60, 130, 255],
+        "card_bg": [245, 249, 255, 255],          # 은은한 소프트 화이트 블루
+        "is_default": True
+    },
+    {
         "id": "orange_signature",
         "name": "🍊 참좋은 시그니처 오렌지 (기본)",
         "primary_color": [244, 138, 38, 255],     # #F48A26

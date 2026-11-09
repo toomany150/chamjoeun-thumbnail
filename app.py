@@ -1279,7 +1279,7 @@ if "main_title" not in st.session_state:
 if "sub_title" not in st.session_state:
     st.session_state.sub_title = "그랜드센트럴"
 if "feature_text" not in st.session_state:
-    st.session_state.feature_text = ""
+    st.session_state.feature_text = "좋은 집, 더 나은 생활의 시작"
 if "thumb_trade_type" not in st.session_state:
     st.session_state.thumb_trade_type = "매매"
 if "thumb_price_text" not in st.session_state:
@@ -1289,7 +1289,7 @@ if "spec_line1" not in st.session_state:
 if "spec_line2" not in st.session_state:
     st.session_state.spec_line2 = "공급 111.42㎡ / 전용 79.85㎡"
 if "spec_line3" not in st.session_state:
-    st.session_state.spec_line3 = "방 3 / 욕실 2"
+    st.session_state.spec_line3 = "아파트 매매·전세·월세"
 if "spec_line4" not in st.session_state:
     st.session_state.spec_line4 = "즉시입주 협의가능"
 if "spec_line5" not in st.session_state:
@@ -1330,12 +1330,12 @@ def apply_preset(p_type):
         st.session_state.item_no = "No. APT001"
         st.session_state.main_title = "사상 중흥S-클래스"
         st.session_state.sub_title = "그랜드센트럴"
-        st.session_state.feature_text = "1572세대 대단지 아파트"
+        st.session_state.feature_text = "좋은 집, 더 나은 생활의 시작"
         st.session_state.thumb_trade_type = "매매"
         st.session_state.thumb_price_text = "6억2천"
         st.session_state.spec_line1 = "105동 / 25층(로얄층)"
         st.session_state.spec_line2 = "공급 111.42㎡ / 전용 79.85㎡"
-        st.session_state.spec_line3 = "방 3 / 욕실 2"
+        st.session_state.spec_line3 = "아파트 매매·전세·월세"
         st.session_state.spec_line4 = "즉시입주 협의가능"
         st.session_state.spec_line5 = "남동향 (거실 기준)"
         
@@ -2046,8 +2046,26 @@ def render_tab_apt_thumb():
     col_t_left, col_t_right = st.columns([1.25, 0.75])
     
     with col_t_left:
+        # 빠른 추천 프리셋
+        col_apr1, col_apr2, col_apr3 = st.columns([1, 1, 1])
+        with col_apr1:
+            if st.button("⚡ 사상 중흥S-클래스 (기본 예시)", use_container_width=True, key="btn_preset_apt_living"):
+                apply_preset("living")
+                st.session_state["saved_apt_uploaded_bg"] = None
+                st.session_state["apt_thumb_design_selector"] = "💎 프리미엄 웨이브 블루 (아파트 추천)"
+                st.session_state["apt_thumb_layout_selector"] = "상하 파노라마형 (전경 극대화)"
+                st.rerun()
+        with col_apr2:
+            if st.button("⚡ 센텀스퀘어 오피스텔 예시", use_container_width=True, key="btn_preset_apt_op"):
+                apply_preset("op")
+                st.session_state["saved_apt_uploaded_bg"] = None
+                st.session_state["apt_thumb_design_selector"] = "🌊 모던 사파이어 블루 (신축·세련)"
+                st.rerun()
+        with col_apr3:
+            st.caption("👈 버튼을 누르면 추천 예시가 즉시 채워집니다.")
+
         # 요구사항 1번: 레이아웃 모드를 우측으로 이동하고 좌측에 디자인 모드 배치 (영구 저장 지원)
-        selected_design, layout_mode, photo_width_ratio = render_design_and_layout_controls("apt_thumb", default_design_name="🍊 참좋은 시그니처 오렌지 (기본)")
+        selected_design, layout_mode, photo_width_ratio = render_design_and_layout_controls("apt_thumb", default_design_name="💎 프리미엄 웨이브 블루 (아파트 추천)")
 
         # 사진 업로드
         uploaded_bg = st.file_uploader(
