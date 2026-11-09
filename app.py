@@ -109,7 +109,23 @@ def _wrap_cached_image_renderer(fn):
             _IMAGE_RENDER_CACHE.move_to_end(key)
             return _IMAGE_RENDER_CACHE[key]
 
-        img = fn(*args, **kwargs)
+        try:
+            img = fn(*args, **kwargs)
+        except Exception as e:
+            import traceback
+            import inspect
+            print(f"[ERROR in {fn.__name__}]: {e}")
+            traceback.print_exc()
+            try:
+                sig = inspect.signature(fn)
+                has_var_kw = any(p.kind == inspect.Parameter.VAR_KEYWORD for p in sig.parameters.values())
+                if not has_var_kw:
+                    valid_kw = {k: v for k, v in kwargs.items() if k in sig.parameters}
+                    img = fn(*args, **valid_kw)
+                else:
+                    raise e
+            except Exception:
+                raise e
         if isinstance(img, Image.Image):
             orig_save = img.save
             buf = io.BytesIO()

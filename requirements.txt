@@ -1,5 +1,5 @@
 streamlit
-pillow
+pillow>=10.3.0
 numpy
 pdfplumber
 pypdfium2

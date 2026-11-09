@@ -203,7 +203,8 @@ def render_thumbnail(
     design_id: str = "",
     deal_done: bool = False,
     deal_color: str = "#FF0101",
-    deal_text: str = "거래완료"
+    deal_text: str = "거래완료",
+    **kwargs
 ) -> Image.Image:
     """1080x1080 썸네일을 생성하여 PIL Image로 반환합니다."""
     primary_color = _to_rgba(primary_color, (244, 138, 38, 255))
@@ -292,7 +293,8 @@ def _render_side_split(
     show_footer: bool = True, footer_text: str = "",
     primary_color: tuple = (244, 138, 38, 255),
     accent_color: tuple = (235, 94, 40, 255),
-    card_bg: tuple = (246, 247, 249, 255)
+    card_bg: tuple = (246, 247, 249, 255),
+    **kwargs
 ) -> Image.Image:
     """좌우 사선 분할 모드 (와이드 조절 지원)"""
     primary_color = _to_rgba(primary_color, (244, 138, 38, 255))
@@ -458,9 +460,11 @@ def _render_side_split(
 def _render_premium_wave(
     bg_image, item_no, main_title, sub_title, feature_text, trade_type, price_text, spec_lines,
     bg_offset_x, bg_offset_y, bg_zoom, W, H, bottom_h, content_h,
-    show_footer: bool = True, footer_text: str = ""
+    show_footer: bool = True, footer_text: str = "",
+    **kwargs
 ) -> Image.Image:
     """프리미엄 웨이브 블루 모드: 우아한 파란 물결 곡선, 캡슐 뱃지, 캘리그래피 및 화이트 정보 카드 렌더링"""
+    resample_l = getattr(getattr(Image, "Resampling", Image), "LANCZOS", 1)
     canvas = Image.new("RGBA", (W, H), (255, 255, 255, 255))
 
     # 1. 배경 사진 로드 및 배치 (상단 및 중앙 영역 꽉 채움)
@@ -479,7 +483,10 @@ def _render_premium_wave(
         script_img = Image.open(script_path).convert("RGBA")
         glow_box = Image.new("RGBA", (script_img.width + 30, script_img.height + 20), (255, 255, 255, 0))
         glow_draw = ImageDraw.Draw(glow_box)
-        glow_draw.rounded_rectangle([0, 0, glow_box.width, glow_box.height], radius=15, fill=(255, 255, 255, 120))
+        try:
+            glow_draw.rounded_rectangle([0, 0, glow_box.width, glow_box.height], radius=15, fill=(255, 255, 255, 120))
+        except Exception:
+            glow_draw.rectangle([0, 0, glow_box.width, glow_box.height], fill=(255, 255, 255, 120))
         canvas.paste(glow_box, (785, 15), glow_box)
         canvas.paste(script_img, (800, 25), script_img)
 
@@ -489,21 +496,25 @@ def _render_premium_wave(
     if clean_item:
         font_item = get_font("NanumGothicBold.ttf", 25)
         tb = draw.textbbox((0, 0), clean_item, font=font_item)
-        tw = tb[2] - tb[0]
-        th = tb[3] - tb[1]
+        tw = int(tb[2] - tb[0])
+        th = int(tb[3] - tb[1])
 
         x0, y0 = 25, 24
         cap_w = max(260, tw + 85)
         cap_h = 62
         r = cap_h // 2
-        draw.rounded_rectangle([x0, y0, x0 + cap_w, y0 + cap_h], radius=r, fill=(18, 55, 120, 245), outline=(120, 185, 245, 200), width=2)
+        try:
+            draw.rounded_rectangle([x0, y0, x0 + cap_w, y0 + cap_h], radius=r, fill=(18, 55, 120, 245), outline=(120, 185, 245, 200))
+        except Exception:
+            draw.rectangle([x0, y0, x0 + cap_w, y0 + cap_h], fill=(18, 55, 120, 245), outline=(120, 185, 245, 200))
 
         hx = x0 + 22
         hy = y0 + 16
         hw, hh = 28, 28
-        draw.polygon([(hx + hw//2, hy), (hx, hy + 13), (hx + hw, hy + 13)], outline=(255, 255, 255, 255), width=2)
-        draw.rectangle([hx + 4, hy + 13, hx + hw - 4, hy + hh], outline=(255, 255, 255, 255), width=2)
-        draw.rectangle([hx + hw//2 - 3, hy + hh - 10, hx + hw//2 + 3, hy + hh], outline=(255, 255, 255, 255), fill=(18, 55, 120, 245), width=2)
+        # 집 아이콘: Pillow 하위 호환성을 위해 draw.line으로 선명하게 렌더링
+        draw.line([(hx, hy + 13), (hx + hw // 2, hy), (hx + hw, hy + 13)], fill=(255, 255, 255, 255), width=2)
+        draw.line([(hx + 4, hy + 13), (hx + 4, hy + hh), (hx + hw - 4, hy + hh), (hx + hw - 4, hy + 13)], fill=(255, 255, 255, 255), width=2)
+        draw.rectangle([hx + hw // 2 - 3, hy + hh - 10, hx + hw // 2 + 3, hy + hh], fill=(18, 55, 120, 245), outline=(255, 255, 255, 255))
 
         tx = x0 + 64
         ty = y0 + (cap_h - th) // 2 - 2
@@ -541,7 +552,7 @@ def _render_premium_wave(
     slogan_text = clean_feat if clean_feat else "좋은 집, 더 나은 생활의 시작"
     slogan_y = 955
     ft_box = draw.textbbox((0, 0), slogan_text, font=font_feat)
-    ft_w = ft_box[2] - ft_box[0]
+    ft_w = int(ft_box[2] - ft_box[0])
     draw.line([(55, slogan_y + 13), (115, slogan_y + 13)], fill=line_color, width=2)
     draw.text((128, slogan_y), slogan_text, fill=feat_color, font=font_feat)
     draw.line([(138 + ft_w, slogan_y + 13), (138 + ft_w + 60, slogan_y + 13)], fill=line_color, width=2)
@@ -581,7 +592,7 @@ def _render_premium_wave(
                 ic = Image.open(icon_path).convert("RGBA")
                 scale = min(icon_box / ic.width, icon_box / ic.height)
                 nw, nh = int(ic.width * scale), int(ic.height * scale)
-                ic_resized = ic.resize((nw, nh), Image.Resampling.LANCZOS)
+                ic_resized = ic.resize((nw, nh), resample_l)
                 canvas.paste(ic_resized, (700 + (icon_box - nw) // 2, cur_y + (icon_box - nh) // 2), ic_resized)
             draw.text((748, cur_y + 1), txt, fill=spec_color, font=font_spec_multi)
 
@@ -597,7 +608,8 @@ def _render_top_panoramic(
     primary_color: tuple = (244, 138, 38, 255),
     accent_color: tuple = (235, 94, 40, 255),
     card_bg: tuple = (246, 247, 249, 255),
-    design_id: str = ""
+    design_id: str = "",
+    **kwargs
 ) -> Image.Image:
     """상하 파노라마 모드: 상단 약 68% 전체를 와이드 사진으로 노출 (사진 하단 잘림 방지 및 노출 극대화)"""
     primary_color = _to_rgba(primary_color, (244, 138, 38, 255))
@@ -605,22 +617,29 @@ def _render_top_panoramic(
     card_bg = _to_rgba(card_bg, (246, 247, 249, 255))
 
     # 프리미엄 웨이브 블루 모드 전용 고품질 렌더러 분기
-    if design_id == "blue_premium_wave" or primary_color[:3] == (30, 80, 160):
-        return _render_premium_wave(
-            bg_image=bg_image,
-            item_no=item_no,
-            main_title=main_title,
-            sub_title=sub_title,
-            feature_text=feature_text,
-            trade_type=trade_type,
-            price_text=price_text,
-            spec_lines=spec_lines,
-            bg_offset_x=bg_offset_x,
-            bg_offset_y=bg_offset_y,
-            bg_zoom=bg_zoom,
-            W=W, H=H, bottom_h=bottom_h, content_h=content_h,
-            show_footer=show_footer, footer_text=footer_text
-        )
+    if design_id == "blue_premium_wave" or tuple(primary_color[:3]) == (30, 80, 160):
+        try:
+            return _render_premium_wave(
+                bg_image=bg_image,
+                item_no=item_no,
+                main_title=main_title,
+                sub_title=sub_title,
+                feature_text=feature_text,
+                trade_type=trade_type,
+                price_text=price_text,
+                spec_lines=spec_lines,
+                bg_offset_x=bg_offset_x,
+                bg_offset_y=bg_offset_y,
+                bg_zoom=bg_zoom,
+                W=W, H=H, bottom_h=bottom_h, content_h=content_h,
+                show_footer=show_footer, footer_text=footer_text
+            )
+        except Exception as e:
+            import traceback
+            print(f"[WARN] _render_premium_wave failed, falling back to standard panoramic: {e}")
+            traceback.print_exc()
+
+    canvas = Image.new("RGBA", (W, H), (255, 255, 255, 255))
 
     canvas = Image.new("RGBA", (W, H), (255, 255, 255, 255))
 
@@ -825,7 +844,8 @@ def render_commercial_lease_thumbnail(
     broker_title: str = "황금터잡이 신소장",
     deal_done: bool = False,
     deal_color: str = "#FF0101",
-    deal_text: str = "거래완료"
+    deal_text: str = "거래완료",
+    **kwargs
 ) -> Image.Image:
     """[상가 임차 썸네일] - 1080x1080 다크 골드 럭셔리 스타일"""
     W, H = 1080, 1080
@@ -1083,7 +1103,8 @@ def render_commercial_sale_thumbnail(
     broker_title: str = "황금터잡이 신소장",
     deal_done: bool = False,
     deal_color: str = "#FF0101",
-    deal_text: str = "거래완료"
+    deal_text: str = "거래완료",
+    **kwargs
 ) -> Image.Image:
     """[상가 매매 썸네일] - 1080x1080 더블 골드 프레임 & 수익률 하이라이트 스타일"""
     W, H = 1080, 1080
