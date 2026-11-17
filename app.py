@@ -3309,6 +3309,74 @@ def render_tab_comm_poster():
             "사상 역세권 핵심 상권"
         ]
 
+    # -------------------------------------------------------------
+    # 🖨️ 상가 창문전단지용 4대 핵심 카드 (중개대상물표시정보 실시간 연동)
+    # 1. 해당층 / 총층 (comm_ad_floor_info)
+    # 2. 공급 및 전용면적 (comm_ad_area_exclusive, comm_ad_area_contract)
+    # 3. 추천업종 (comm_ad_recommended_use / comm_lease_spec2) -> 방수/욕실수 대체!
+    # 4. 방향 (comm_ad_direction)
+    # -------------------------------------------------------------
+    fl_val = str(st.session_state.get("comm_ad_floor_info", "")).strip()
+    if not fl_val or fl_val == "-":
+        fl_val = "1층 / 총 5층"
+
+    exc_m2 = str(st.session_state.get("comm_ad_area_exclusive", "")).strip()
+    con_m2 = str(st.session_state.get("comm_ad_area_contract", "")).strip()
+    if exc_m2 and con_m2:
+        try:
+            exc_f = float(exc_m2.replace(",", ""))
+            con_f = float(con_m2.replace(",", ""))
+            exc_py = round(exc_f * 0.3025, 1)
+            con_py = round(con_f * 0.3025, 1)
+            area_val = f"전용 {exc_py}평({exc_f:.1f}㎡) / 계약 {con_py}평"
+        except Exception:
+            area_val = f"전용 {exc_m2}㎡ / 계약 {con_m2}㎡"
+    elif exc_m2:
+        try:
+            exc_f = float(exc_m2.replace(",", ""))
+            exc_py = round(exc_f * 0.3025, 1)
+            area_val = f"전용 {exc_py}평 ({exc_f:.1f}㎡)"
+        except Exception:
+            area_val = f"전용 {exc_m2}㎡"
+    else:
+        s1 = st.session_state.get("comm_lease_spec1", "")
+        area_val = s1.split("|")[0].strip() if "|" in s1 else "전용 66.12㎡ / 계약 82.64㎡"
+
+    recom_val = str(st.session_state.get("comm_ad_recommended_use", "")).strip()
+    if not recom_val or recom_val == "-":
+        s2 = st.session_state.get("comm_lease_spec2", "")
+        if "추천" in s2:
+            recom_val = re.sub(r"^추천\s*[:|]?\s*", "", s2).strip()
+        elif s2:
+            recom_val = s2.strip()
+    if not recom_val:
+        recom_val = "카페 · 음식점 · 판매점"
+
+    dir_val = str(st.session_state.get("comm_ad_direction", "")).strip()
+    if not dir_val or dir_val == "-":
+        dir_val = "남향 (주된 출입구 기준)"
+
+    comm_cards_sig = (
+        st.session_state.get("comm_ad_floor_info", ""),
+        st.session_state.get("comm_ad_area_exclusive", ""),
+        st.session_state.get("comm_ad_area_contract", ""),
+        st.session_state.get("comm_ad_recommended_use", ""),
+        st.session_state.get("comm_ad_direction", "")
+    )
+    if st.session_state.get("_last_comm_cards_sig") != comm_cards_sig or "poster_comm_card_floor" not in st.session_state:
+        st.session_state["poster_comm_card_floor"] = fl_val
+        st.session_state["poster_comm_card_area"] = area_val
+        st.session_state["poster_comm_card_recom"] = recom_val
+        st.session_state["poster_comm_card_dir"] = dir_val
+        st.session_state["_last_comm_cards_sig"] = comm_cards_sig
+
+    comm_custom_cards = [
+        ("해당층 / 총층", st.session_state.get("poster_comm_card_floor", fl_val)),
+        ("공급 및 전용면적", st.session_state.get("poster_comm_card_area", area_val)),
+        ("추천업종", st.session_state.get("poster_comm_card_recom", recom_val)),
+        ("방향 (출입구 기준)", st.session_state.get("poster_comm_card_dir", dir_val))
+    ]
+
     all_designs = load_all_designs()
     selected_comm_design = all_designs[0] if all_designs else {
         "primary_color": "#DAA844",
@@ -3331,6 +3399,7 @@ def render_tab_comm_poster():
                 trade_type=comm_a4_trade,
                 price_text=comm_a4_price,
                 spec_lines=comm_a4_specs,
+                custom_cards=comm_custom_cards,
                 office_name=st.session_state.get("comm_ad_office_name", "참좋은공인중개사사무소"),
                 office_owner=st.session_state.get("comm_ad_office_owner", "신제환"),
                 office_phone=st.session_state.get("comm_ad_office_phone", "010-9667-4201"),
@@ -3436,6 +3505,23 @@ def render_tab_comm_poster():
                 st.slider("사진 좌우 이동 (px)", -400, 400, 0, 10, key="comm_poster_off_x")
             with c_pz2:
                 st.slider("사진 상하 이동 (px)", -400, 400, 0, 10, key="comm_poster_off_y")
+
+        with st.expander("📋 상가 창문전단지 4대 핵심 카드 개별 수정 (해당층·면적·추천업종·방향)", expanded=True):
+            st.caption("중개대상물표시 정보에서 실시간으로 자동 연동되었습니다. 전단지 출력에 맞게 각 항목을 자유롭게 직접 수정할 수 있습니다.")
+            c_crd1, c_crd2 = st.columns(2)
+            with c_crd1:
+                st.text_input("🏢 ① 해당층 / 총층", key="poster_comm_card_floor", help="중개대상물 04번 해당층 정보 자동 연동")
+                st.text_input("🏷️ ③ 추천업종 (방수/욕실수 대체)", key="poster_comm_card_recom", help="중개대상물 12번 추천업종 정보 자동 연동")
+            with c_crd2:
+                st.text_input("📐 ② 공급 및 전용면적", key="poster_comm_card_area", help="중개대상물 02번 면적 정보 자동 연동")
+                st.text_input("🧭 ④ 방향 (출입구 기준)", key="poster_comm_card_dir", help="중개대상물 09번 방향 정보 자동 연동")
+
+            if st.button("🔄 중개대상물표시 원본 데이터로 다시 불러오기", key="btn_comm_cards_reload", use_container_width=True):
+                st.session_state["poster_comm_card_floor"] = fl_val
+                st.session_state["poster_comm_card_area"] = area_val
+                st.session_state["poster_comm_card_recom"] = recom_val
+                st.session_state["poster_comm_card_dir"] = dir_val
+                st.rerun()
 
         with st.expander("🛠️ 상가 포스터 주요 문구 간편 수정", expanded=True):
             if not is_comm_sale:

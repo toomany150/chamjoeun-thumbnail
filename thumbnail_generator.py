@@ -1310,7 +1310,8 @@ def render_a4_window_poster(
     bg_zoom: float = 1.0,
     primary_color_override = None,
     accent_color_override = None,
-    banner_bg_override = None
+    banner_bg_override = None,
+    custom_cards: list = None
 ) -> Image.Image:
     """
     중개사무소 창문(유리창/외벽)에 부착하여 보행자의 시선을 사로잡는
@@ -1603,13 +1604,23 @@ def render_a4_window_poster(
             "남동향 (거실 기준)"
         ]
 
-    # 입주시기 & 주차대수 삭제 -> 4개 핵심 항목만 압축
-    cards_data = [
-        ("해당층 / 총층", spec_lines[0] if len(spec_lines) > 0 and spec_lines[0] else "고층 / 로얄층"),
-        ("공급 및 전용면적", spec_lines[1] if len(spec_lines) > 1 and spec_lines[1] else "상담 시 즉시 안내"),
-        ("방수 / 욕실수", spec_lines[2] if len(spec_lines) > 2 and spec_lines[2] else "방 3개 / 욕실 2개"),
-        ("방향 (채광 우수)", spec_lines[4] if len(spec_lines) > 4 and spec_lines[4] else "남향 위주 배치")
-    ]
+    # 입주시기 & 주차대수 삭제 -> 4개 핵심 항목만 압축 (상가/주택 구분 및 커스텀 카드 지원)
+    if custom_cards and len(custom_cards) == 4:
+        cards_data = custom_cards
+    elif is_commercial:
+        cards_data = [
+            ("해당층 / 총층", spec_lines[0] if len(spec_lines) > 0 and spec_lines[0] else "1층 / 총 5층"),
+            ("공급 및 전용면적", spec_lines[1] if len(spec_lines) > 1 and spec_lines[1] else "전용 66.12㎡ / 계약 82.64㎡"),
+            ("추천업종", spec_lines[2] if len(spec_lines) > 2 and spec_lines[2] else "카페 · 음식점 · 판매점"),
+            ("방향 (출입구 기준)", spec_lines[3] if len(spec_lines) > 3 and spec_lines[3] else (spec_lines[4] if len(spec_lines) > 4 and spec_lines[4] else "남향 (출입구 기준)"))
+        ]
+    else:
+        cards_data = [
+            ("해당층 / 총층", spec_lines[0] if len(spec_lines) > 0 and spec_lines[0] else "고층 / 로얄층"),
+            ("공급 및 전용면적", spec_lines[1] if len(spec_lines) > 1 and spec_lines[1] else "상담 시 즉시 안내"),
+            ("방수 / 욕실수", spec_lines[2] if len(spec_lines) > 2 and spec_lines[2] else "방 3개 / 욕실 2개"),
+            ("방향 (채광 우수)", spec_lines[4] if len(spec_lines) > 4 and spec_lines[4] else (spec_lines[3] if len(spec_lines) > 3 and spec_lines[3] else "남향 위주 배치"))
+        ]
 
     card_cols = 2
     card_gap_x = 28
@@ -1631,20 +1642,20 @@ def render_a4_window_poster(
         # 카드 상단 라벨
         draw.text((cx + 42, cy + 28), lbl, fill=(100, 116, 139, 255), font=font_c_label)
 
-        # 카드 메인 값 (68px -> 78px 초대형 폰트로 웅장하게 확대!)
+        # 카드 메인 값 (68px -> 78px 초대형 폰트로 웅장하게 확대, 긴 텍스트는 30px까지 유연 축소)
         val_clean = str(val).strip()
         v_size = 78
         font_c_val = get_font("NanumGothicExtraBold.ttf", v_size)
         vb = font_c_val.getbbox(val_clean)
         vw = vb[2] - vb[0]
         max_val_w = c_w - 84
-        while vw > max_val_w and v_size > 48:
+        while vw > max_val_w and v_size > 30:
             v_size -= 2
             font_c_val = get_font("NanumGothicExtraBold.ttf", v_size)
             vb = font_c_val.getbbox(val_clean)
             vw = vb[2] - vb[0]
 
-        draw.text((cx + 42, cy + 124), val_clean, fill=(15, 23, 42, 255), font=font_c_val)
+        draw.text((cx + 42, cy + 120), val_clean, fill=(15, 23, 42, 255), font=font_c_val)
 
     # 4대 스펙 카드 (2행) 종료 위치 계산
     cur_y += 2 * (c_h + card_gap_y) + 10

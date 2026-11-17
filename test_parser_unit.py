@@ -178,5 +178,23 @@ class TestDocumentParser(unittest.TestCase):
         self.assertIn("방화지구", parsed.get("zone_district", ""))
         self.assertIn("상대보호구역", parsed.get("zone_district", ""))
 
+    def test_commercial_window_poster_custom_cards(self):
+        from thumbnail_generator import render_a4_window_poster
+
+        custom_cards = [
+            ("해당층 / 총층", "2층 / 총 5층"),
+            ("공급 및 전용면적", "전용 57평(188.4㎡) / 계약 66평"),
+            ("추천업종", "대형카페 · 음식점 · 베이커리"),
+            ("방향 (출입구 기준)", "남향 (주된 출입구 기준)")
+        ]
+
+        img = render_a4_window_poster(
+            is_commercial=True,
+            main_title="괘법동 메인상권 최고의 자리!",
+            price_text="임대 1억/990만",
+            custom_cards=custom_cards
+        )
+        self.assertEqual(img.size, (1240, 1754))
+
 if __name__ == "__main__":
     unittest.main()
