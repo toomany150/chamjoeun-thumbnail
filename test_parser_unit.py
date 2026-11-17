@@ -196,5 +196,57 @@ class TestDocumentParser(unittest.TestCase):
         )
         self.assertEqual(img.size, (1240, 1754))
 
+    def test_document_type_identification_accuracy(self):
+        # 1. 토지이용계획확인서 (대지위치, 도로명주소가 있어도 일반건축물대장으로 오인식되지 않아야 함)
+        t_land_use = "토지이용계획확인서\n대지위치: 부산광역시 사상구 괘법동 560-1\n지역: 일반상업지역\n지구: 방화지구"
+        self.assertEqual(identify_document_type(t_land_use), "토지이용계획확인원")
+
+        # 2. 토지대장 (대지위치가 있어도 건축물대장으로 오인식되지 않아야 함)
+        t_land_reg = "토지대장\n대지위치: 부산광역시 사상구 괘법동 560-1\n지목: 대\n면적: 330.5"
+        self.assertEqual(identify_document_type(t_land_reg), "토지대장")
+
+        # 3. 일반건축물대장
+        t_bldg = "일반건축물대장\n대지위치: 부산광역시 사상구 괘법동 560-1\n주구조: 철근콘크리트구조\n사용승인일: 2018-06-15"
+        self.assertEqual(identify_document_type(t_bldg), "일반건축물대장")
+
+        # 4. 집합건축물대장 전유부
+        t_jeon = "집합건축물대장 (전유부분)\n대지위치: 부산시 사상구 덕포동 795\n호명칭: 제2501호\n전유면적: 79.85"
+        self.assertEqual(identify_document_type(t_jeon), "집합건축물대장 (전유부)")
+
+    def test_separate_region_and_district_with_spaces(self):
+        from document_parser import separate_region_and_district
+        reg, dist = separate_region_and_district("일반 상업지역, 방화 지구, 지구단위 계획구역")
+        self.assertEqual(reg, "일반상업지역")
+        self.assertIn("방화지구", dist)
+        self.assertIn("지구단위계획구역", dist)
+
+    def test_approval_date_table_format_not_confused_with_permission_date(self):
+        from document_parser import extract_approval_date
+        # 표 형태에서 첫 번째 행에 허가일, 착공일, 사용승인일 헤더가 있고 다음 행에 날짜들이 있는 경우
+        table_text = """
+        [건축물대장 기본정보]
+        | 허가일자 | 착공일자 | 사용승인일자 |
+        | 2016-03-10 | 2016-04-20 | 2018-06-15 |
+        """
+        app_date = extract_approval_date(table_text)
+        # 반드시 허가일(2016-03-10)이 아닌 사용승인일(2018-06-15)을 추출해야 함
+        self.assertEqual(app_date, "2018년 06월 15일")
+
+    def test_standalone_land_use_script_parsing(self):
+        sample_txt = """
+        [토지이용계획확인원]
+        대지위치: 부산광역시 사상구 괘법동 560-1
+        면적: 450.5㎡
+        국토의 계획 및 이용에 관한 법률:
+        준주거지역, 방화지구, 지구단위계획구역
+        다른 법령 등에 따른 지역:
+        상대보호구역
+        """
+        doc_type, parsed = parse_raw_script_document(sample_txt)
+        self.assertEqual(doc_type, "토지이용계획확인원 스크립트")
+        self.assertEqual(parsed.get("zone_region"), "준주거지역")
+        self.assertIn("방화지구", parsed.get("zone_district", ""))
+        self.assertIsNone(parsed.get("approval_date"))
+
 if __name__ == "__main__":
     unittest.main()

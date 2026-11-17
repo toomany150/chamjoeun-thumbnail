@@ -3857,7 +3857,7 @@ def render_tab_apt_ad():
 
                             st.session_state["last_smart_upload_sig"] = upload_sig
                             if doc_parsed_result:
-                                queue_state_update("apply_apt", data=doc_parsed_result, clean_previous=True, success_msg=f"🎉 [{doc_parsed_type}] 분석 완료! 16대 점검항목과 썸네일에 1초 만에 즉시 반영되었습니다.", target_tab="📝 ③ 아파트 중개대상물 표시")
+                                queue_state_update("apply_apt", data=doc_parsed_result, clean_previous=False, success_msg=f"🎉 [{doc_parsed_type}] 분석 완료! 16대 점검항목과 썸네일에 1초 만에 즉시 반영되었습니다.", target_tab="📝 ③ 아파트 중개대상물 표시")
                             else:
                                 st.error("⚠️ 업로드하신 PDF 서류에서 텍스트를 읽어오지 못했습니다. 정부24/세움터의 위변조 방지 보안 인쇄(DRM) 전자문서이거나 스캔 이미지일 가능성이 높습니다. 정부24 열람 화면에서 마우스로 텍스트를 복사(Ctrl+C)하여 세 번째 [📋 서류 텍스트 직접 붙여넣기] 탭에 넣어주시면 0.1초 만에 완벽하게 분석됩니다!")
                     except Exception as e:
@@ -3910,7 +3910,7 @@ def render_tab_apt_ad():
 
                             st.session_state["last_split_upload_sig"] = split_sig
                             if doc_parsed_res_sp:
-                                queue_state_update("apply_apt", data=doc_parsed_res_sp, clean_previous=True, success_msg=f"🎉 [{doc_type_sp}] 분석 완료! 16대 점검항목과 썸네일에 즉시 자동 반영되었습니다.", target_tab="📝 ③ 아파트 중개대상물 표시")
+                                queue_state_update("apply_apt", data=doc_parsed_res_sp, clean_previous=False, success_msg=f"🎉 [{doc_type_sp}] 분석 완료! 16대 점검항목과 썸네일에 즉시 자동 반영되었습니다.", target_tab="📝 ③ 아파트 중개대상물 표시")
                             else:
                                 st.error("⚠️ 분리 업로드된 PDF 파일에서 텍스트를 감지하지 못했습니다. 보안(DRM) 문서인 경우 세 번째 [📋 서류 텍스트 직접 붙여넣기] 탭을 이용해주세요!")
                     except Exception as e:
@@ -3938,7 +3938,7 @@ def render_tab_apt_ad():
                     if raw_unified_txt.strip():
                         u_doc_type, u_doc_res = parse_raw_script_document(raw_unified_txt)
                         if u_doc_res:
-                            queue_state_update("apply_apt", data=u_doc_res, clean_previous=True, success_msg=f"🎉 [{u_doc_type}] 분석 완료! 16대 점검항목과 썸네일에 즉시 자동 반영되었습니다.", target_tab="📝 ③ 아파트 중개대상물 표시")
+                            queue_state_update("apply_apt", data=u_doc_res, clean_previous=False, success_msg=f"🎉 [{u_doc_type}] 분석 완료! 16대 점검항목과 썸네일에 즉시 자동 반영되었습니다.", target_tab="📝 ③ 아파트 중개대상물 표시")
                         else:
                             st.warning("붙여넣은 대장 텍스트에서 건축물 정보를 식별하지 못했습니다. 내용을 확인해주세요.")
                     else:
@@ -3980,7 +3980,7 @@ def render_tab_apt_ad():
                         doc_type_txt = "집합건축물대장 (전유부 텍스트)"
 
                     if doc_parsed_res_txt:
-                        queue_state_update("apply_apt", data=doc_parsed_res_txt, clean_previous=True, success_msg=f"🎉 [{doc_type_txt}] 분석 완료! 16대 점검항목과 썸네일에 즉시 자동 반영되었습니다.", target_tab="📝 ③ 아파트 중개대상물 표시")
+                        queue_state_update("apply_apt", data=doc_parsed_res_txt, clean_previous=False, success_msg=f"🎉 [{doc_type_txt}] 분석 완료! 16대 점검항목과 썸네일에 즉시 자동 반영되었습니다.", target_tab="📝 ③ 아파트 중개대상물 표시")
                     else:
                         st.warning("붙여넣은 텍스트에서 건축물대장 정보를 식별하지 못했습니다. 내용을 확인해주세요.")
 
@@ -4762,7 +4762,7 @@ def render_tab_comm_ad():
             )
             if st.button("🚀 붙여넣은 공적서류 텍스트 0.1초 분석 & 상가 항목 즉시 적용", type="primary", use_container_width=True, key="btn_apply_comm_pasted_doc"):
                 if comm_pasted_doc_text.strip():
-                    doc_type, parsed_dict, _ = parse_single_or_multi_document([comm_pasted_doc_text])
+                    doc_type, parsed_dict = parse_raw_script_document(comm_pasted_doc_text)
                     if parsed_dict:
                         queue_state_update("apply_comm", data=parsed_dict, success_msg=f"🎉 [{doc_type}] 텍스트 분석 완료! 상가 18대 점검항목과 썸네일에 즉시 반영되었습니다.", target_tab="🏪 ④ 상가 중개대상물 표시 (임차·매매)")
                     else:

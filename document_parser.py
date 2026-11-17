@@ -240,9 +240,31 @@ def identify_document_type(text: str) -> str:
     """텍스트 내용을 분석하여 서류 유형을 정밀 감지합니다."""
     text_condensed = text.replace(" ", "")
     
-    is_jeon = any(k in text_condensed for k in ["전유부", "전유부분", "호명칭", "공용부분", "전유면적"])
+    is_land_use = any(k in text_condensed for k in [
+        "토지이용계획", "토지이용계획확인서", "토지이용계획확인원", "토지이용계획열람",
+        "국토의계획및이용", "토지e음", "일사편리", "지역·지구등지정여부", "지역지구등지정여부"
+    ])
+    is_land_reg = any(k in text_condensed for k in ["토지대장", "임야대장"])
+    
+    is_bldg_explicit = any(k in text_condensed for k in [
+        "건축물대장", "일반건축물대장", "집합건축물대장", "총괄표제부", "표제부", "전유부", "전유부분"
+    ])
+    
+    # 1. 건축물대장과 토지이용계획이 복합된 경우 (단일 문서 내 동시 표기 또는 복수 페이지)
+    if is_bldg_explicit and is_land_use:
+        return "건축물대장 + 토지이용계획확인원 융합"
+        
+    # 2. 토지이용계획원 우선 판정 (소재지/대지위치/도로명주소 키워드로 인한 일반건축물대장 오인식 원천 차단)
+    if is_land_use and not is_bldg_explicit:
+        return "토지이용계획확인원"
+        
+    # 3. 토지대장 우선 판정
+    if is_land_reg and not is_bldg_explicit:
+        return "토지대장"
+        
+    # 4. 집합건축물대장 판정
+    is_jeon = any(k in text_condensed for k in ["전유부", "전유부분", "호명칭", "전유면적", "공용부분"])
     is_pyo = any(k in text_condensed for k in ["총괄표제부", "표제부", "총주차대수", "세대수", "가구수"])
-    is_bldg = any(k in text_condensed for k in ["건축물대장", "대지위치", "건축물명칭", "허가일", "사용승인일", "주구조", "도로명주소", "주용도"])
     
     if (is_jeon and is_pyo) or ("건축물대장" in text_condensed and is_jeon and is_pyo):
         return "집합건축물대장 (표제부+전유부 복합)"
@@ -252,13 +274,20 @@ def identify_document_type(text: str) -> str:
         if "총괄표제부" in text_condensed:
             return "집합건축물대장 (총괄표제부)"
         return "집합건축물대장 (표제부)"
-    elif "건축물대장" in text_condensed or is_bldg:
+        
+    # 5. 일반건축물대장 판정 (소재지나 도로명주소 등 공통 주소 단독으로는 판정하지 않음)
+    is_bldg_features = any(k in text_condensed for k in [
+        "건축물대장", "건축물명칭", "허가일", "사용승인일", "주구조", "주용도", "건폐율", "용적률", "연면적"
+    ])
+    if is_bldg_explicit or is_bldg_features:
         return "일반건축물대장"
-    elif "토지대장" in text_condensed or "임야대장" in text_condensed:
-        return "토지대장"
-    elif "토지이용계획" in text_condensed:
+        
+    # 6. 추가 fallback
+    if is_land_use:
         return "토지이용계획확인원"
-    
+    if is_land_reg or "개별공시지가" in text_condensed:
+        return "토지대장"
+        
     return "기타 공적서류"
 
 
@@ -350,37 +379,96 @@ def separate_region_and_district(region_raw: str, district_raw: str = "") -> Tup
     토지이용계획 및 건축물대장 텍스트에서 14번 점검항목인
     - 용도지역 (zone_region: 일반상업지역, 준주거지역 등)
     - 용도지구/구역 (zone_district: 방화지구, 지구단위계획구역, 가로구역최고높이제한지역 등)
-    을 법적 정의에 맞춰 엄격히 상호 분리합니다.
+    을 법적 정의에 맞춰 엄격히 상호 분리합니다. 띄어쓰기 오차(예: '일반 상업지역', '방화 지구')도 완벽히 보정합니다.
     """
     combined = f"{region_raw} {district_raw}".strip()
     if not combined:
         return "", ""
+    combined_condensed = combined.replace(" ", "")
 
-    # 1. 용도지역 추출
+    # 1. 용도지역 추출 (긴 명칭 우선)
     found_regions = []
     for r in LEGAL_ZONING_REGIONS:
-        if r in combined:
-            if not any(r in longer for longer in found_regions):
+        r_cond = r.replace(" ", "")
+        if r_cond in combined_condensed:
+            if not any(r_cond in longer.replace(" ", "") for longer in found_regions):
                 found_regions.append(r)
 
     # 2. 용도지구/구역 추출
     found_districts = []
     for d in LEGAL_ZONING_DISTRICTS:
-        if d in combined:
-            if not any(d in longer for longer in found_districts):
+        d_cond = d.replace(" ", "")
+        if d_cond in combined_condensed:
+            if not any(d_cond in longer.replace(" ", "") for longer in found_districts):
                 found_districts.append(d)
 
-    # 3. 보강 패턴 (OOO지구, OOO구역, OOO권역, OOO제한지역)
-    pat = r"[가-힣0-9]{2,12}(?:지구|구역|권역|제한지역|보존지역|보호구역)"
+    # 3. 보강 패턴 (OOO지구, OOO구역, OOO권역, OOO제한지역) - 공백 허용
+    pat = r"[가-힣0-9]{2,12}\s*(?:지구|구역|권역|제한지역|보존지역|보호구역)"
     for m in re.findall(pat, combined):
-        m_clean = m.strip()
-        if any(m_clean in r for r in found_regions):
+        m_clean = re.sub(r"\s+", "", m).strip()
+        if any(m_clean in r.replace(" ", "") for r in found_regions):
             continue
-        if any(m_clean in d or d in m_clean for d in found_districts):
+        if any(m_clean in d.replace(" ", "") or d.replace(" ", "") in m_clean for d in found_districts):
             continue
-        found_districts.append(m_clean)
+        found_districts.append(m.strip())
 
     return ", ".join(found_regions), ", ".join(found_districts)
+
+
+def _normalize_date_str(raw_date: str) -> str:
+    """날짜 문자열을 'YYYY년 MM월 DD일' 표준 형식으로 변환합니다."""
+    if not raw_date:
+        return ""
+    date_nums = re.findall(r"\d+", raw_date)
+    if len(date_nums) >= 3:
+        return f"{date_nums[0]}년 {int(date_nums[1]):02d}월 {int(date_nums[2]):02d}일"
+    elif len(date_nums) == 1 and len(date_nums[0]) == 8:
+        d_str = date_nums[0]
+        return f"{d_str[:4]}년 {int(d_str[4:6]):02d}월 {int(d_str[6:]):02d}일"
+    return raw_date.strip()
+
+
+def extract_approval_date(text: str) -> Optional[str]:
+    """
+    건축물대장 텍스트에서 16번 점검항목인 사용승인일(준공일)을 정밀 추출합니다.
+    - 정부24 / 세움터 헤더행(허가일 | 착공일 | 사용승인일) 아래 데이터행(date1 | date2 | date3) 구조에서
+      허가일(date1)을 사용승인일로 잘못 가져오는 치명적 오류를 원천 차단합니다.
+    """
+    if not text:
+        return None
+
+    # 1. 같은 라인에 직접 키와 날짜가 매칭되는 경우 (예: 사용승인일자: 2018-06-15, 사용승인일 | 2018.06.15)
+    for line in text.split("\n"):
+        if any(k in line for k in ["사용승인", "준공일", "준공인가", "사용검사"]):
+            # 헤더행만 있는 라인(예: 허가일 | 착공일 | 사용승인일)은 스킵
+            if any(h in line for h in ["허가일", "착공일"]) and not re.search(r"\d{4}", line):
+                continue
+            m = re.search(r"(?:사용\s*승인일(?:자)?|준공일(?:자)?|준공인가일|사용검사일)\s*[:|]?\s*(\d{4}[.\-년\s]+\d{1,2}[.\-월\s]+\d{1,2}일?|\d{8})", line)
+            if m:
+                return _normalize_date_str(m.group(1))
+
+    # 2. 표 형태 (헤더행에 허가일, 착공일, 사용승인일이 있고 다음 행에 날짜들이 순서대로 있는 경우)
+    table_m = re.search(r"(?:허가일|허가일자)[\s\S]*?(?:착공일|착공일자)[\s\S]*?(?:사용승인일|사용승인일자)[\s\S]*?\n[^\n\d]*?(\d{4}[.\-년\s]+\d{1,2}[.\-월\s]+\d{1,2}일?)[\s\S]*?(\d{4}[.\-년\s]+\d{1,2}[.\-월\s]+\d{1,2}일?)[\s\S]*?(\d{4}[.\-년\s]+\d{1,2}[.\-월\s]+\d{1,2}일?)", text)
+    if table_m:
+        return _normalize_date_str(table_m.group(3))
+
+    # 3. 준공인가 괄호 패턴 (예: (2018.06.15.) 준공인가)
+    app_jg = re.search(r"\((\d{4}[.\-]\d{1,2}[.\-]\d{1,2})\.?\)[^\n\r]*?준공인가", text)
+    if app_jg:
+        return _normalize_date_str(app_jg.group(1))
+
+    # 4. 동일 단락 내 인접 검색 (줄바꿈 허용하되 다른 날짜 헤더가 끼어들지 않은 경우)
+    app_near = re.search(r"(?:사용\s*승인일(?:자)?|준공일(?:자)?|준공인가일|사용검사일)\s*[:|]?\s*([^\n\r|]{0,25}?)\s*(\d{4}[.\-년\s]+\d{1,2}[.\-월\s]+\d{1,2}일?|\d{8})", text)
+    if app_near:
+        return _normalize_date_str(app_near.group(2))
+
+    # 5. 폴백: 텍스트 전체에서 사용승인 키워드가 있고 날짜가 3개 이상 검출될 때 3번째 날짜
+    date_pattern = r"\b(\d{4}[.\-]\d{1,2}[.\-]\d{1,2})\b"
+    all_dates = re.findall(date_pattern, text)
+    if any(k in text for k in ["사용승인", "사용승인일", "준공일"]) and len(all_dates) >= 3:
+        return _normalize_date_str(all_dates[2])
+
+    return None
 
 
 def parse_building_register_title(text: str) -> Dict[str, Any]:
@@ -524,27 +612,10 @@ def parse_building_register_title(text: str) -> Dict[str, Any]:
         except Exception:
             pass
 
-    # 5. 사용승인일 (표 줄바꿈 및 변동사항 '준공인가' 일자까지 모두 감지)
-    app_match = re.search(r"(?:사용\s*승인일(?:자)?|준공일(?:자)?|준공인가일|사용검사일)\s*[:|]?\s*[\s\S]{0,40}?(\d{4}[.\-년\s]+\d{1,2}[.\-월\s]+\d{1,2}일?|\d{8})", text)
-    if not app_match:
-        app_match = re.search(r"\((\d{4}[.\-]\d{1,2}[.\-]\d{1,2})\.?\)[^\n\r]*?준공인가", text)
-    if not app_match:
-        date_pattern = r"\b(\d{4}[.\-]\d{1,2}[.\-]\d{1,2})\b"
-        all_dates = re.findall(date_pattern, text)
-        if any(k in text for k in ["사용승인", "사용승인일", "준공일"]) and len(all_dates) >= 3:
-            parts = re.findall(r"\d+", all_dates[2])
-            if len(parts) >= 3:
-                res["approval_date"] = f"{parts[0]}년 {int(parts[1]):02d}월 {int(parts[2]):02d}일"
-    else:
-        raw_date = app_match.group(1).strip()
-        date_nums = re.findall(r"\d+", raw_date)
-        if len(date_nums) >= 3:
-            res["approval_date"] = f"{date_nums[0]}년 {int(date_nums[1]):02d}월 {int(date_nums[2]):02d}일"
-        elif len(date_nums) == 1 and len(date_nums[0]) == 8:
-            d_str = date_nums[0]
-            res["approval_date"] = f"{d_str[:4]}년 {int(d_str[4:6]):02d}월 {int(d_str[6:]):02d}일"
-        else:
-            res["approval_date"] = raw_date
+    # 5. 사용승인일 (정부24 표 헤더-데이터 행 3번째 일자, 단락 직접 매칭, 준공인가 모두 정밀 감지)
+    app_date = extract_approval_date(text)
+    if app_date:
+        res["approval_date"] = app_date
 
     # 6. 주구조 (철근콘크리트구조 등)
     struct_match = re.search(r"(?:주구조|주\s*구조|구조)\s*[:|]?\s*([^|\n\r]+?)" + NEXT_KW, text)
@@ -788,17 +859,9 @@ def parse_building_register_exclusive(text: str) -> Dict[str, Any]:
             res["area_supply"] = f"{exclusive_area:.2f}"
 
     # 3. 전유부 내 사용승인일 / 준공인가일 추출
-    app_match = re.search(r"(?:사용\s*승인일(?:자)?|준공일(?:자)?|준공인가일|사용검사일)\s*[:|]?\s*[\s\S]{0,40}?(\d{4}[.\-년\s]+\d{1,2}[.\-월\s]+\d{1,2}일?|\d{8})", text)
-    if not app_match:
-        app_match = re.search(r"\((\d{4}[.\-]\d{1,2}[.\-]\d{1,2})\.?\)[^\n\r]*?준공인가", text)
-    if app_match:
-        raw_date = app_match.group(1).strip()
-        parts = re.findall(r"\d+", raw_date)
-        if len(parts) >= 3:
-            res["approval_date"] = f"{parts[0]}년 {int(parts[1]):02d}월 {int(parts[2]):02d}일"
-        elif len(parts) == 1 and len(parts[0]) == 8:
-            d_str = parts[0]
-            res["approval_date"] = f"{d_str[:4]}년 {int(d_str[4:6]):02d}월 {int(d_str[6:]):02d}일"
+    app_date = extract_approval_date(text)
+    if app_date:
+        res["approval_date"] = app_date
 
     # 4. 해당 층수 파싱
     current_fl = ""
@@ -994,6 +1057,12 @@ def parse_general_building_register(text: str) -> Dict[str, Any]:
     if "area_total" in title_res:
         title_res["area_exclusive"] = title_res["area_total"]
         title_res["area_supply"] = title_res["area_total"]
+    else:
+        area_m = re.search(r"(?:전용면적|전용\s*면적|바닥면적|건축면적|면적)\s*[:|]?\s*([\d,.]+)", text)
+        if area_m:
+            m_val = area_m.group(1).replace(",", "").strip()
+            title_res["area_exclusive"] = m_val
+            title_res["area_supply"] = m_val
     return title_res
 
 
@@ -1181,12 +1250,19 @@ def parse_single_or_multi_document(pages_text: List[str]) -> Tuple[str, Dict[str
 
     # 2. 표제부 단독
     elif "표제부" in doc_type:
-        parsed = parse_building_register_title(full_text)
+        t_data = parse_building_register_title(full_text)
+        e_data = parse_building_register_exclusive(full_text)
+        if e_data.get("area_exclusive"):
+            parsed = merge_building_registers(t_data, e_data)
+        else:
+            parsed = t_data
         return doc_type, parsed, full_text
 
     # 3. 전유부 단독
     elif "전유부" in doc_type:
-        parsed = parse_building_register_exclusive(full_text)
+        t_data = parse_building_register_title(full_text)
+        e_data = parse_building_register_exclusive(full_text)
+        parsed = merge_building_registers(t_data, e_data)
         return doc_type, parsed, full_text
 
     # 4. 토지대장
@@ -1256,6 +1332,16 @@ def parse_raw_script_document(raw_text: str) -> Tuple[str, Dict[str, Any]]:
         l_data = parse_land_use_plan(text)
         merged = merge_building_and_land_documents(b_data, land_use_data=l_data)
         return "건축물대장 + 토지이용계획원 스크립트 융합 분석", merged
+
+    # 1. 토지이용계획 단독 스크립트 우선 판정 (주소 키워드로 인한 집합건축물 오인식 원천 방지)
+    if has_land_use and not has_building:
+        p_data = parse_land_use_plan(text)
+        return "토지이용계획확인원 스크립트", p_data
+
+    # 2. 토지대장 단독 스크립트 우선 판정
+    if ("토지대장" in text_condensed or "임야대장" in text_condensed) and not has_building:
+        l_data = parse_land_register(text)
+        return "토지대장 스크립트", l_data
 
     # 1. 집합건축물대장 (표제부와 전유부 동시 포함 또는 둘 다의 특성이 있는 경우)
     has_title_kw = any(k in text_condensed for k in ["표제부", "총괄표제부", "주차장", "세대수", "총세대수", "대지위치", "허가일", "사용승인일"])
