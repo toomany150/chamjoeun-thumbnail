@@ -71,6 +71,7 @@ from document_parser import (
     parse_building_register_title,
     parse_building_register_exclusive,
     merge_building_registers,
+    merge_building_and_land_documents,
     identify_document_type,
     extract_pages_text_from_pdf
 )
@@ -1753,13 +1754,13 @@ def apply_commercial_crawled_or_doc_data(data: dict):
     if data.get("building_use"):
         safe_set_session_state("comm_ad_building_use", str(data["building_use"]))
     if data.get("zone_region"):
-        safe_set_session_state("comm_ad_zone_region", str(data["zone_region"]))
+        safe_set_session_state("comm_ad_zone_region", str(data["zone_region"]).strip())
     if data.get("zone_district"):
-        safe_set_session_state("comm_ad_zone_district", str(data["zone_district"]))
+        safe_set_session_state("comm_ad_zone_district", str(data["zone_district"]).strip())
     if data.get("structure"):
-        safe_set_session_state("comm_ad_structure", str(data["structure"]))
-    if data.get("approval_date"):
-        safe_set_session_state("comm_ad_approval_date", str(data["approval_date"]))
+        safe_set_session_state("comm_ad_structure", str(data["structure"]).strip())
+    if data.get("approval_date") and str(data["approval_date"]).strip() != "-":
+        safe_set_session_state("comm_ad_approval_date", str(data["approval_date"]).strip())
     if data.get("parking"):
         safe_set_session_state("comm_ad_parking", str(data["parking"]))
     if data.get("trade_type"):
@@ -3720,30 +3721,52 @@ def render_tab_apt_ad():
                             else:
                                 title_data = {}
                                 exclusive_data = {}
-                                other_data = {}
+                                land_use_data = {}
+                                land_reg_data = {}
+                                other_bldg_data = {}
                                 types_found = []
 
                                 for u_file in uploaded_docs:
                                     p_type, p_res, _ = parse_official_document(u_file, u_file.name)
                                     types_found.append(p_type)
-                                    if "표제부" in p_type:
-                                        title_data.update(p_res)
+                                    if "토지이용계획" in p_type:
+                                        land_use_data.update(p_res)
+                                    elif "토지대장" in p_type:
+                                        land_reg_data.update(p_res)
                                     elif "전유부" in p_type:
                                         exclusive_data.update(p_res)
+                                    elif "표제부" in p_type or "총괄" in p_type:
+                                        title_data.update(p_res)
                                     else:
-                                        other_data.update(p_res)
+                                        other_bldg_data.update(p_res)
 
+                                # 1단계: 건축물대장 통합
                                 if title_data and exclusive_data:
-                                    doc_parsed_result = merge_building_registers(title_data, exclusive_data)
-                                    doc_parsed_type = "집합건축물대장 (표제부 + 전유부 2개 서류 완벽 통합)"
+                                    b_merged = merge_building_registers(title_data, exclusive_data)
                                 elif title_data:
-                                    doc_parsed_result = title_data
-                                    doc_parsed_type = "집합건축물대장 (표제부)"
+                                    b_merged = title_data
                                 elif exclusive_data:
-                                    doc_parsed_result = exclusive_data
-                                    doc_parsed_type = "집합건축물대장 (전유부)"
+                                    b_merged = exclusive_data
+                                elif other_bldg_data:
+                                    b_merged = other_bldg_data
                                 else:
-                                    doc_parsed_result = other_data
+                                    b_merged = {}
+
+                                # 2단계: 건축물대장 + 토지서류 융합
+                                if b_merged and (land_use_data or land_reg_data):
+                                    doc_parsed_result = merge_building_and_land_documents(b_merged, land_use_data=land_use_data, land_reg_data=land_reg_data)
+                                    doc_parsed_type = "건축물대장 + 토지서류 융합 분석 완료"
+                                elif b_merged:
+                                    doc_parsed_result = b_merged
+                                    doc_parsed_type = "집합건축물대장 (표제부 + 전유부 통합완료)" if (title_data and exclusive_data) else ("표제부" if title_data else "건축물대장")
+                                elif land_use_data:
+                                    doc_parsed_result = land_use_data
+                                    doc_parsed_type = "토지이용계획확인원"
+                                elif land_reg_data:
+                                    doc_parsed_result = land_reg_data
+                                    doc_parsed_type = "토지대장"
+                                else:
+                                    doc_parsed_result = other_bldg_data
                                     doc_parsed_type = ", ".join(types_found)
 
                             st.session_state["last_smart_upload_sig"] = upload_sig
@@ -4538,30 +4561,52 @@ def render_tab_comm_ad():
                             else:
                                 title_data = {}
                                 exclusive_data = {}
-                                other_data = {}
+                                land_use_data = {}
+                                land_reg_data = {}
+                                other_bldg_data = {}
                                 types_found = []
 
                                 for u_file in uploaded_comm_docs:
                                     p_type, p_res, _ = parse_official_document(u_file, u_file.name)
                                     types_found.append(p_type)
-                                    if "표제부" in p_type:
-                                        title_data.update(p_res)
+                                    if "토지이용계획" in p_type:
+                                        land_use_data.update(p_res)
+                                    elif "토지대장" in p_type:
+                                        land_reg_data.update(p_res)
                                     elif "전유부" in p_type:
                                         exclusive_data.update(p_res)
+                                    elif "표제부" in p_type or "총괄" in p_type:
+                                        title_data.update(p_res)
                                     else:
-                                        other_data.update(p_res)
+                                        other_bldg_data.update(p_res)
 
+                                # 1단계: 건축물대장 통합 (표제부 + 전유부 또는 일반건축물대장)
                                 if title_data and exclusive_data:
-                                    doc_parsed_result = merge_building_registers(title_data, exclusive_data)
-                                    doc_parsed_type = "집합건축물대장 (표제부 + 전유부 통합완료)"
+                                    b_merged = merge_building_registers(title_data, exclusive_data)
                                 elif title_data:
-                                    doc_parsed_result = title_data
-                                    doc_parsed_type = "집합건축물대장 (표제부)"
+                                    b_merged = title_data
                                 elif exclusive_data:
-                                    doc_parsed_result = exclusive_data
-                                    doc_parsed_type = "집합건축물대장 (전유부)"
+                                    b_merged = exclusive_data
+                                elif other_bldg_data:
+                                    b_merged = other_bldg_data
                                 else:
-                                    doc_parsed_result = other_data
+                                    b_merged = {}
+
+                                # 2단계: 건축물대장(16번 사용승인일)과 토지이용계획(14번 용도지역·지구) 융합
+                                if b_merged and (land_use_data or land_reg_data):
+                                    doc_parsed_result = merge_building_and_land_documents(b_merged, land_use_data=land_use_data, land_reg_data=land_reg_data)
+                                    doc_parsed_type = "건축물대장(사용승인일) + 토지이용계획원(용도지역·지구) 융합 분석 완료"
+                                elif b_merged:
+                                    doc_parsed_result = b_merged
+                                    doc_parsed_type = "집합건축물대장 (통합)" if (title_data and exclusive_data) else ("표제부" if title_data else "건축물대장")
+                                elif land_use_data:
+                                    doc_parsed_result = land_use_data
+                                    doc_parsed_type = "토지이용계획확인원"
+                                elif land_reg_data:
+                                    doc_parsed_result = land_reg_data
+                                    doc_parsed_type = "토지대장"
+                                else:
+                                    doc_parsed_result = other_bldg_data
                                     doc_parsed_type = ", ".join(types_found)
 
                             st.session_state["last_comm_smart_upload_sig"] = upload_sig

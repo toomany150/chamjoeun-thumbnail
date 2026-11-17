@@ -304,6 +304,85 @@ def _is_header_noise(val: str) -> bool:
     return any(nt in v_clean for nt in noise_tokens)
 
 
+# 대한민국 국토계획법상 법정 용도지역 표준 목록 (세부/구체적 명칭 우선 정렬)
+LEGAL_ZONING_REGIONS = [
+    "제1종전용주거지역", "제2종전용주거지역", "전용주거지역",
+    "제1종일반주거지역", "제2종일반주거지역", "제3종일반주거지역", "일반주거지역",
+    "준주거지역", "주거지역",
+    "중심상업지역", "일반상업지역", "근린상업지역", "유통상업지역", "상업지역",
+    "전용공업지역", "일반공업지역", "준공업지역", "공업지역",
+    "보전녹지지역", "생산녹지지역", "자연녹지지역", "녹지지역",
+    "보전관리지역", "생산관리지역", "계획관리지역", "관리지역",
+    "농림지역", "자연환경보전지역", "도시지역"
+]
+
+# 대한민국 법정 용도지구/구역 및 타법령 규제구역 표준 목록
+LEGAL_ZONING_DISTRICTS = [
+    # 가로구역 높이제한 및 구역계획
+    "가로구역별 최고높이 제한지역", "가로구역별최고높이제한지역", "가로구역별 최고높이 지정구역", "가로구역별최고높이지정구역",
+    "지구단위계획구역", "도시지역외지구단위계획구역",
+    # 용도지구
+    "방화지구", "방재지구", "시가지방재지구", "자연방재지구",
+    "자연경관지구", "시가지경관지구", "특화경관지구", "경관지구", "미관지구", "역사문화미관지구",
+    "최고고도지구", "최저고도지구", "고도지구",
+    "역사문화환경보호지구", "중요시설물보호지구", "생태계보호지구", "보호지구",
+    "자연취락지구", "집단취락지구", "취락지구",
+    "주거개발진흥지구", "산업유통개발진흥지구", "관광휴양개발진흥지구", "복합개발진흥지구", "특정개발진흥지구", "개발진흥지구",
+    "특정용도제한지구", "복합용도지구",
+    # 용도구역
+    "개발제한구역", "도시자연공원구역", "시가화조정구역", "수산자원보호구역", "입지규제최소구역",
+    "성장관리방안수립지역", "성장관리계획구역",
+    # 타법령 규제구역 (교육, 환경, 군사, 문화재 등)
+    "상대보호구역", "절대보호구역", "교육환경보호구역",
+    "과밀억제권역", "성장관리권역", "자연보전권역",
+    "역사문화환경보존지역", "문화재보존영향검토대상구역",
+    "비행안전제1구역", "비행안전제2구역", "비행안전제3구역", "비행안전제4구역", "비행안전제5구역", "비행안전제6구역", "비행안전구역",
+    "군사시설보호구역", "제한보호구역",
+    "가축사육제한구역", "배출시설설치제한지역", "공장설립제한지역", "상수원보호구역",
+    "정비구역", "재개발구역", "재건축구역", "재정비촉진지구",
+    "토지거래계약에관한허가구역", "토지거래허가구역",
+    "투기과열지구", "조정대상지역"
+]
+
+
+def separate_region_and_district(region_raw: str, district_raw: str = "") -> Tuple[str, str]:
+    """
+    토지이용계획 및 건축물대장 텍스트에서 14번 점검항목인
+    - 용도지역 (zone_region: 일반상업지역, 준주거지역 등)
+    - 용도지구/구역 (zone_district: 방화지구, 지구단위계획구역, 가로구역최고높이제한지역 등)
+    을 법적 정의에 맞춰 엄격히 상호 분리합니다.
+    """
+    combined = f"{region_raw} {district_raw}".strip()
+    if not combined:
+        return "", ""
+
+    # 1. 용도지역 추출
+    found_regions = []
+    for r in LEGAL_ZONING_REGIONS:
+        if r in combined:
+            if not any(r in longer for longer in found_regions):
+                found_regions.append(r)
+
+    # 2. 용도지구/구역 추출
+    found_districts = []
+    for d in LEGAL_ZONING_DISTRICTS:
+        if d in combined:
+            if not any(d in longer for longer in found_districts):
+                found_districts.append(d)
+
+    # 3. 보강 패턴 (OOO지구, OOO구역, OOO권역, OOO제한지역)
+    pat = r"[가-힣0-9]{2,12}(?:지구|구역|권역|제한지역|보존지역|보호구역)"
+    for m in re.findall(pat, combined):
+        m_clean = m.strip()
+        if any(m_clean in r for r in found_regions):
+            continue
+        if any(m_clean in d or d in m_clean for d in found_districts):
+            continue
+        found_districts.append(m_clean)
+
+    return ", ".join(found_regions), ", ".join(found_districts)
+
+
 def parse_building_register_title(text: str) -> Dict[str, Any]:
     """
     [표제부 전문 파서] 집합건축물대장 표제부/총괄표제부에서 건물 전체 핵심 스펙 추출
@@ -446,13 +525,13 @@ def parse_building_register_title(text: str) -> Dict[str, Any]:
             pass
 
     # 5. 사용승인일 (표 줄바꿈 및 변동사항 '준공인가' 일자까지 모두 감지)
-    app_match = re.search(r"사용\s*승인일[\s\S]{0,60}?(\d{4}[.\-년\s]+\d{1,2}[.\-월\s]+\d{1,2}일?)", text)
+    app_match = re.search(r"(?:사용\s*승인일(?:자)?|준공일(?:자)?|준공인가일|사용검사일)\s*[:|]?\s*[\s\S]{0,40}?(\d{4}[.\-년\s]+\d{1,2}[.\-월\s]+\d{1,2}일?|\d{8})", text)
     if not app_match:
         app_match = re.search(r"\((\d{4}[.\-]\d{1,2}[.\-]\d{1,2})\.?\)[^\n\r]*?준공인가", text)
     if not app_match:
         date_pattern = r"\b(\d{4}[.\-]\d{1,2}[.\-]\d{1,2})\b"
         all_dates = re.findall(date_pattern, text)
-        if "사용승인일" in text and len(all_dates) >= 3:
+        if any(k in text for k in ["사용승인", "사용승인일", "준공일"]) and len(all_dates) >= 3:
             parts = re.findall(r"\d+", all_dates[2])
             if len(parts) >= 3:
                 res["approval_date"] = f"{parts[0]}년 {int(parts[1]):02d}월 {int(parts[2]):02d}일"
@@ -461,6 +540,9 @@ def parse_building_register_title(text: str) -> Dict[str, Any]:
         date_nums = re.findall(r"\d+", raw_date)
         if len(date_nums) >= 3:
             res["approval_date"] = f"{date_nums[0]}년 {int(date_nums[1]):02d}월 {int(date_nums[2]):02d}일"
+        elif len(date_nums) == 1 and len(date_nums[0]) == 8:
+            d_str = date_nums[0]
+            res["approval_date"] = f"{d_str[:4]}년 {int(d_str[4:6]):02d}월 {int(d_str[6:]):02d}일"
         else:
             res["approval_date"] = raw_date
 
@@ -478,31 +560,17 @@ def parse_building_register_title(text: str) -> Dict[str, Any]:
                 res["structure"] = cs
                 break
 
-    # 7. 용도지역 및 용도지구/구역 (상가 핵심 법적 표기 항목)
+    # 7. 용도지역 및 용도지구/구역 (상가 14번 점검항목: 지능형 상호 분리 추출)
     region_match = re.search(r"(?:용도지역|지역\s*[:|]|지역명)\s*[:|]?\s*([^|\n\r]+?)" + NEXT_KW, text)
-    if region_match:
-        res["zone_region"] = clean_val(region_match.group(1))
-    else:
-        common_regions = [
-            "중심상업지역", "일반상업지역", "근린상업지역", "유통상업지역",
-            "준주거지역", "제1종전용주거지역", "제2종전용주거지역",
-            "제1종일반주거지역", "제2종일반주거지역", "제3종일반주거지역",
-            "전용공업지역", "일반공업지역", "준공업지역",
-            "보전녹지지역", "생산녹지지역", "자연녹지지역", "계획관리지역"
-        ]
-        for cr in common_regions:
-            if cr in text:
-                res["zone_region"] = cr
-                break
-
     district_match = re.search(r"(?:용도지구|지구\s*[:|]|구역\s*[:|])\s*[:|]?\s*([^|\n\r]+?)" + NEXT_KW, text)
-    if district_match:
-        res["zone_district"] = clean_val(district_match.group(1))
-    else:
-        common_districts = ["방화지구", "지구단위계획구역", "시가지경관지구", "상대보호구역", "절대보호구역", "역점관리구역", "과밀억제권역"]
-        found_dist = [cd for cd in common_districts if cd in text]
-        if found_dist:
-            res["zone_district"] = ", ".join(found_dist)
+    raw_reg = clean_val(region_match.group(1)) if region_match else ""
+    raw_dist = clean_val(district_match.group(1)) if district_match else ""
+
+    reg_val, dist_val = separate_region_and_district(raw_reg, f"{raw_dist} {text}")
+    if reg_val:
+        res["zone_region"] = reg_val
+    if dist_val:
+        res["zone_district"] = dist_val
 
     # 8. 승강기 (엘리베이터)
     elev_match = re.search(r"(?:승강기|엘리베이터|승용|비상용)\s*[:|]?\s*([^\n\r]+?)" + NEXT_KW, text)
@@ -719,12 +787,18 @@ def parse_building_register_exclusive(text: str) -> Dict[str, Any]:
         else:
             res["area_supply"] = f"{exclusive_area:.2f}"
 
-    # 3. 전유부 내 변동사항 준공인가일(사용승인일) 추출
-    app_match = re.search(r"\((\d{4}[.\-]\d{1,2}[.\-]\d{1,2})\.?\)[^\n\r]*?준공인가", text)
+    # 3. 전유부 내 사용승인일 / 준공인가일 추출
+    app_match = re.search(r"(?:사용\s*승인일(?:자)?|준공일(?:자)?|준공인가일|사용검사일)\s*[:|]?\s*[\s\S]{0,40}?(\d{4}[.\-년\s]+\d{1,2}[.\-월\s]+\d{1,2}일?|\d{8})", text)
+    if not app_match:
+        app_match = re.search(r"\((\d{4}[.\-]\d{1,2}[.\-]\d{1,2})\.?\)[^\n\r]*?준공인가", text)
     if app_match:
-        parts = re.findall(r"\d+", app_match.group(1))
+        raw_date = app_match.group(1).strip()
+        parts = re.findall(r"\d+", raw_date)
         if len(parts) >= 3:
             res["approval_date"] = f"{parts[0]}년 {int(parts[1]):02d}월 {int(parts[2]):02d}일"
+        elif len(parts) == 1 and len(parts[0]) == 8:
+            d_str = parts[0]
+            res["approval_date"] = f"{d_str[:4]}년 {int(d_str[4:6]):02d}월 {int(d_str[6:]):02d}일"
 
     # 4. 해당 층수 파싱
     current_fl = ""
@@ -966,18 +1040,21 @@ def parse_land_register(text: str) -> Dict[str, Any]:
     res["heating"] = "-"
     res["parking"] = "-"
     res["households"] = "-"
-    res["approval_date"] = "-"
+    # 토지대장은 건축물 사용승인일(16번)이 없으므로 approval_date는 설정하지 않음 (건축물대장 값 덮어쓰기 방지)
 
     return res
 
 
 def parse_land_use_plan(text: str) -> Dict[str, Any]:
     """
-    토지이용계획확인원 텍스트에서 데이터 추출
+    토지이용계획확인원(토지e음, 일사편리, 정부24) 텍스트에서 14번 점검항목인
+    - 용도지역 (zone_region: 일반상업지역, 준주거지역 등)
+    - 용도지구/구역 (zone_district: 방화지구, 지구단위계획구역, 가로구역최고높이제한지역 등)
+    을 완벽히 분리 추출하여 상가 14번 점검표에 올바르게 반영합니다.
     """
     res = {}
 
-    loc_match = re.search(r"(?:소재지|신청지)\s*[:|]?\s*([^|\n\r]+?)" + NEXT_KW, text)
+    loc_match = re.search(r"(?:소재지|신청지|대지위치)\s*[:|]?\s*([^|\n\r]+?)" + NEXT_KW, text)
     if loc_match:
         res["location"] = clean_val(loc_match.group(1))
 
@@ -991,36 +1068,98 @@ def parse_land_use_plan(text: str) -> Dict[str, Any]:
         res["area_supply"] = m2_str
         res["area_exclusive"] = m2_str
 
-    zone_match = re.search(r"국토의\s*계획\s*및\s*이용에\s*관한\s*법률[^\n\r]*\n?([^|\n\r]+?)" + NEXT_KW, text)
-    if not zone_match:
-        common_zones = ["제1종전용주거지역", "제2종전용주거지역", "제1종일반주거지역", "제2종일반주거지역", "제3종일반주거지역", "준주거지역", "중심상업지역", "일반상업지역", "근린상업지역", "유통상업지역", "전용공업지역", "일반공업지역", "준공업지역", "보전녹지지역", "생산녹지지역", "자연녹지지역", "계획관리지역"]
-        found_zones = [z for z in common_zones if z in text]
-        if found_zones:
-            res["zone_info"] = ", ".join(found_zones)
-    else:
-        res["zone_info"] = clean_val(zone_match.group(1))
+    # 국토계획법 및 타법령 지정내역 단락 탐색
+    zone_match = re.search(r"(?:국토의\s*계획\s*및\s*이용에\s*관한\s*법률|지역[·\s]*지구\s*등\s*지정여부)[\s\S]{0,350}?" + NEXT_KW, text)
+    raw_zone_text = zone_match.group(0) if zone_match else text
 
-    if "zone_info" in res:
-        res["zone_region"] = res["zone_info"]
-        res["feature_text"] = f"{res['zone_info']} 추천 매물"
+    # 용도지역과 용도지구/구역 상호 분리 추출
+    reg_val, dist_val = separate_region_and_district(raw_zone_text, text)
+    if reg_val:
+        res["zone_region"] = reg_val
+        res["feature_text"] = f"{reg_val} 추천 매물"
+    if dist_val:
+        res["zone_district"] = dist_val
 
-    # 기타 지구/구역 탐색
-    common_districts = ["방화지구", "지구단위계획구역", "시가지경관지구", "상대보호구역", "절대보호구역", "역점관리구역", "과밀억제권역"]
-    found_dist = [cd for cd in common_districts if cd in text]
-    if found_dist:
-        res["zone_district"] = ", ".join(found_dist)
-
+    # 토지이용계획확인원에는 건축물 사용승인일(16번)이 없으므로 approval_date는 절대 생성하지 않음!
     return res
+
+
+def merge_building_and_land_documents(
+    building_data: Optional[Dict[str, Any]] = None,
+    land_use_data: Optional[Dict[str, Any]] = None,
+    land_reg_data: Optional[Dict[str, Any]] = None
+) -> Dict[str, Any]:
+    """
+    건축물대장(표제부/전유부/일반건축물대장)과 토지이용계획확인원, 토지대장을 공적장부 원칙에 맞춰 지능형 병합합니다.
+
+    [핵심 공적장부 원칙]
+    1. 사용승인일 (준공일: 16번 항목): 건축물대장 데이터 100% 최우선 보존 (토지 서류는 절대 침범 불가)
+    2. 용도지역 및 용도지구 (14번 항목): 토지이용계획확인원 데이터 최우선 반영 (건축물대장은 2순위 보조)
+    3. 주구조, 건축물용도, 층수, 면적, 주차, 승강기: 건축물대장 최우선
+    4. 공시지가, 지목: 토지대장 / 토지이용계획원 반영
+    """
+    merged = dict(building_data or {})
+
+    # 1. 토지이용계획원 데이터 반영 (14번 용도지역 및 용도지구 최우선 권한)
+    if land_use_data:
+        if land_use_data.get("zone_region"):
+            merged["zone_region"] = land_use_data["zone_region"]
+        if land_use_data.get("zone_district"):
+            merged["zone_district"] = land_use_data["zone_district"]
+
+        # 소재지가 건축물대장에 없으면 토지이용계획원 주소 보강
+        if not merged.get("location") and land_use_data.get("location"):
+            merged["location"] = land_use_data["location"]
+
+        # 건물 면적이 아예 없는 경우 토지 면적으로 보조
+        if not merged.get("area_supply") and land_use_data.get("area_supply"):
+            merged["area_supply"] = land_use_data["area_supply"]
+            merged["area_exclusive"] = land_use_data.get("area_exclusive", land_use_data["area_supply"])
+
+    # 2. 토지대장 데이터 보강
+    if land_reg_data:
+        if land_reg_data.get("official_price"):
+            merged["official_price"] = land_reg_data["official_price"]
+        if not merged.get("location") and land_reg_data.get("location"):
+            merged["location"] = land_reg_data["location"]
+
+    # 3. 사용승인일(16번 항목) 절대 보존: 건축물대장에 유효한 날짜가 있으면 100% 유지
+    if building_data and building_data.get("approval_date") and str(building_data["approval_date"]).strip() != "-":
+        merged["approval_date"] = building_data["approval_date"]
+
+    return merged
 
 
 def parse_single_or_multi_document(pages_text: List[str]) -> Tuple[str, Dict[str, Any], str]:
     """
-    다중 페이지 또는 복합 서류를 분석하여 표제부와 전유부가 둘 다 있는 경우 자동 병합합니다.
+    다중 페이지 또는 복합 서류를 분석하여 표제부, 전유부, 토지이용계획원이 혼합된 경우 자동 병합합니다.
     """
     full_text = "\n".join(pages_text).strip()
     if not full_text:
         return "보안/DRM 문서 (텍스트 미감지)", {}, ""
     doc_type = identify_document_type(full_text)
+    text_condensed = full_text.replace(" ", "")
+
+    # 복합 감지: 건축물대장과 토지이용계획이 단일 서류 또는 복수 페이지에 함께 있는 경우
+    has_building = any(k in text_condensed for k in ["건축물대장", "표제부", "총괄표제부", "전유부", "전유부분", "사용승인일", "준공일", "주구조", "허가일"])
+    has_land_use = any(k in text_condensed for k in ["토지이용계획", "국토의계획및이용", "토지이용계획확인서", "토지이용계획열람"])
+
+    if has_building and has_land_use:
+        # 건물 데이터 파싱
+        if "전유" in text_condensed and ("표제부" in text_condensed or "총괄" in text_condensed):
+            t_data = parse_building_register_title(full_text)
+            e_data = parse_building_register_exclusive(full_text)
+            b_data = merge_building_registers(t_data, e_data)
+        elif "전유" in text_condensed:
+            b_data = parse_building_register_exclusive(full_text)
+        elif "표제부" in text_condensed:
+            b_data = parse_building_register_title(full_text)
+        else:
+            b_data = parse_general_building_register(full_text)
+
+        l_data = parse_land_use_plan(full_text)
+        merged = merge_building_and_land_documents(b_data, land_use_data=l_data)
+        return "건축물대장 + 토지이용계획확인원 융합 분석", merged, full_text
 
     # 1. 표제부 + 전유부 복합 서류인 경우
     if "표제부+전유부" in doc_type or ("표제부" in full_text and "전유부분" in full_text):
@@ -1086,6 +1225,10 @@ def parse_official_document(file_or_bytes, filename: str = "") -> Tuple[str, Dic
             doc_type = "집합건축물대장 (전유부)"
             if full_text and not parsed:
                 parsed = parse_building_register_exclusive(full_text)
+        elif "토지이용계획" in fn_clean and "토지이용계획" not in doc_type:
+            doc_type = "토지이용계획확인원"
+            if full_text and not parsed:
+                parsed = parse_land_use_plan(full_text)
 
     return doc_type, parsed, full_text
 
@@ -1094,13 +1237,25 @@ def parse_raw_script_document(raw_text: str) -> Tuple[str, Dict[str, Any]]:
     """
     [핵심 스크립트 대장 파서]
     정부24, 세움터, 일사편리 등에서 마우스로 복사한 대장 텍스트(스크립트)를 단일 입력받아
-    표제부/전유부/일반건축물/토지대장 여부를 지능형으로 자동 감지하여 100% 통합 분석합니다.
+    표제부/전유부/일반건축물/토지이용계획/토지대장 여부를 지능형으로 자동 감지하여 100% 통합 분석합니다.
     """
     if not raw_text or not raw_text.strip():
         return "빈 텍스트", {}
 
     text = raw_text.strip()
     text_condensed = text.replace(" ", "")
+
+    has_building = any(k in text_condensed for k in ["건축물대장", "표제부", "총괄표제부", "전유부", "전유부분", "사용승인일", "준공일", "주구조", "허가일"])
+    has_land_use = any(k in text_condensed for k in ["토지이용계획", "국토의계획및이용", "토지이용계획확인서", "토지이용계획열람"])
+
+    # 0. 건축물대장 + 토지이용계획 스크립트 복합 붙여넣기 (융합 분석)
+    if has_building and has_land_use:
+        t_data = parse_building_register_title(text)
+        e_data = parse_building_register_exclusive(text)
+        b_data = merge_building_registers(t_data, e_data)
+        l_data = parse_land_use_plan(text)
+        merged = merge_building_and_land_documents(b_data, land_use_data=l_data)
+        return "건축물대장 + 토지이용계획원 스크립트 융합 분석", merged
 
     # 1. 집합건축물대장 (표제부와 전유부 동시 포함 또는 둘 다의 특성이 있는 경우)
     has_title_kw = any(k in text_condensed for k in ["표제부", "총괄표제부", "주차장", "세대수", "총세대수", "대지위치", "허가일", "사용승인일"])
@@ -1126,8 +1281,8 @@ def parse_raw_script_document(raw_text: str) -> Tuple[str, Dict[str, Any]]:
         l_data = parse_land_register(text)
         return "토지대장 스크립트", l_data
 
-    # 4. 토지이용계획
-    elif "토지이용계획" in text_condensed or "용도지역" in text_condensed:
+    # 4. 토지이용계획 (용도지역 단독 키워드로 건축물대장이 오인식되는 오류 원천 차단)
+    elif any(k in text_condensed for k in ["토지이용계획", "국토의계획및이용", "토지이용계획확인서", "토지이용계획열람"]):
         p_data = parse_land_use_plan(text)
         return "토지이용계획확인원 스크립트", p_data
 
