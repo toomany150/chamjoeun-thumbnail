@@ -248,5 +248,69 @@ class TestDocumentParser(unittest.TestCase):
         self.assertIn("방화지구", parsed.get("zone_district", ""))
         self.assertIsNone(parsed.get("approval_date"))
 
+    def test_parking_breakdown_and_reverse_floor(self):
+        sample_bldg = """
+        [일반건축물대장]
+        대지위치: 부산광역시 사상구 괘법동 560-1
+        주구조: 철근콘크리트구조
+        주용도: 제1종근린생활시설
+        층수: 지하 1층 / 지상 5층
+        총주차대수: 12대 (옥내자주식 8대, 옥외 4대)
+        승강기: 승용 1대
+        사용승인일: 2018-06-15
+        """
+        res = parse_building_register_title(sample_bldg)
+        # 주차대수: 세부내역 중 작은 수가 아닌 총 12대 추출
+        self.assertEqual(res.get("parking"), "총 12대 (자주식)")
+        # 층수: 지하 1층 / 지상 5층 역순 표기도 총 5층 (지하 1층)으로 정상 추출
+        self.assertEqual(res.get("floor_info"), "총 5층 (지하 1층)")
+        self.assertEqual(res.get("max_floor"), "5층")
+        self.assertEqual(res.get("approval_date"), "2018년 06월 15일")
+
+    def test_commercial_full_flow_fusion(self):
+        sample_title = """
+        [표제부] (집합건축물대장)
+        대지위치: 부산광역시 사상구 괘법동 123-4
+        건축물명칭: 사상센트럴타워
+        주구조: 철근콘크리트구조
+        주용도: 근린생활시설
+        층수: 지상 10층 / 지하 2층
+        주차장: 총 35대 (자주식 20대, 기계식 15대)
+        승강기: 승용 2대
+        사용승인일: 2020-10-15
+        """
+        sample_excl = """
+        [전유부] (집합건축물대장)
+        대지위치: 부산광역시 사상구 괘법동 123-4
+        호명칭: 201호
+        층별: 2층
+        주용도: 제2종근린생활시설(일반음식점)
+        [전유부분]
+        층별: 2층 | 면적: 188.4200
+        [공용부분]
+        층별: 2층 | 용도: 복도, 화장실, 엘리베이터홀 | 면적: 30.1500
+        """
+        sample_land = """
+        [토지이용계획]
+        신청지: 부산광역시 사상구 괘법동 123-4
+        국토의 계획 및 이용에 관한 법률:
+        일반상업지역, 방화지구, 시가지경관지구
+        """
+        t_data = parse_building_register_title(sample_title)
+        e_data = parse_building_register_exclusive(sample_excl)
+        l_data = parse_land_use_plan(sample_land)
+
+        b_merged = merge_building_registers(t_data, e_data)
+        final_merged = merge_building_and_land_documents(b_merged, land_use_data=l_data)
+
+        self.assertEqual(final_merged.get("floor_info"), "2층 / 10층")
+        self.assertEqual(t_data.get("floor_info"), "총 10층 (지하 2층)")
+        self.assertEqual(final_merged.get("area_exclusive"), "188.42")
+        self.assertEqual(final_merged.get("area_supply"), "218.57")
+        self.assertEqual(final_merged.get("approval_date"), "2020년 10월 15일")
+        self.assertEqual(final_merged.get("zone_region"), "일반상업지역")
+        self.assertIn("방화지구", final_merged.get("zone_district", ""))
+        self.assertIn("총 35대", final_merged.get("parking", ""))
+
 if __name__ == "__main__":
     unittest.main()

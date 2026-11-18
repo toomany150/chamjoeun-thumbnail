@@ -291,8 +291,8 @@ def identify_document_type(text: str) -> str:
     return "기타 공적서류"
 
 
-# 다음 필드 키워드 패턴 (필드 끝 경계 인식 - 값 내부의 '구조' 단어가 잘리지 않도록 콜론/구분자가 있는 경우만 매칭)
-NEXT_KW = r"(?=\s*(?:대지위치|도로명주소|지번\s*[:|]|건축물명칭|명칭\s*[:|]|동명칭|호명칭|주용도|용도\s*[:|]|층수\s*[:|]|사용승인일|허가일|착공일|준공일|주차장\s*[:|]|총주차대수|세대수\s*[:|]|가구수\s*[:|]|주구조\s*[:|]|구조\s*[:|]|지역\s*[:|]|지구\s*[:|]|구역\s*[:|]|소재지|지목\s*[:|]|면적\s*[:|]|개별공시지가|소유자|국토의|$))"
+# 다음 필드 키워드 패턴 (필드 끝 경계 인식 - 줄바꿈 또는 다음 키워드/구분자 경계까지 안전하게 매칭)
+NEXT_KW = r"(?=\s*(?:[\r\n]|대지위치|도로명주소|지번\s*[:|]|건축물명칭|명칭\s*[:|]|동명칭|호명칭|주용도|용도\s*[:|]|층수\s*[:|]|사용승인일|허가일|착공일|준공일|주차장\s*[:|]|총주차대수|주차대수|세대수\s*[:|]|가구수\s*[:|]|주구조\s*[:|]|구조\s*[:|]|지역\s*[:|]|지구\s*[:|]|구역\s*[:|]|소재지|지목\s*[:|]|면적\s*[:|]|개별공시지가|소유자|국토의|승강기|엘리베이터|오수|건폐율|용적률|대지면적|연면적|건축면적|$))"
 
 
 def clean_val(s: str) -> str:
@@ -402,11 +402,15 @@ def separate_region_and_district(region_raw: str, district_raw: str = "") -> Tup
             if not any(d_cond in longer.replace(" ", "") for longer in found_districts):
                 found_districts.append(d)
 
-    # 3. 보강 패턴 (OOO지구, OOO구역, OOO권역, OOO제한지역) - 공백 허용
-    pat = r"[가-힣0-9]{2,12}\s*(?:지구|구역|권역|제한지역|보존지역|보호구역)"
+    # 3. 보강 패턴 (줄바꿈 매칭 방지: [ \t]* 만 허용)
+    pat = r"[가-힣0-9]{2,12}[ \t]*(?:지구|구역|권역|제한지역|보존지역|보호구역)"
     for m in re.findall(pat, combined):
         m_clean = re.sub(r"\s+", "", m).strip()
-        if any(m_clean in r.replace(" ", "") for r in found_regions):
+        # 이미 찾은 용도지역이 포함되어 있거나 용도지역 안에 있는 단어는 제외
+        if any(m_clean in r.replace(" ", "") or r.replace(" ", "") in m_clean for r in found_regions):
+            continue
+        # 헤더 라벨 제외
+        if m_clean in ["용도지구", "용도구역", "지역지구", "지정구역", "지정여부", "해당구역"]:
             continue
         if any(m_clean in d.replace(" ", "") or d.replace(" ", "") in m_clean for d in found_districts):
             continue
@@ -548,34 +552,49 @@ def parse_building_register_title(text: str) -> Dict[str, Any]:
         res["sub_title"] = dong_name
 
     # 2. 층수
-    floor_match = re.search(r"지상\s*[:.]?\s*(\d+)\s*층(?:\s*[/|,\s]\s*지하\s*[:.]?\s*(\d+)\s*층)?", text)
-    if not floor_match:
-        floor_match = re.search(r"(\d+)\s*층\s*[/|]\s*지하\s*(\d+)\s*층", text)
-    
-    if floor_match:
-        high_fl = floor_match.group(1)
-        under_fl = floor_match.group(2)
+    high_fl = ""
+    under_fl = ""
+    high_m = re.search(r"(?:지상\s*[:.]?\s*|지상층수\s*[:|]?\s*)(\d+)\s*층?", text)
+    under_m = re.search(r"(?:지하\s*[:.]?\s*|지하층수\s*[:|]?\s*)(\d+)\s*층?", text)
+    if high_m:
+        high_fl = high_m.group(1)
+    if under_m:
+        under_fl = under_m.group(1)
+
+    if not high_fl:
+        fl_match = re.search(r"(\d+)\s*층\s*[/|]\s*지하\s*(\d+)\s*층", text)
+        if fl_match:
+            high_fl = fl_match.group(1)
+            under_fl = fl_match.group(2)
+        else:
+            fl_single = re.search(r"(?:층수|총층수)\s*[:|]?\s*(\d+)\s*층?", text)
+            if fl_single:
+                high_fl = fl_single.group(1)
+
+    if high_fl:
         res["max_floor"] = f"{high_fl}층"
-        if under_fl:
+        if under_fl and under_fl != "0":
             res["floor_info"] = f"총 {high_fl}층 (지하 {under_fl}층)"
         else:
             res["floor_info"] = f"총 {high_fl}층"
-    else:
-        fl_single = re.search(r"(?:층수|지상층수|지상\s*[:.])\s*[:|]?\s*(\d+)\s*층?", text)
-        if fl_single:
-            res["max_floor"] = f"{fl_single.group(1)}층"
-            res["floor_info"] = f"총 {fl_single.group(1)}층"
 
     # 3. 주차대수
     park_match = re.search(r"(?:주차장|총주차대수|주차대수)\s*[:|]?\s*([^\n\r]+?)" + NEXT_KW, text)
     if park_match:
-        p_raw = park_match.group(1)
+        p_raw = park_match.group(1).strip()
         p_nums = re.findall(r"([\d,]+)\s*대", p_raw)
         if p_nums:
-            total_pk = p_nums[-1].replace(",", "")
+            int_nums = [int(n.replace(",", "")) for n in p_nums]
+            chong_m = re.search(r"총\s*([\d,]+)\s*대", p_raw)
+            if chong_m:
+                total_pk = chong_m.group(1).replace(",", "")
+            else:
+                total_pk = str(max(int_nums))
             res["parking"] = f"총 {total_pk}대"
             if "자주식" in p_raw:
                 res["parking"] += " (자주식)"
+            elif "기계식" in p_raw:
+                res["parking"] += " (기계식)"
         else:
             clean_pk = clean_val(p_raw)
             if clean_pk and any(c.isdigit() for c in clean_pk) and not _is_header_noise(clean_pk) and "승강기" not in clean_pk:
@@ -637,7 +656,7 @@ def parse_building_register_title(text: str) -> Dict[str, Any]:
     raw_reg = clean_val(region_match.group(1)) if region_match else ""
     raw_dist = clean_val(district_match.group(1)) if district_match else ""
 
-    reg_val, dist_val = separate_region_and_district(raw_reg, f"{raw_dist} {text}")
+    reg_val, dist_val = separate_region_and_district(raw_reg, raw_dist if raw_dist else text)
     if reg_val:
         res["zone_region"] = reg_val
     if dist_val:
@@ -1303,8 +1322,12 @@ def parse_official_document(file_or_bytes, filename: str = "") -> Tuple[str, Dic
                 parsed = parse_building_register_exclusive(full_text)
         elif "토지이용계획" in fn_clean and "토지이용계획" not in doc_type:
             doc_type = "토지이용계획확인원"
-            if full_text and not parsed:
+            if full_text:
                 parsed = parse_land_use_plan(full_text)
+        elif ("토지대장" in fn_clean or "임야대장" in fn_clean) and "토지대장" not in doc_type:
+            doc_type = "토지대장"
+            if full_text:
+                parsed = parse_land_register(full_text)
 
     return doc_type, parsed, full_text
 

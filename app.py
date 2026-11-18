@@ -1651,6 +1651,20 @@ def queue_state_update(action_type: str, data: dict = None, preset: str = None, 
         "error_msg": error_msg,
         "target_tab": target_tab
     }
+    # 자동 탭 복원 설정 (rerun 후에도 작업 중이던 탭으로 즉시 자동 이동)
+    if target_tab:
+        if "상가" in target_tab:
+            st.session_state["_restore_tab_target"] = {"main": "중개대상물표시", "sub": "상가"}
+        elif "아파트" in target_tab:
+            st.session_state["_restore_tab_target"] = {"main": "중개대상물표시", "sub": "아파트"}
+        elif "주택" in target_tab:
+            st.session_state["_restore_tab_target"] = {"main": "중개대상물표시", "sub": "주택"}
+        elif "공장" in target_tab:
+            st.session_state["_restore_tab_target"] = {"main": "중개대상물표시", "sub": "공장"}
+    elif "comm" in action_type:
+        st.session_state["_restore_tab_target"] = {"main": "중개대상물표시", "sub": "상가"}
+    elif "apt" in action_type and not clean_previous:
+        st.session_state["_restore_tab_target"] = {"main": "중개대상물표시", "sub": "아파트"}
     st.rerun()
 
 def clear_property_specs():
@@ -1791,10 +1805,11 @@ def apply_commercial_crawled_or_doc_data(data: dict):
     if data.get("recommended_use"):
         safe_set_session_state("comm_ad_recommended_use", str(data["recommended_use"]))
     if data.get("elevator"):
-        elev_str = str(data["elevator"])
-        cur_fac = st.session_state.get("comm_ad_facility_info", "")
-        if "승강기" not in cur_fac and "엘리베이터" not in cur_fac:
-            safe_set_session_state("comm_ad_facility_info", f"{cur_fac}, {elev_str}".strip(", "))
+        elev_str = str(data["elevator"]).strip()
+        if elev_str and elev_str not in ["없음", "0대", "-"]:
+            cur_fac = st.session_state.get("comm_ad_facility_info", "")
+            if "승강기" not in cur_fac and "엘리베이터" not in cur_fac:
+                safe_set_session_state("comm_ad_facility_info", f"{cur_fac}, {elev_str}".strip(", "))
     elif data.get("facility_info"):
         safe_set_session_state("comm_ad_facility_info", str(data["facility_info"]))
 
@@ -4734,6 +4749,8 @@ def render_tab_comm_ad():
                             if up_c_excl:
                                 _, e_data, _ = parse_official_document(up_c_excl, up_c_excl.name)
 
+                            st.session_state["last_comm_split_upload_sig"] = split_sig
+
                             if t_data and e_data:
                                 res_m = merge_building_registers(t_data, e_data)
                                 queue_state_update("apply_comm", data=res_m, success_msg="🎉 표제부와 전유부 2개 서류가 완벽하게 결합되어 상가 항목에 적용되었습니다!", target_tab="🏪 ④ 상가 중개대상물 표시 (임차·매매)")
@@ -4741,8 +4758,6 @@ def render_tab_comm_ad():
                                 queue_state_update("apply_comm", data=t_data, success_msg="🎉 표제부 분석 완료! 건물 기본 스펙이 상가 항목에 적용되었습니다.", target_tab="🏪 ④ 상가 중개대상물 표시 (임차·매매)")
                             elif e_data:
                                 queue_state_update("apply_comm", data=e_data, success_msg="🎉 전유부 분석 완료! 개별 호실 면적이 상가 항목에 적용되었습니다.", target_tab="🏪 ④ 상가 중개대상물 표시 (임차·매매)")
-
-                            st.session_state["last_comm_split_upload_sig"] = split_sig
                     except Exception as e:
                         st.error(f"분리 서류 분석 오류: {e}")
 
@@ -5365,3 +5380,54 @@ with tab_main_ad:
         render_tab_comm_ad()
     with ad_sub_factory:
         render_tab_factory_ad()
+
+def render_tab_restoration_script():
+    """st.rerun() 후에도 사용자가 작업 중이던 메인 탭 및 서브 탭을 안전하고 신속하게 자동 복원합니다."""
+    target = st.session_state.pop("_restore_tab_target", None)
+    if not target:
+        return
+    main_kw = target.get("main", "")
+    sub_kw = target.get("sub", "")
+    import streamlit.components.v1 as components
+    js_code = f"""
+    <script>
+    (function() {{
+        let attempts = 0;
+        const interval = setInterval(function() {{
+            attempts++;
+            try {{
+                const pDoc = window.parent.document;
+                const tabLists = pDoc.querySelectorAll('[data-baseweb="tab-list"]');
+                if (tabLists.length > 0) {{
+                    const mainButtons = Array.from(tabLists[0].querySelectorAll('button[role="tab"]'));
+                    for (let btn of mainButtons) {{
+                        if (btn.innerText && btn.innerText.includes("{main_kw}")) {{
+                            if (btn.getAttribute('aria-selected') !== 'true') {{
+                                btn.click();
+                            }}
+                            break;
+                        }}
+                    }}
+                }}
+                if (tabLists.length > 1) {{
+                    const subButtons = Array.from(tabLists[1].querySelectorAll('button[role="tab"]'));
+                    for (let btn of subButtons) {{
+                        if (btn.innerText && btn.innerText.includes("{sub_kw}")) {{
+                            if (btn.getAttribute('aria-selected') !== 'true') {{
+                                btn.click();
+                            }}
+                            break;
+                        }}
+                    }}
+                }}
+            }} catch(e) {{}}
+            if (attempts > 25) {{
+                clearInterval(interval);
+            }}
+        }}, 50);
+    }})();
+    </script>
+    """
+    components.html(js_code, height=0, width=0)
+
+render_tab_restoration_script()
