@@ -9,6 +9,7 @@
 
 import os
 import io
+import re
 import functools
 from PIL import Image, ImageDraw, ImageFont, ImageFilter, ImageOps, ImageColor
 
@@ -1733,48 +1734,59 @@ def render_a4_window_poster(
     # 구분선
     draw.line([(150, footer_y + 175), (W - 150, footer_y + 175)], fill=(51, 65, 85, 255), width=2)
 
-    # 요구사항: "사무실 연락처:" 삭제! 051-911-8249와 담당자 직통번호의 글자 크기를 동일하게 일치(84px)하여 균형 배치
+    # 하단 연락처 및 상담문의 바 (좌측 대표번호 & 우측 사용자 지정 문구 또는 기타 상담문의 대칭 배치)
     tel_clean = (office_tel or "010-9667-4201").strip()
-    ast_clean = (assistant_phone or "").strip()
+    ast_raw = (assistant_phone or "").strip()
+    if not ast_raw:
+        ast_raw = "기타 상담문의"
 
+    # 좌측: 대표 번호 (옐로우 골드, 84px 초대형)
     phone_font_size = 84
     font_phone = get_font("NanumGothicExtraBold.ttf", phone_font_size)
+    phone_y = footer_y + 225
+    draw.text((150, phone_y), tel_clean, fill=(251, 191, 36, 255), font=font_phone)
 
-    if ast_clean:
-        # 1) 담당자 번호가 있는 경우: 좌측 051-911-8249 & 우측 [담당자 직통 : 010-...] 동일 84px로 좌우 대칭 배치!
-        phone_y = footer_y + 225
+    # 우측: 사용자가 직접 입력한 상담/담당자 문구 (예: "담당자 하승원팀장 010-9605-1030" 또는 "기타 상담문의")
+    ast_display_txt = ast_raw
+    if re.match(r"^01[0-9]-?\d{3,4}-?\d{4}$", ast_raw):
+        ast_display_txt = f"담당자 직통 : {ast_raw}"
 
-        # 좌측: 051-911-8249 (옐로우 골드, 84px)
-        draw.text((150, phone_y), tel_clean, fill=(251, 191, 36, 255), font=font_phone)
+    # 텍스트 길이에 따라 글자 크기 유연 조절 (기본 84px 동일 크기 유지, 긴 텍스트는 48px까지 유연 축소)
+    cur_ast_size = 84
+    font_ast = get_font("NanumGothicExtraBold.ttf", cur_ast_size)
+    ab = font_ast.getbbox(ast_display_txt)
+    aw = ab[2] - ab[0]
+    ah = ab[3] - ab[1]
 
-        # 우측: 담당자 직통 번호 (오렌지 알약 뱃지 안에 84px 동일 크기로 렌더링!)
-        ast_display_txt = f"담당자 직통 : {ast_clean}"
-        ab = font_phone.getbbox(ast_display_txt)
+    # 좌측 대표번호(약 750px)와 충돌하지 않도록 최대 가용 너비 1250px 제한
+    max_ast_box_w = 1250
+    while (aw + 64) > max_ast_box_w and cur_ast_size > 48:
+        cur_ast_size -= 3
+        font_ast = get_font("NanumGothicExtraBold.ttf", cur_ast_size)
+        ab = font_ast.getbbox(ast_display_txt)
         aw = ab[2] - ab[0]
         ah = ab[3] - ab[1]
 
-        ast_box_w = aw + 64
-        ast_box_h = 114
-        ast_box_x = W - 150 - ast_box_w
-        ast_box_y = footer_y + 210
-        draw.rounded_rectangle([(ast_box_x, ast_box_y), (ast_box_x + ast_box_w, ast_box_y + ast_box_h)], radius=24, fill=(244, 138, 38, 255), outline=(255, 255, 255, 220), width=3)
-        draw.text((ast_box_x + 32 - ab[0], ast_box_y + (ast_box_h - ah) // 2 - ab[1]), ast_display_txt, fill=(255, 255, 255, 255), font=font_phone)
-    else:
-        # 2) 담당자 번호가 없는 경우: 좌측 051-911-8249 & 우측 친절 상담 슬로건
-        font_solo_phone = get_font("NanumGothicExtraBold.ttf", 98)
-        draw.text((150, footer_y + 212), tel_clean, fill=(251, 191, 36, 255), font=font_solo_phone)
+    ast_box_w = aw + 64
+    ast_box_h = 114
+    ast_box_x = W - 150 - ast_box_w
+    ast_box_y = footer_y + 210
 
-        font_slogan = get_font("NanumGothicBold.ttf", 44)
-        slogan_txt = "친절 상담 · 책임 중개 · 매물 접수 환영"
-        sb = font_slogan.getbbox(slogan_txt)
-        sw = sb[2] - sb[0]
-        sh = sb[3] - sb[1]
-        sl_box_w = sw + 56
-        sl_box_h = 92
-        sl_box_x = W - 150 - sl_box_w
-        sl_box_y = footer_y + 220
-        draw.rounded_rectangle([(sl_box_x, sl_box_y), (sl_box_x + sl_box_w, sl_box_y + sl_box_h)], radius=20, fill=(30, 41, 59, 255), outline=(71, 85, 105, 255), width=2)
-        draw.text((sl_box_x + 28 - sb[0], sl_box_y + (sl_box_h - sh) // 2 - sb[1]), slogan_txt, fill=(241, 245, 249, 255), font=font_slogan)
+    # 뱃지 배경색: 테마별 컬러 (상가: 골드, 주택: 그린, 공장: 블루, 아파트: 오렌지)
+    badge_bg_color = accent_color if is_commercial else (primary_color if primary_color_override else (244, 138, 38, 255))
+    draw.rounded_rectangle(
+        [(ast_box_x, ast_box_y), (ast_box_x + ast_box_w, ast_box_y + ast_box_h)],
+        radius=24,
+        fill=badge_bg_color,
+        outline=(255, 255, 255, 220),
+        width=3
+    )
+    draw.text(
+        (ast_box_x + (ast_box_w - aw) // 2 - ab[0], ast_box_y + (ast_box_h - ah) // 2 - ab[1]),
+        ast_display_txt,
+        fill=(255, 255, 255, 255),
+        font=font_ast
+    )
 
     # 🖨️ A4 150 DPI 최적화 규격 (1240 x 1754 px) 초고품질 수퍼샘플링 리사이징
     # 용량 15~25MB -> 1.5MB 대폭 다이어트 & 복합기 인쇄 선명도 100% 보장

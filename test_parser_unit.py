@@ -312,5 +312,26 @@ class TestDocumentParser(unittest.TestCase):
         self.assertIn("방화지구", final_merged.get("zone_district", ""))
         self.assertIn("총 35대", final_merged.get("parking", ""))
 
+    def test_poster_custom_contact_text_rendering(self):
+        from thumbnail_generator import render_a4_window_poster
+
+        # 1. 사용자가 직접 소속공인중개사 문구를 넣은 경우
+        img_custom = render_a4_window_poster(
+            is_commercial=False,
+            main_title="사상 중흥S-클래스",
+            office_tel="010-9667-4201",
+            assistant_phone="담당자 하승원팀장 010-9605-1030"
+        )
+        self.assertEqual(img_custom.size, (1240, 1754))
+
+        # 2. 미입력 시 기본 문구 '기타 상담문의'로 렌더링
+        img_default = render_a4_window_poster(
+            is_commercial=True,
+            main_title="괘법동 코너 상가",
+            office_tel="010-9667-4201",
+            assistant_phone=""
+        )
+        self.assertEqual(img_default.size, (1240, 1754))
+
 if __name__ == "__main__":
     unittest.main()

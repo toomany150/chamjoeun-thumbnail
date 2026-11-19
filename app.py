@@ -1654,16 +1654,28 @@ def queue_state_update(action_type: str, data: dict = None, preset: str = None, 
     # 자동 탭 복원 설정 (rerun 후에도 작업 중이던 탭으로 즉시 자동 이동)
     if target_tab:
         if "상가" in target_tab:
+            st.session_state["_override_main_tab"] = "📋 중개대상물표시"
+            st.session_state["_override_ad_sub"] = "🏬 상가"
             st.session_state["_restore_tab_target"] = {"main": "중개대상물표시", "sub": "상가"}
         elif "아파트" in target_tab:
+            st.session_state["_override_main_tab"] = "📋 중개대상물표시"
+            st.session_state["_override_ad_sub"] = "🏢 아파트"
             st.session_state["_restore_tab_target"] = {"main": "중개대상물표시", "sub": "아파트"}
         elif "주택" in target_tab:
+            st.session_state["_override_main_tab"] = "📋 중개대상물표시"
+            st.session_state["_override_ad_sub"] = "🏡 주택"
             st.session_state["_restore_tab_target"] = {"main": "중개대상물표시", "sub": "주택"}
         elif "공장" in target_tab:
+            st.session_state["_override_main_tab"] = "📋 중개대상물표시"
+            st.session_state["_override_ad_sub"] = "🏭 공장"
             st.session_state["_restore_tab_target"] = {"main": "중개대상물표시", "sub": "공장"}
     elif "comm" in action_type:
+        st.session_state["_override_main_tab"] = "📋 중개대상물표시"
+        st.session_state["_override_ad_sub"] = "🏬 상가"
         st.session_state["_restore_tab_target"] = {"main": "중개대상물표시", "sub": "상가"}
     elif "apt" in action_type and not clean_previous:
+        st.session_state["_override_main_tab"] = "📋 중개대상물표시"
+        st.session_state["_override_ad_sub"] = "🏢 아파트"
         st.session_state["_restore_tab_target"] = {"main": "중개대상물표시", "sub": "아파트"}
     st.rerun()
 
@@ -2986,7 +2998,7 @@ def render_tab_apt_poster():
                 office_address=st.session_state.get("ad_office_address", "부산광역시 사상구 강선로 9, 1층"),
                 is_commercial=False,
                 office_tel=st.session_state.get("office_tel_input", "010-9667-4201"),
-                assistant_phone=st.session_state.get("assistant_phone_input", ""),
+                assistant_phone=st.session_state.get("apt_custom_contact_text") or st.session_state.get("assistant_phone_input", "기타 상담문의"),
                 primary_color_override=selected_design.get("primary_color", "#F48A26"),
                 accent_color_override=selected_design.get("accent_color", "#EB5E28")
             )
@@ -3034,6 +3046,25 @@ def render_tab_apt_poster():
                 st.selectbox("거래 형태", trade_opts, key="poster_apt_trade_type", index=t_idx)
             with cp2:
                 st.text_input("금액", key="poster_apt_price")
+
+            st.markdown("---")
+            st.markdown("#### ☎️ 하단 연락처 및 상담 문의 문구")
+            cp_tel1, cp_tel2 = st.columns(2)
+            with cp_tel1:
+                st.text_input(
+                    "📞 대표 사무실 연락처",
+                    key="office_tel_input",
+                    value=st.session_state.get("office_tel_input", "010-9667-4201"),
+                    help="포스터 하단 좌측 대형 옐로우 골드로 표시됩니다."
+                )
+            with cp_tel2:
+                st.text_input(
+                    "👤 우측 상담/담당자 문구 (직접 입력)",
+                    key="apt_custom_contact_text",
+                    value=st.session_state.get("apt_custom_contact_text", "기타 상담문의"),
+                    placeholder="예: 담당자 하승원팀장 010-9605-1030 또는 기타 상담문의",
+                    help="포스터 하단 우측 뱃지에 동일한 크기로 표시됩니다. 소속공인중개사 이름 및 직통번호를 자유롭게 입력하세요."
+                )
 
             if st.session_state.pop("_poster_apt_sync_success", False):
                 st.success("✅ 포스터 수정 내용이 썸네일과 점검 항목에 완벽하게 동기화되었습니다!")
@@ -3121,7 +3152,7 @@ def render_tab_house_poster():
                 office_address=st.session_state.get("ad_office_address", "부산광역시 사상구 강선로 9, 1층"),
                 is_commercial=False,
                 office_tel=st.session_state.get("house_office_tel", "010-9667-4201"),
-                assistant_phone=st.session_state.get("house_assistant_phone", ""),
+                assistant_phone=st.session_state.get("house_custom_contact_text") or st.session_state.get("house_assistant_phone", "기타 상담문의"),
                 primary_color_override=selected_design.get("primary_color", "#38A169"),
                 accent_color_override=selected_design.get("accent_color", "#276749")
             )
@@ -3169,6 +3200,14 @@ def render_tab_house_poster():
                 st.selectbox("거래 형태", trade_opts, key="poster_house_trade_type", index=t_idx)
             with cp2:
                 st.text_input("금액", key="poster_house_price")
+
+            st.markdown("---")
+            st.markdown("#### ☎️ 하단 연락처 및 상담 문의 문구")
+            c_h_t1, c_h_t2 = st.columns(2)
+            with c_h_t1:
+                st.text_input("📞 대표 사무실 연락처", key="house_office_tel", value=st.session_state.get("house_office_tel", "010-9667-4201"))
+            with c_h_t2:
+                st.text_input("👤 우측 상담/담당자 문구 (직접 입력)", key="house_custom_contact_text", value=st.session_state.get("house_custom_contact_text", "기타 상담문의"), placeholder="예: 담당자 하승원팀장 010-9605-1030 또는 기타 상담문의")
 
             if st.session_state.pop("_poster_house_sync_success", False):
                 st.success("✅ 주택 포스터 수정 내용이 썸네일과 점검 항목에 완벽하게 동기화되었습니다!")
@@ -3425,7 +3464,7 @@ def render_tab_comm_poster():
                 bg_offset_x=st.session_state.get("comm_poster_off_x", 0),
                 bg_offset_y=st.session_state.get("comm_poster_off_y", 0),
                 office_tel=st.session_state.get("comm_office_tel_input", "010-9667-4201"),
-                assistant_phone=st.session_state.get("comm_assistant_phone_input", ""),
+                assistant_phone=st.session_state.get("comm_custom_contact_text") or st.session_state.get("comm_assistant_phone_input", "기타 상담문의"),
                 primary_color_override=selected_comm_design.get("primary_color", "#DAA844"),
                 accent_color_override=selected_comm_design.get("accent_color", "#B8860B")
             )
@@ -3539,6 +3578,24 @@ def render_tab_comm_poster():
                 st.rerun()
 
         with st.expander("🛠️ 상가 포스터 주요 문구 간편 수정", expanded=True):
+            st.markdown("#### ☎️ 하단 연락처 및 상담 문의 문구")
+            c_cm_t1, c_cm_t2 = st.columns(2)
+            with c_cm_t1:
+                st.text_input(
+                    "📞 대표 사무실 연락처",
+                    key="comm_office_tel_input",
+                    value=st.session_state.get("comm_office_tel_input", "010-9667-4201"),
+                    help="포스터 하단 좌측 대형 옐로우 골드로 표시됩니다."
+                )
+            with c_cm_t2:
+                st.text_input(
+                    "👤 우측 상담/담당자 문구 (직접 입력)",
+                    key="comm_custom_contact_text",
+                    value=st.session_state.get("comm_custom_contact_text", "기타 상담문의"),
+                    placeholder="예: 담당자 하승원팀장 010-9605-1030 또는 기타 상담문의",
+                    help="포스터 하단 우측 뱃지에 동일한 크기로 표시됩니다. 소속공인중개사 이름 및 직통번호를 자유롭게 입력하세요."
+                )
+            st.markdown("---")
             if not is_comm_sale:
                 st.text_input("🏢 상가 메인 타이틀", key="poster_comm_l_title")
                 st.text_input("📍 상단 강조 카피", key="poster_comm_l_sub")
@@ -3641,7 +3698,7 @@ def render_tab_factory_poster():
                 office_address=st.session_state.get("ad_office_address", "부산광역시 사상구 강선로 9, 1층"),
                 is_commercial=False,
                 office_tel=st.session_state.get("factory_office_tel", "010-9667-4201"),
-                assistant_phone=st.session_state.get("factory_assistant_phone", ""),
+                assistant_phone=st.session_state.get("factory_custom_contact_text") or st.session_state.get("factory_assistant_phone", "기타 상담문의"),
                 primary_color_override=selected_design.get("primary_color", "#3182CE"),
                 accent_color_override=selected_design.get("accent_color", "#2B6CB0")
             )
@@ -3689,6 +3746,14 @@ def render_tab_factory_poster():
                 st.selectbox("거래 형태", trade_opts, key="poster_factory_trade_type", index=t_idx)
             with cp2:
                 st.text_input("금액", key="poster_factory_price")
+
+            st.markdown("---")
+            st.markdown("#### ☎️ 하단 연락처 및 상담 문의 문구")
+            c_fc_t1, c_fc_t2 = st.columns(2)
+            with c_fc_t1:
+                st.text_input("📞 대표 사무실 연락처", key="factory_office_tel", value=st.session_state.get("factory_office_tel", "010-9667-4201"))
+            with c_fc_t2:
+                st.text_input("👤 우측 상담/담당자 문구 (직접 입력)", key="factory_custom_contact_text", value=st.session_state.get("factory_custom_contact_text", "기타 상담문의"), placeholder="예: 담당자 하승원팀장 010-9605-1030 또는 기타 상담문의")
 
             if st.session_state.pop("_poster_factory_sync_success", False):
                 st.success("✅ 공장 포스터 수정 내용이 썸네일과 점검 항목에 완벽하게 동기화되었습니다!")
@@ -5331,15 +5396,32 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-tab_main_thumb, tab_main_poster, tab_main_ad = st.tabs(["🖼️ 썸네일", "🖨️ 창문부착용A4", "📋 중개대상물표시"])
+def safe_tabs(tab_list, default=None, **kwargs):
+    """Streamlit 버전에 맞춰 default 파라미터를 안전하게 지원하는 탭 래퍼"""
+    try:
+        import inspect
+        sig = inspect.signature(st.tabs)
+        if "default" in sig.parameters and default and default in tab_list:
+            return st.tabs(tab_list, default=default, **kwargs)
+        return st.tabs(tab_list, **kwargs)
+    except Exception:
+        return st.tabs(tab_list)
+
+main_def = st.session_state.pop("_override_main_tab", None)
+ad_sub_def = st.session_state.pop("_override_ad_sub", None)
+thumb_sub_def = st.session_state.pop("_override_thumb_sub", None)
+poster_sub_def = st.session_state.pop("_override_poster_sub", None)
+
+tab_main_thumb, tab_main_poster, tab_main_ad = safe_tabs(
+    ["🖼️ 썸네일", "🖨️ 창문부착용A4", "📋 중개대상물표시"],
+    default=main_def
+)
 
 with tab_main_thumb:
-    thumb_sub_apt, thumb_sub_house, thumb_sub_comm, thumb_sub_factory = st.tabs([
-        "🏢 아파트",
-        "🏡 주택",
-        "🏬 상가",
-        "🏭 공장"
-    ])
+    thumb_sub_apt, thumb_sub_house, thumb_sub_comm, thumb_sub_factory = safe_tabs(
+        ["🏢 아파트", "🏡 주택", "🏬 상가", "🏭 공장"],
+        default=thumb_sub_def
+    )
     with thumb_sub_apt:
         render_tab_apt_thumb()
     with thumb_sub_house:
@@ -5350,12 +5432,10 @@ with tab_main_thumb:
         render_tab_factory_thumb()
 
 with tab_main_poster:
-    poster_sub_apt, poster_sub_house, poster_sub_comm, poster_sub_factory = st.tabs([
-        "🏢 아파트",
-        "🏡 주택",
-        "🏬 상가",
-        "🏭 공장"
-    ])
+    poster_sub_apt, poster_sub_house, poster_sub_comm, poster_sub_factory = safe_tabs(
+        ["🏢 아파트", "🏡 주택", "🏬 상가", "🏭 공장"],
+        default=poster_sub_def
+    )
     with poster_sub_apt:
         render_tab_apt_poster()
     with poster_sub_house:
@@ -5366,12 +5446,10 @@ with tab_main_poster:
         render_tab_factory_poster()
 
 with tab_main_ad:
-    ad_sub_apt, ad_sub_house, ad_sub_comm, ad_sub_factory = st.tabs([
-        "🏢 아파트",
-        "🏡 주택",
-        "🏬 상가",
-        "🏭 공장"
-    ])
+    ad_sub_apt, ad_sub_house, ad_sub_comm, ad_sub_factory = safe_tabs(
+        ["🏢 아파트", "🏡 주택", "🏬 상가", "🏭 공장"],
+        default=ad_sub_def
+    )
     with ad_sub_apt:
         render_tab_apt_ad()
     with ad_sub_house:
@@ -5400,31 +5478,36 @@ def render_tab_restoration_script():
                 const tabLists = pDoc.querySelectorAll('[data-baseweb="tab-list"]');
                 if (tabLists.length > 0) {{
                     const mainButtons = Array.from(tabLists[0].querySelectorAll('button[role="tab"]'));
+                    let mainSelected = false;
                     for (let btn of mainButtons) {{
                         if (btn.innerText && btn.innerText.includes("{main_kw}")) {{
-                            if (btn.getAttribute('aria-selected') !== 'true') {{
+                            if (btn.getAttribute('aria-selected') === 'true') {{
+                                mainSelected = true;
+                            }} else {{
                                 btn.click();
                             }}
                             break;
                         }}
                     }}
-                }}
-                if (tabLists.length > 1) {{
-                    const subButtons = Array.from(tabLists[1].querySelectorAll('button[role="tab"]'));
-                    for (let btn of subButtons) {{
-                        if (btn.innerText && btn.innerText.includes("{sub_kw}")) {{
-                            if (btn.getAttribute('aria-selected') !== 'true') {{
-                                btn.click();
-                            }}
-                            break;
-                        }}
-                    }}
+                    if (mainSelected && tabLists.length > 1) {{{{
+                        for (let t = 1; t < tabLists.length; t++) {{{{
+                            const subButtons = Array.from(tabLists[t].querySelectorAll('button[role="tab"]'));
+                            for (let sBtn of subButtons) {{{{
+                                if (sBtn.innerText && sBtn.innerText.includes("{sub_kw}")) {{{{
+                                    if (sBtn.getAttribute('aria-selected') !== 'true') {{{{
+                                        sBtn.click();
+                                    }}}}
+                                    break;
+                                }}}}
+                            }}}}
+                        }}}}
+                    }}}}
                 }}
             }} catch(e) {{}}
-            if (attempts > 25) {{
+            if (attempts > 30) {{
                 clearInterval(interval);
             }}
-        }}, 50);
+        }}, 60);
     }})();
     </script>
     """
