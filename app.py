@@ -2997,7 +2997,7 @@ def render_tab_apt_poster():
                 office_reg_no=st.session_state.get("ad_office_reg_no", "제 26530-2026-00009 호"),
                 office_address=st.session_state.get("ad_office_address", "부산광역시 사상구 강선로 9, 1층"),
                 is_commercial=False,
-                office_tel=st.session_state.get("office_tel_input", "010-9667-4201"),
+                office_tel=st.session_state.get("poster_apt_office_tel") or st.session_state.get("office_tel_input", "010-9667-4201"),
                 assistant_phone=st.session_state.get("apt_custom_contact_text") or st.session_state.get("assistant_phone_input", "기타 상담문의"),
                 primary_color_override=selected_design.get("primary_color", "#F48A26"),
                 accent_color_override=selected_design.get("accent_color", "#EB5E28")
@@ -3053,8 +3053,8 @@ def render_tab_apt_poster():
             with cp_tel1:
                 st.text_input(
                     "📞 대표 사무실 연락처",
-                    key="office_tel_input",
-                    value=st.session_state.get("office_tel_input", "010-9667-4201"),
+                    key="poster_apt_office_tel",
+                    value=st.session_state.get("poster_apt_office_tel") or st.session_state.get("office_tel_input", "010-9667-4201"),
                     help="포스터 하단 좌측 대형 옐로우 골드로 표시됩니다."
                 )
             with cp_tel2:
@@ -3151,7 +3151,7 @@ def render_tab_house_poster():
                 office_reg_no=st.session_state.get("ad_office_reg_no", "제 26530-2026-00009 호"),
                 office_address=st.session_state.get("ad_office_address", "부산광역시 사상구 강선로 9, 1층"),
                 is_commercial=False,
-                office_tel=st.session_state.get("house_office_tel", "010-9667-4201"),
+                office_tel=st.session_state.get("poster_house_office_tel") or st.session_state.get("house_office_tel", "010-9667-4201"),
                 assistant_phone=st.session_state.get("house_custom_contact_text") or st.session_state.get("house_assistant_phone", "기타 상담문의"),
                 primary_color_override=selected_design.get("primary_color", "#38A169"),
                 accent_color_override=selected_design.get("accent_color", "#276749")
@@ -3205,7 +3205,11 @@ def render_tab_house_poster():
             st.markdown("#### ☎️ 하단 연락처 및 상담 문의 문구")
             c_h_t1, c_h_t2 = st.columns(2)
             with c_h_t1:
-                st.text_input("📞 대표 사무실 연락처", key="house_office_tel", value=st.session_state.get("house_office_tel", "010-9667-4201"))
+                st.text_input(
+                    "📞 대표 사무실 연락처",
+                    key="poster_house_office_tel",
+                    value=st.session_state.get("poster_house_office_tel") or st.session_state.get("house_office_tel", "010-9667-4201")
+                )
             with c_h_t2:
                 st.text_input("👤 우측 상담/담당자 문구 (직접 입력)", key="house_custom_contact_text", value=st.session_state.get("house_custom_contact_text", "기타 상담문의"), placeholder="예: 담당자 하승원팀장 010-9605-1030 또는 기타 상담문의")
 
@@ -3463,7 +3467,7 @@ def render_tab_comm_poster():
                 bg_zoom=st.session_state.get("comm_poster_zoom_slider", 1.0),
                 bg_offset_x=st.session_state.get("comm_poster_off_x", 0),
                 bg_offset_y=st.session_state.get("comm_poster_off_y", 0),
-                office_tel=st.session_state.get("comm_office_tel_input", "010-9667-4201"),
+                office_tel=st.session_state.get("poster_comm_office_tel") or st.session_state.get("comm_office_tel_input", "010-9667-4201"),
                 assistant_phone=st.session_state.get("comm_custom_contact_text") or st.session_state.get("comm_assistant_phone_input", "기타 상담문의"),
                 primary_color_override=selected_comm_design.get("primary_color", "#DAA844"),
                 accent_color_override=selected_comm_design.get("accent_color", "#B8860B")
@@ -3583,8 +3587,8 @@ def render_tab_comm_poster():
             with c_cm_t1:
                 st.text_input(
                     "📞 대표 사무실 연락처",
-                    key="comm_office_tel_input",
-                    value=st.session_state.get("comm_office_tel_input", "010-9667-4201"),
+                    key="poster_comm_office_tel",
+                    value=st.session_state.get("poster_comm_office_tel") or st.session_state.get("comm_office_tel_input", "010-9667-4201"),
                     help="포스터 하단 좌측 대형 옐로우 골드로 표시됩니다."
                 )
             with c_cm_t2:
@@ -3697,7 +3701,7 @@ def render_tab_factory_poster():
                 office_reg_no=st.session_state.get("ad_office_reg_no", "제 26530-2026-00009 호"),
                 office_address=st.session_state.get("ad_office_address", "부산광역시 사상구 강선로 9, 1층"),
                 is_commercial=False,
-                office_tel=st.session_state.get("factory_office_tel", "010-9667-4201"),
+                office_tel=st.session_state.get("poster_factory_office_tel") or st.session_state.get("factory_office_tel", "010-9667-4201"),
                 assistant_phone=st.session_state.get("factory_custom_contact_text") or st.session_state.get("factory_assistant_phone", "기타 상담문의"),
                 primary_color_override=selected_design.get("primary_color", "#3182CE"),
                 accent_color_override=selected_design.get("accent_color", "#2B6CB0")
@@ -3751,7 +3755,11 @@ def render_tab_factory_poster():
             st.markdown("#### ☎️ 하단 연락처 및 상담 문의 문구")
             c_fc_t1, c_fc_t2 = st.columns(2)
             with c_fc_t1:
-                st.text_input("📞 대표 사무실 연락처", key="factory_office_tel", value=st.session_state.get("factory_office_tel", "010-9667-4201"))
+                st.text_input(
+                    "📞 대표 사무실 연락처",
+                    key="poster_factory_office_tel",
+                    value=st.session_state.get("poster_factory_office_tel") or st.session_state.get("factory_office_tel", "010-9667-4201")
+                )
             with c_fc_t2:
                 st.text_input("👤 우측 상담/담당자 문구 (직접 입력)", key="factory_custom_contact_text", value=st.session_state.get("factory_custom_contact_text", "기타 상담문의"), placeholder="예: 담당자 하승원팀장 010-9605-1030 또는 기타 상담문의")
 
