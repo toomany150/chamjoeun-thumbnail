@@ -918,16 +918,23 @@ def parse_building_register_exclusive(text: str) -> Dict[str, Any]:
         elif "근린생활시설" in text or "상가" in text:
             res["building_use"] = "제2종근린생활시설"
 
-    # 6. 방수 / 욕실수 추정
+    # 6. 방수 / 욕실수 추정 (상가/비주거용은 방수 제외, 화장실로 대체)
     if exclusive_area > 0:
-        if exclusive_area >= 80:
-            res["room_bath"] = "방 3 / 욕실 2개"
-        elif exclusive_area >= 50:
-            res["room_bath"] = "방 3 / 욕실 1개"
-        elif exclusive_area >= 30:
-            res["room_bath"] = "방 2 / 욕실 1개"
+        b_use_chk = res.get("building_use", "")
+        if any(k in b_use_chk for k in ["근린생활", "상가", "점포", "판매", "업무", "사무실"]):
+            res["room_bath"] = "해당사항 없음 (상가)"
+            res["restroom"] = "내부 남녀구분 화장실 완비"
+        elif any(k in b_use_chk for k in ["공장", "창고"]):
+            res["room_bath"] = "해당사항 없음 (공장/창고)"
         else:
-            res["room_bath"] = "방 1 / 욕실 1개 (원룸)"
+            if exclusive_area >= 80:
+                res["room_bath"] = "방 3 / 욕실 2개"
+            elif exclusive_area >= 50:
+                res["room_bath"] = "방 3 / 욕실 1개"
+            elif exclusive_area >= 30:
+                res["room_bath"] = "방 2 / 욕실 1개"
+            else:
+                res["room_bath"] = "방 1 / 욕실 1개 (원룸)"
 
     return res
 
@@ -1091,25 +1098,28 @@ def parse_land_register(text: str) -> Dict[str, Any]:
     """
     res = {}
     
-    loc_match = re.search(r"(?:소재지|소\s*재\s*지)\s*[:|]?\s*([^|\n\r]+?)" + NEXT_KW, text)
+    loc_match = re.search(r"(?:소재지|소\s*재\s*지|대지위치|신청지)\s*[:|]?\s*([^|\n\r]+?)" + NEXT_KW, text)
     jibun_match = re.search(r"(?:지번|지\s*번)\s*[:|]?\s*([^|\n\r]+?)" + NEXT_KW, text)
     
     loc_val = clean_val(loc_match.group(1)) if loc_match else ""
     jibun_val = clean_val(jibun_match.group(1)) if jibun_match else ""
     
-    if loc_val and jibun_val:
-        res["location"] = f"{loc_val} {jibun_val}"
+    if loc_val and jibun_val and jibun_val not in loc_val:
+        res["location"] = f"{loc_val} {jibun_val}".strip()
     elif loc_val:
         res["location"] = loc_val
 
     jimok_match = re.search(r"(?:지목|지\s*목)\s*[:|]?\s*([가-힣]+)", text)
     jimok = jimok_match.group(1).strip() if jimok_match else "대"
+    res["jimok"] = jimok
+    res["land_use"] = f"지목: {jimok}"
     res["building_use"] = f"토지 (지목: {jimok})"
     res["feature_text"] = f"지목 '{jimok}' 특급 추천 토지"
 
     area_match = re.search(r"(?:면적|면\s*적)\s*\(?㎡?\)?\s*[:|]?\s*([\d,.]+)", text)
     if area_match:
         m2_str = area_match.group(1).replace(",", "").strip()
+        res["land_area"] = m2_str
         res["area_supply"] = m2_str
         res["area_exclusive"] = m2_str
         try:
@@ -1148,11 +1158,13 @@ def parse_land_use_plan(text: str) -> Dict[str, Any]:
 
     jimok_match = re.search(r"(?:지목)\s*[:|]?\s*([가-힣]+)", text)
     if jimok_match:
-        res["building_use"] = f"토지 (지목: {jimok_match.group(1).strip()})"
+        res["jimok"] = jimok_match.group(1).strip()
+        res["building_use"] = f"토지 (지목: {res['jimok']})"
         
     area_match = re.search(r"(?:면적)\s*[:|]?\s*([\d,.]+)\s*㎡?", text)
     if area_match:
         m2_str = area_match.group(1).replace(",", "").strip()
+        res["land_area"] = m2_str
         res["area_supply"] = m2_str
         res["area_exclusive"] = m2_str
 
@@ -1183,8 +1195,10 @@ def merge_building_and_land_documents(
     [핵심 공적장부 원칙]
     1. 사용승인일 (준공일: 16번 항목): 건축물대장 데이터 100% 최우선 보존 (토지 서류는 절대 침범 불가)
     2. 용도지역 및 용도지구 (14번 항목): 토지이용계획확인원 데이터 최우선 반영 (건축물대장은 2순위 보조)
-    3. 주구조, 건축물용도, 층수, 면적, 주차, 승강기: 건축물대장 최우선
-    4. 공시지가, 지목: 토지대장 / 토지이용계획원 반영
+    3. 건축물 주용도 (13번): 건축물대장 주용도 100% 최우선 (토지대장의 '토지'는 침범 불가)
+    4. 전용면적/계약면적 (02번): 건축물대장 100% 최우선 (토지대장의 필지면적은 land_area로만 보관)
+    5. 주구조(15번), 층수(03번), 주차(11번), 승강기: 건축물대장 100% 최우선
+    6. 공시지가, 지목, 토지면적: 토지대장 / 토지이용계획원 반영
     """
     merged = dict(building_data or {})
 
@@ -1194,33 +1208,90 @@ def merge_building_and_land_documents(
             merged["zone_region"] = land_use_data["zone_region"]
         if land_use_data.get("zone_district"):
             merged["zone_district"] = land_use_data["zone_district"]
+        if land_use_data.get("jimok") and not merged.get("jimok"):
+            merged["jimok"] = land_use_data["jimok"]
+        if land_use_data.get("land_area") and not merged.get("land_area"):
+            merged["land_area"] = land_use_data["land_area"]
 
         # 소재지가 건축물대장에 없으면 토지이용계획원 주소 보강
         if not merged.get("location") and land_use_data.get("location"):
             merged["location"] = land_use_data["location"]
 
-        # 건물 면적이 아예 없는 경우 토지 면적으로 보조
-        if not merged.get("area_supply") and land_use_data.get("area_supply"):
-            merged["area_supply"] = land_use_data["area_supply"]
-            merged["area_exclusive"] = land_use_data.get("area_exclusive", land_use_data["area_supply"])
+        # 건축물 면적이 둘 다 전혀 없는 순수 토지인 경우만 토지면적을 보조로 사용
+        if not merged.get("area_supply") and not merged.get("area_exclusive"):
+            if land_use_data.get("land_area"):
+                merged["area_supply"] = land_use_data["land_area"]
+                merged["area_exclusive"] = land_use_data["land_area"]
+            elif land_use_data.get("area_supply"):
+                merged["area_supply"] = land_use_data["area_supply"]
+                merged["area_exclusive"] = land_use_data["area_supply"]
 
-    # 2. 토지대장 데이터 보강
+    # 2. 토지대장 데이터 보강 (공시지가, 지목, 토지면적)
     if land_reg_data:
         if land_reg_data.get("official_price"):
             merged["official_price"] = land_reg_data["official_price"]
+        if land_reg_data.get("jimok"):
+            merged["jimok"] = land_reg_data["jimok"]
+        if land_reg_data.get("land_area"):
+            merged["land_area"] = land_reg_data["land_area"]
         if not merged.get("location") and land_reg_data.get("location"):
             merged["location"] = land_reg_data["location"]
 
-    # 3. 사용승인일(16번 항목) 절대 보존: 건축물대장에 유효한 날짜가 있으면 100% 유지
-    if building_data and building_data.get("approval_date") and str(building_data["approval_date"]).strip() != "-":
-        merged["approval_date"] = building_data["approval_date"]
+        # 건축물 면적이 둘 다 전혀 없는 순수 토지인 경우만 토지면적 사용
+        if not merged.get("area_supply") and not merged.get("area_exclusive"):
+            if land_reg_data.get("land_area"):
+                merged["area_supply"] = land_reg_data["land_area"]
+                merged["area_exclusive"] = land_reg_data["land_area"]
+            elif land_reg_data.get("area_supply"):
+                merged["area_supply"] = land_reg_data["area_supply"]
+                merged["area_exclusive"] = land_reg_data["area_exclusive"]
+
+    # 3. 건축물대장 데이터 절대 보존 및 복원
+    if building_data:
+        # 사용승인일 (16번 항목) 절대 보존: 건축물대장에 유효한 날짜가 있으면 100% 유지
+        if building_data.get("approval_date") and str(building_data["approval_date"]).strip() != "-":
+            merged["approval_date"] = building_data["approval_date"]
+
+        # 건축물 주용도 (13번 항목) 보호: 토지 서류의 '토지 (지목: 대)'가 절대 덮어쓰지 못하도록 차단
+        if building_data.get("building_use") and not str(building_data["building_use"]).startswith("토지"):
+            merged["building_use"] = building_data["building_use"]
+
+        # 전용면적 / 공급면적 보호: 토지면적이 덮어쓰지 못하도록 보존
+        if building_data.get("area_exclusive"):
+            merged["area_exclusive"] = building_data["area_exclusive"]
+            # 만약 area_supply가 토지면적으로 오염되었거나 없으면 building_data 것으로 복원
+            l_area = (land_reg_data or {}).get("land_area") or (land_use_data or {}).get("land_area")
+            if not merged.get("area_supply") or (l_area and merged.get("area_supply") == l_area):
+                merged["area_supply"] = building_data.get("area_supply", building_data["area_exclusive"])
+        elif building_data.get("area_supply"):
+            merged["area_supply"] = building_data["area_supply"]
+            if not merged.get("area_exclusive"):
+                merged["area_exclusive"] = building_data["area_supply"]
+
+        # 층수, 주차, 주구조, 승강기 절대 보존
+        if building_data.get("floor_info") and building_data["floor_info"] != "- / -":
+            merged["floor_info"] = building_data["floor_info"]
+        if building_data.get("parking") and building_data["parking"] != "-":
+            merged["parking"] = building_data["parking"]
+        if building_data.get("structure"):
+            merged["structure"] = building_data["structure"]
+        if building_data.get("elevator"):
+            merged["elevator"] = building_data["elevator"]
+
+    # 상가/비주거용 건물인 경우 '방' 정보 정제
+    b_use_str = str(merged.get("building_use", ""))
+    if any(k in b_use_str for k in ["근린생활", "상가", "점포", "판매", "업무", "사무실"]):
+        if merged.get("room_bath") and "방" in merged["room_bath"]:
+            merged["room_bath"] = "해당사항 없음 (상가)"
+        if not merged.get("restroom"):
+            merged["restroom"] = "내부 남녀구분 화장실 완비"
 
     return merged
 
 
 def parse_single_or_multi_document(pages_text: List[str]) -> Tuple[str, Dict[str, Any], str]:
     """
-    다중 페이지 또는 복합 서류를 분석하여 표제부, 전유부, 토지이용계획원이 혼합된 경우 자동 병합합니다.
+    다중 페이지 또는 복합 서류를 분석하여 표제부, 전유부, 일반건축물, 토지이용계획원, 토지대장이 혼합된 경우 자동 병합합니다.
     """
     full_text = "\n".join(pages_text).strip()
     if not full_text:
@@ -1228,26 +1299,53 @@ def parse_single_or_multi_document(pages_text: List[str]) -> Tuple[str, Dict[str
     doc_type = identify_document_type(full_text)
     text_condensed = full_text.replace(" ", "")
 
-    # 복합 감지: 건축물대장과 토지이용계획이 단일 서류 또는 복수 페이지에 함께 있는 경우
+    # 복합 감지: 건축물대장과 (토지이용계획 또는 토지대장)이 단일 서류 또는 복수 페이지에 함께 있는 경우
     has_building = any(k in text_condensed for k in ["건축물대장", "표제부", "총괄표제부", "전유부", "전유부분", "사용승인일", "준공일", "주구조", "허가일"])
     has_land_use = any(k in text_condensed for k in ["토지이용계획", "국토의계획및이용", "토지이용계획확인서", "토지이용계획열람"])
+    has_land_reg = any(k in text_condensed for k in ["토지대장", "임야대장"]) or ("개별공시지가" in text_condensed and not has_building)
 
-    if has_building and has_land_use:
+    if has_building and (has_land_use or has_land_reg):
+        # 다중 페이지가 있으면 페이지별로 서류를 안전하게 분리 파싱
+        bldg_pages = []
+        land_use_pages = []
+        land_reg_pages = []
+        for p in pages_text:
+            p_cond = p.replace(" ", "")
+            is_lu = any(k in p_cond for k in ["토지이용계획", "국토의계획및이용", "토지이용계획확인서", "토지이용계획열람"])
+            is_lr = any(k in p_cond for k in ["토지대장", "임야대장"]) or ("개별공시지가" in p_cond and not any(k in p_cond for k in ["건축물대장", "표제부", "전유부"]))
+            if is_lu:
+                land_use_pages.append(p)
+            elif is_lr:
+                land_reg_pages.append(p)
+            else:
+                bldg_pages.append(p)
+
+        b_text = "\n".join(bldg_pages) if bldg_pages else full_text
+        b_cond = b_text.replace(" ", "")
+
         # 건물 데이터 파싱
-        if "전유" in text_condensed and ("표제부" in text_condensed or "총괄" in text_condensed):
-            t_data = parse_building_register_title(full_text)
-            e_data = parse_building_register_exclusive(full_text)
+        if "전유" in b_cond and ("표제부" in b_cond or "총괄" in b_cond):
+            t_data = parse_building_register_title(b_text)
+            e_data = parse_building_register_exclusive(b_text)
             b_data = merge_building_registers(t_data, e_data)
-        elif "전유" in text_condensed:
-            b_data = parse_building_register_exclusive(full_text)
-        elif "표제부" in text_condensed:
-            b_data = parse_building_register_title(full_text)
+        elif "전유" in b_cond:
+            b_data = parse_building_register_exclusive(b_text)
+        elif "표제부" in b_cond:
+            b_data = parse_building_register_title(b_text)
         else:
-            b_data = parse_general_building_register(full_text)
+            b_data = parse_general_building_register(b_text)
 
-        l_data = parse_land_use_plan(full_text)
-        merged = merge_building_and_land_documents(b_data, land_use_data=l_data)
-        return "건축물대장 + 토지이용계획확인원 융합 분석", merged, full_text
+        l_data = parse_land_use_plan("\n".join(land_use_pages)) if (has_land_use and land_use_pages) else (parse_land_use_plan(full_text) if has_land_use else None)
+        lr_data = parse_land_register("\n".join(land_reg_pages)) if (has_land_reg and land_reg_pages) else (parse_land_register(full_text) if has_land_reg else None)
+        merged = merge_building_and_land_documents(b_data, land_use_data=l_data, land_reg_data=lr_data)
+
+        if has_land_use and has_land_reg:
+            lbl = "건축물대장 + 토지이용계획원 + 토지대장 융합 분석 완료"
+        elif has_land_use:
+            lbl = "건축물대장 + 토지이용계획확인원 융합 분석 완료"
+        else:
+            lbl = "건축물대장 + 토지대장 융합 분석 완료"
+        return lbl, merged, full_text
 
     # 1. 표제부 + 전유부 복합 서류인 경우
     if "표제부+전유부" in doc_type or ("표제부" in full_text and "전유부분" in full_text):
@@ -1346,27 +1444,56 @@ def parse_raw_script_document(raw_text: str) -> Tuple[str, Dict[str, Any]]:
 
     has_building = any(k in text_condensed for k in ["건축물대장", "표제부", "총괄표제부", "전유부", "전유부분", "사용승인일", "준공일", "주구조", "허가일"])
     has_land_use = any(k in text_condensed for k in ["토지이용계획", "국토의계획및이용", "토지이용계획확인서", "토지이용계획열람"])
+    has_land_reg = any(k in text_condensed for k in ["토지대장", "임야대장"]) or ("개별공시지가" in text_condensed and "공시지가" in text_condensed)
 
-    # 0. 건축물대장 + 토지이용계획 스크립트 복합 붙여넣기 (융합 분석)
-    if has_building and has_land_use:
-        t_data = parse_building_register_title(text)
-        e_data = parse_building_register_exclusive(text)
-        b_data = merge_building_registers(t_data, e_data)
+    # 0. 건축물대장 + (토지이용계획 or 토지대장) 스크립트 복합 붙여넣기 (융합 분석)
+    if has_building and (has_land_use or has_land_reg):
+        has_title_kw = any(k in text_condensed for k in ["표제부", "총괄표제부", "주차장", "대지위치", "허가일", "사용승인일"])
+        has_excl_kw = any(k in text_condensed for k in ["전유부", "전유부분", "공용부분", "호명칭", "전유면적"])
+        
+        if has_title_kw and has_excl_kw:
+            t_data = parse_building_register_title(text)
+            e_data = parse_building_register_exclusive(text)
+            b_data = merge_building_registers(t_data, e_data)
+        elif has_excl_kw:
+            b_data = parse_building_register_exclusive(text)
+        elif has_title_kw:
+            b_data = parse_building_register_title(text)
+        else:
+            b_data = parse_general_building_register(text)
+
+        l_data = parse_land_use_plan(text) if has_land_use else None
+        lr_data = parse_land_register(text) if has_land_reg else None
+        merged = merge_building_and_land_documents(b_data, land_use_data=l_data, land_reg_data=lr_data)
+
+        if has_land_use and has_land_reg:
+            lbl = "건축물대장 + 토지이용계획원 + 토지대장 스크립트 융합 분석 완료"
+        elif has_land_use:
+            lbl = "건축물대장 + 토지이용계획원 스크립트 융합 분석 완료"
+        else:
+            lbl = "건축물대장 + 토지대장 스크립트 융합 분석 완료"
+        return lbl, merged
+
+    # 1. 토지이용계획과 토지대장 동시 복합 (건물 없음)
+    if has_land_use and has_land_reg and not has_building:
         l_data = parse_land_use_plan(text)
-        merged = merge_building_and_land_documents(b_data, land_use_data=l_data)
-        return "건축물대장 + 토지이용계획원 스크립트 융합 분석", merged
+        lr_data = parse_land_register(text)
+        merged = dict(lr_data)
+        if l_data.get("zone_region"): merged["zone_region"] = l_data["zone_region"]
+        if l_data.get("zone_district"): merged["zone_district"] = l_data["zone_district"]
+        return "토지이용계획원 + 토지대장 스크립트 융합 분석 완료", merged
 
-    # 1. 토지이용계획 단독 스크립트 우선 판정 (주소 키워드로 인한 집합건축물 오인식 원천 방지)
+    # 2. 토지이용계획 단독 스크립트 우선 판정 (주소 키워드로 인한 집합건축물 오인식 원천 방지)
     if has_land_use and not has_building:
         p_data = parse_land_use_plan(text)
         return "토지이용계획확인원 스크립트", p_data
 
-    # 2. 토지대장 단독 스크립트 우선 판정
+    # 3. 토지대장 단독 스크립트 우선 판정
     if ("토지대장" in text_condensed or "임야대장" in text_condensed) and not has_building:
         l_data = parse_land_register(text)
         return "토지대장 스크립트", l_data
 
-    # 1. 집합건축물대장 (표제부와 전유부 동시 포함 또는 둘 다의 특성이 있는 경우)
+    # 4. 집합건축물대장 (표제부와 전유부 동시 포함 또는 둘 다의 특성이 있는 경우)
     has_title_kw = any(k in text_condensed for k in ["표제부", "총괄표제부", "주차장", "세대수", "총세대수", "대지위치", "허가일", "사용승인일"])
     has_excl_kw = any(k in text_condensed for k in ["전유부", "전유부분", "공용부분", "호명칭", "전유면적", "호실", "제2501호", "호수"])
 
@@ -1377,27 +1504,25 @@ def parse_raw_script_document(raw_text: str) -> Tuple[str, Dict[str, Any]]:
         merged = merge_building_registers(t_data, e_data)
         return "집합건축물대장 (표제부+전유부 스크립트 통합 분석)", merged
 
-    # 2. 전유부 단독 스크립트
+    # 5. 전유부 단독 스크립트
     elif "전유" in text_condensed or "전유부분" in text_condensed or "공용부분" in text_condensed:
         e_data = parse_building_register_exclusive(text)
-        # 혹시 전유부 안에 대지위치나 사용승인일, 건물명이 들어있으면 보강
         t_data = parse_building_register_title(text)
         merged = merge_building_registers(t_data, e_data)
         return "집합건축물대장 (전유부 스크립트)", merged
 
-    # 3. 토지대장
+    # 6. 토지대장 (단독 fallback)
     elif "토지대장" in text_condensed or "임야대장" in text_condensed or "개별공시지가" in text_condensed:
         l_data = parse_land_register(text)
         return "토지대장 스크립트", l_data
 
-    # 4. 토지이용계획 (용도지역 단독 키워드로 건축물대장이 오인식되는 오류 원천 차단)
+    # 7. 토지이용계획 (단독 fallback)
     elif any(k in text_condensed for k in ["토지이용계획", "국토의계획및이용", "토지이용계획확인서", "토지이용계획열람"]):
         p_data = parse_land_use_plan(text)
         return "토지이용계획확인원 스크립트", p_data
 
-    # 5. 일반건축물대장 또는 표제부
+    # 8. 일반건축물대장 또는 표제부
     else:
-        # 일반건축물대장 또는 표제부 파싱 시도
         t_data = parse_building_register_title(text)
         e_data = parse_building_register_exclusive(text)
         
@@ -1409,7 +1534,6 @@ def parse_raw_script_document(raw_text: str) -> Tuple[str, Dict[str, Any]]:
             g_data = parse_general_building_register(text)
             return "일반건축물대장 스크립트", g_data
         else:
-            # 기본 파싱 결과 병합 반환
             merged = merge_building_registers(t_data, e_data)
             return "건축물대장 스크립트", merged
 

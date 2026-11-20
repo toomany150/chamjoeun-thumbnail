@@ -1775,10 +1775,15 @@ def apply_commercial_crawled_or_doc_data(data: dict):
         safe_set_session_state("comm_ad_area_contract", str(data["area_contract"]))
     elif data.get("area_exclusive"):
         safe_set_session_state("comm_ad_area_contract", str(data["area_exclusive"]))
-    if data.get("floor_info"):
+    if data.get("floor_info") and str(data["floor_info"]).strip() != "- / -":
         safe_set_session_state("comm_ad_floor_info", str(data["floor_info"]))
     if data.get("building_use"):
-        safe_set_session_state("comm_ad_building_use", str(data["building_use"]))
+        b_use = str(data["building_use"]).strip()
+        # 토지대장의 '토지 (지목: 대)'가 상가 건축물 용도를 덮어쓰지 않도록 철저 방어
+        if not b_use.startswith("토지"):
+            safe_set_session_state("comm_ad_building_use", b_use)
+        elif not st.session_state.get("comm_ad_building_use"):
+            safe_set_session_state("comm_ad_building_use", "제1종 근린생활시설")
     if data.get("zone_region"):
         safe_set_session_state("comm_ad_zone_region", str(data["zone_region"]).strip())
     if data.get("zone_district"):
@@ -1787,7 +1792,7 @@ def apply_commercial_crawled_or_doc_data(data: dict):
         safe_set_session_state("comm_ad_structure", str(data["structure"]).strip())
     if data.get("approval_date") and str(data["approval_date"]).strip() != "-":
         safe_set_session_state("comm_ad_approval_date", str(data["approval_date"]).strip())
-    if data.get("parking"):
+    if data.get("parking") and str(data["parking"]).strip() != "-":
         safe_set_session_state("comm_ad_parking", str(data["parking"]))
     if data.get("trade_type"):
         safe_set_session_state("comm_ad_trade_type", str(data["trade_type"]))
@@ -4766,13 +4771,23 @@ def render_tab_comm_ad():
                                 else:
                                     b_merged = {}
 
-                                # 2단계: 건축물대장(16번 사용승인일)과 토지이용계획(14번 용도지역·지구) 융합
+                                # 2단계: 건축물대장(16번 사용승인일)과 토지이용계획(14번 용도지역·지구), 토지대장(공시지가) 융합
                                 if b_merged and (land_use_data or land_reg_data):
                                     doc_parsed_result = merge_building_and_land_documents(b_merged, land_use_data=land_use_data, land_reg_data=land_reg_data)
-                                    doc_parsed_type = "건축물대장(사용승인일) + 토지이용계획원(용도지역·지구) 융합 분석 완료"
+                                    if land_use_data and land_reg_data:
+                                        doc_parsed_type = "건축물대장(사용승인일) + 토지이용계획원(용도지역·지구) + 토지대장(공시지가) 융합 분석 완료"
+                                    elif land_use_data:
+                                        doc_parsed_type = "건축물대장(사용승인일) + 토지이용계획원(용도지역·지구) 융합 분석 완료"
+                                    else:
+                                        doc_parsed_type = "건축물대장 + 토지대장 융합 분석 완료"
                                 elif b_merged:
                                     doc_parsed_result = b_merged
                                     doc_parsed_type = "집합건축물대장 (통합)" if (title_data and exclusive_data) else ("표제부" if title_data else "건축물대장")
+                                elif land_use_data and land_reg_data:
+                                    doc_parsed_result = dict(land_reg_data)
+                                    if land_use_data.get("zone_region"): doc_parsed_result["zone_region"] = land_use_data["zone_region"]
+                                    if land_use_data.get("zone_district"): doc_parsed_result["zone_district"] = land_use_data["zone_district"]
+                                    doc_parsed_type = "토지이용계획원 + 토지대장 융합 분석 완료"
                                 elif land_use_data:
                                     doc_parsed_result = land_use_data
                                     doc_parsed_type = "토지이용계획확인원"
@@ -4868,7 +4883,7 @@ def render_tab_comm_ad():
         st.markdown("""
         <div style="display:flex; justify-content:space-between; align-items:center;">
             <b>01. 소재지</b>
-            <span class="spec-badge badge-red">동·리·지번 필수</span>
+            <span class="spec-badge badge-red">법정 필수 (지번 필수)</span>
         </div>
         """, unsafe_allow_html=True)
         st.text_input("소재지 주소", key="comm_ad_location")
@@ -4877,7 +4892,7 @@ def render_tab_comm_ad():
         st.markdown("""
         <div style="display:flex; justify-content:space-between; align-items:center; margin-top: 10px;">
             <b>02. 면적 (전용 / 계약)</b>
-            <span class="spec-badge badge-orange">법정단위 ㎡ 표기 (평수 제외)</span>
+            <span class="spec-badge badge-red">법정 필수 (전용 ㎡ 표기)</span>
         </div>
         """, unsafe_allow_html=True)
         car1, car2 = st.columns(2)
@@ -4894,14 +4909,19 @@ def render_tab_comm_ad():
         """, unsafe_allow_html=True)
 
         # 03. 해당층 / 총층수
-        st.markdown("<b>03. 해당층 / 총층수</b>", unsafe_allow_html=True)
+        st.markdown("""
+        <div style="display:flex; justify-content:space-between; align-items:center;">
+            <b>03. 해당층 / 총층수</b>
+            <span class="spec-badge badge-red">법정 필수</span>
+        </div>
+        """, unsafe_allow_html=True)
         st.text_input("해당층 / 총층수", key="comm_ad_floor_info", placeholder="예: 1층 / 지상 5층 (지하 1층)")
 
-        # 04. 화장실 구분 (상가 필수)
+        # 04. 화장실 구분 (상가 특화: 국토부 고시상 비주거용 방수 제외)
         st.markdown("""
         <div style="display:flex; justify-content:space-between; align-items:center; margin-top: 10px;">
             <b>04. 화장실 구분</b>
-            <span class="spec-badge badge-green">상가 특화</span>
+            <span class="spec-badge badge-green">상가 특화 (방수 제외)</span>
         </div>
         """, unsafe_allow_html=True)
         restroom_opts = ["내부 남녀구분 화장실 완비", "내부 단독 화장실", "각 층별 남녀 분리 화장실 (외부 공용)", "외부 공용 화장실"]
@@ -4913,7 +4933,7 @@ def render_tab_comm_ad():
         st.markdown("""
         <div style="display:flex; justify-content:space-between; align-items:center; margin-top: 10px;">
             <b>05. 관리비 & 세부내역</b>
-            <span class="spec-badge badge-red">월 10만원↑ 세부내역 필수</span>
+            <span class="spec-badge badge-red">법정 필수 (10만↑ 세부내역)</span>
         </div>
         """, unsafe_allow_html=True)
         cmf1, cmf2 = st.columns([1, 1.4])
@@ -4928,7 +4948,12 @@ def render_tab_comm_ad():
             st.text_input("세부내역", key="comm_ad_maintenance_detail", placeholder="예: 공용청소, 승강기유지비 등")
 
         # 06. 거래 형태 & 07. 거래 가격
-        st.markdown("<b>06. 거래 형태 & 07. 가격</b>", unsafe_allow_html=True)
+        st.markdown("""
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-top: 10px;">
+            <b>06. 거래 형태 & 07. 거래 가격</b>
+            <span class="spec-badge badge-red">법정 필수</span>
+        </div>
+        """, unsafe_allow_html=True)
         cpr1, cpr2 = st.columns([1, 1.4])
         with cpr1:
             c_trades = ["월세", "전세", "매매"] if not is_comm_ad_sale else ["매매", "월세"]
@@ -4943,7 +4968,7 @@ def render_tab_comm_ad():
             st.markdown("""
             <div style="display:flex; justify-content:space-between; align-items:center; margin-top: 10px;">
                 <b>08. 권리금 유무</b>
-                <span class="spec-badge badge-orange">임차 필수</span>
+                <span class="spec-badge badge-gold">상가 실무 핵심</span>
             </div>
             """, unsafe_allow_html=True)
             st.text_input("권리금 정보", key="comm_ad_premium_fee", placeholder="예: 무권리 (권리금 없음) 또는 시설권리금 협의")
@@ -4967,7 +4992,7 @@ def render_tab_comm_ad():
         st.markdown("""
         <div style="display:flex; justify-content:space-between; align-items:center; margin-top: 10px;">
             <b>09. 방향 (주된 출입구 기준)</b>
-            <span class="spec-badge badge-green">출입구 기준</span>
+            <span class="spec-badge badge-red">법정 필수 (출입구 기준)</span>
         </div>
         """, unsafe_allow_html=True)
         st.text_input("방향", key="comm_ad_direction", placeholder="예: 남서향 (주된 출입구 기준)")
@@ -4975,14 +5000,29 @@ def render_tab_comm_ad():
         # 10. 입점(입주)가능일 & 11. 총주차대수
         cmv1, cmv2 = st.columns(2)
         with cmv1:
-            st.markdown("<b>10. 입점(입주)가능일</b>", unsafe_allow_html=True)
+            st.markdown("""
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+                <b>10. 입점(입주)가능일</b>
+                <span class="spec-badge badge-red">법정 필수</span>
+            </div>
+            """, unsafe_allow_html=True)
             st.text_input("입점가능일", key="comm_ad_move_in_date", placeholder="예: 즉시입점 협의가능")
         with cmv2:
-            st.markdown("<b>11. 총주차대수</b>", unsafe_allow_html=True)
+            st.markdown("""
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+                <b>11. 총주차대수</b>
+                <span class="spec-badge badge-red">법정 필수</span>
+            </div>
+            """, unsafe_allow_html=True)
             st.text_input("총주차대수", key="comm_ad_parking", placeholder="예: 총 20대 (점포 1대 무료)")
 
         # 12. 현재 업종 & 추천 업종
-        st.markdown("<b>12. 현재 및 추천 업종</b>", unsafe_allow_html=True)
+        st.markdown("""
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-top: 10px;">
+            <b>12. 현재 및 추천 업종</b>
+            <span class="spec-badge badge-blue">상가 실무 (인허가)</span>
+        </div>
+        """, unsafe_allow_html=True)
         cus1, cus2 = st.columns(2)
         with cus1:
             st.text_input("현재 상태/업종", key="comm_ad_current_use", placeholder="예: 공실 또는 카페 성업중")
@@ -4990,14 +5030,19 @@ def render_tab_comm_ad():
             st.text_input("추천 업종", key="comm_ad_recommended_use", placeholder="예: 카페, 음식점, 베이커리 등")
 
         # 13. 건축물 법정 용도
-        st.markdown("<b>13. 건축물 용도 (법정 주용도)</b>", unsafe_allow_html=True)
+        st.markdown("""
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-top: 10px;">
+            <b>13. 건축물 용도 (법정 주용도)</b>
+            <span class="spec-badge badge-red">법정 필수 (종류)</span>
+        </div>
+        """, unsafe_allow_html=True)
         st.text_input("건축물 용도", key="comm_ad_building_use", placeholder="예: 제1종 근린생활시설")
 
         # 14. 용도지역 & 용도지구 (신소장님 필수 항목)
         st.markdown("""
         <div style="display:flex; justify-content:space-between; align-items:center; margin-top: 10px;">
             <b>14. 용도지역 및 용도지구</b>
-            <span class="spec-badge badge-gold">인허가 핵심</span>
+            <span class="spec-badge badge-gold">인허가 핵심 (토지이용계획)</span>
         </div>
         """, unsafe_allow_html=True)
         czn1, czn2 = st.columns(2)
@@ -5010,7 +5055,7 @@ def render_tab_comm_ad():
         st.markdown("""
         <div style="display:flex; justify-content:space-between; align-items:center; margin-top: 10px;">
             <b>15. 주구조 (건물 구조)</b>
-            <span class="spec-badge badge-green">대장 표제부 기준</span>
+            <span class="spec-badge badge-green">확인설명서 (대장 표제부)</span>
         </div>
         """, unsafe_allow_html=True)
         st.text_input("주구조", key="comm_ad_structure", placeholder="예: 철근콘크리트구조, 일반철골구조 등")
@@ -5018,14 +5063,29 @@ def render_tab_comm_ad():
         # 16. 사용승인일 (준공일) & 17. 주요 설비 및 시설
         cbu1, cbu2 = st.columns(2)
         with cbu1:
-            st.markdown("<b>16. 사용승인일 (준공일)</b>", unsafe_allow_html=True)
+            st.markdown("""
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+                <b>16. 사용승인일 (준공일)</b>
+                <span class="spec-badge badge-red">법정 필수</span>
+            </div>
+            """, unsafe_allow_html=True)
             st.text_input("사용승인일", key="comm_ad_approval_date", placeholder="예: 2018년 06월 15일")
         with cbu2:
-            st.markdown("<b>17. 주요 설비 및 시설</b>", unsafe_allow_html=True)
+            st.markdown("""
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+                <b>17. 주요 설비 및 시설</b>
+                <span class="spec-badge badge-blue">상가 실무 (전기kW/가스/승강기)</span>
+            </div>
+            """, unsafe_allow_html=True)
             st.text_input("시설 정보", key="comm_ad_facility_info", placeholder="예: 전기 15kW 승압, 도시가스, 승강기 완비")
 
         # 18. 중개사무소 정보
-        st.markdown("<b>18. 중개사무소 정보</b>", unsafe_allow_html=True)
+        st.markdown("""
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-top: 10px;">
+            <b>18. 중개사무소 정보</b>
+            <span class="spec-badge badge-red">법정 5대 필수 항목</span>
+        </div>
+        """, unsafe_allow_html=True)
         st.checkbox("✅ 중개사무소 정보 포함하기", key="comm_ad_include_office_info")
         if st.session_state.comm_ad_include_office_info:
             cof1, cof2 = st.columns(2)
@@ -5039,7 +5099,7 @@ def render_tab_comm_ad():
 
             cas1, cas2 = st.columns(2)
             with cas1:
-                st.text_input("소공/담당자 성명", key="comm_ad_assistant_name")
+                st.text_input("소속공인중개사 성명", key="comm_ad_assistant_name", help="공인중개사법상 소속공인중개사는 광고 명시가 가능하며, 중개보조원은 명시할 수 없습니다.")
             with cas2:
                 st.text_input("담당자 직통 연락처", key="comm_ad_assistant_phone")
 

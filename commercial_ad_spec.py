@@ -170,13 +170,13 @@ def get_commercial_spec_table_data(data: dict) -> list[dict]:
     price = str(data.get("price_text", "15억 원" if is_sale else "보증금 3,000만 원 / 월 180만 원")).strip()
 
     items = [
-        {"num": 1, "name": "소재지", "val": data.get("location", ""), "guide": "동·리 및 지번 표기 (호수는 의뢰인 동의 시 층수만 표기 가능)"},
-        {"num": 2, "name": "면적 (전용/계약)", "val": area_display, "guide": "법정단위 ㎡ 단독 표기 (평수 제외, 전용률 자동 산출)"},
-        {"num": 3, "name": "해당층 / 총층수", "val": data.get("floor_info", ""), "guide": "해당층 및 건축물 전체 지상/지하 총층수 명시"},
-        {"num": 4, "name": "화장실 구분", "val": data.get("restroom", "내부 남녀구분 화장실"), "guide": "상가 필수: 내부 남녀구분, 층별 공용, 단독 등"},
-        {"num": 5, "name": "관리비", "val": m_display, "guide": "정액 관리비 및 세부내역(청소, 승강기, 공용전기 등) 분리 표기"},
-        {"num": 6, "name": "거래 형태", "val": trade, "guide": "월세, 전세, 매매 중 명확히 표기"},
-        {"num": 7, "name": "거래 가격", "val": price, "guide": "보증금/월세 또는 매매가 명확히 명시 (부가세 별도 여부 등)"},
+        {"num": 1, "name": "소재지", "val": data.get("location", ""), "guide": "[법정 필수] 동·리·지번 명시 (상가 호수는 의뢰인 동의 시 층수만 표기 가능)"},
+        {"num": 2, "name": "면적 (전용/계약)", "val": area_display, "guide": "[법정 필수] 전용면적(바닥면적) ㎡ 필수 표기 (계약면적 및 전용률 병기)"},
+        {"num": 3, "name": "해당층 / 총층수", "val": data.get("floor_info", ""), "guide": "[법정 필수] 해당 점포 층수 및 건물 전체 지상/지하 총층수 명시"},
+        {"num": 4, "name": "화장실 구분", "val": data.get("restroom", "내부 남녀구분 화장실"), "guide": "[상가 특화] 주거용이 아니므로 방수 제외, 화장실 형태 명시 (국토교통부 고시 준수)"},
+        {"num": 5, "name": "관리비", "val": m_display, "guide": "[법정 필수] 월 정액 관리비 및 10만 원 이상 시 비목별 세부내역 필수 표기"},
+        {"num": 6, "name": "거래 형태", "val": trade, "guide": "[법정 필수] 월세, 전세, 매매 중 명확히 표기"},
+        {"num": 7, "name": "거래 가격", "val": price, "guide": "[법정 필수] 보증금 및 차임(월세) 또는 매매가격 명확히 명시 (부가세 별도 여부 확인)"},
     ]
 
     if is_sale:
@@ -194,18 +194,18 @@ def get_commercial_spec_table_data(data: dict) -> list[dict]:
         if y_rate:
             invest_lines.append(f"• 연간 수익률: {y_rate}")
         
-        items.append({"num": 8, "name": "수익률 & 투자금 분석", "val": "\n".join(invest_lines), "guide": "수익형 상가 핵심 투자 분석표"})
+        items.append({"num": 8, "name": "수익률 & 투자금 분석", "val": "\n".join(invest_lines), "guide": "[상가 실무] 수익형 매매 핵심 투자 분석 (기임대차 내역, 대출금, 실투자금, 수익률)"})
     else:
         # 임차 시: 권리금 정보
         prem = data.get("premium_fee", "무권리 (권리금 없음)")
-        items.append({"num": 8, "name": "권리금 유무", "val": prem, "guide": "무권리, 시설/바닥 권리금 협의 여부 명시"})
+        items.append({"num": 8, "name": "권리금 유무", "val": prem, "guide": "[상가 실무] 상가 임대차 핵심 (무권리, 시설/바닥 권리금 협의 여부)"})
 
     items.extend([
-        {"num": 9, "name": "방향 (출입구 기준)", "val": data.get("direction", "남향 (주된 출입구 기준)"), "guide": "상가는 주실이 없으므로 주된 출입구 기준 명시"},
-        {"num": 10, "name": "입점(입주)가능일", "val": data.get("move_in_date", "즉시입점 협의가능"), "guide": "즉시입점, 날짜 협의, 임대차 승계 여부"},
-        {"num": 11, "name": "총주차대수", "val": data.get("parking", "총 20대 (점포 1대 무료)"), "guide": "건물 전체 주차대수 및 해당 점포 무료/유료 조건"},
-        {"num": 12, "name": "현재 / 추천 업종", "val": f"• 현재: {data.get('current_use', '공실')}\n• 추천: {data.get('recommended_use', '일반음식점, 카페, 판매점 등')}", "guide": "입점 가능 추천 업종 및 인허가 적합성"},
-        {"num": 13, "name": "건축물 용도", "val": data.get("building_use", "제1종 근린생활시설"), "guide": "건축물대장 상 법정 용도 (제1·2종 근린생활시설 등)"},
+        {"num": 9, "name": "방향 (출입구 기준)", "val": data.get("direction", "남향 (주된 출입구 기준)"), "guide": "[법정 필수] 비주거용 건축물이므로 '주된 출입구 기준' 명시 필수"},
+        {"num": 10, "name": "입점(입주)가능일", "val": data.get("move_in_date", "즉시입점 협의가능"), "guide": "[법정 필수] 즉시입점 또는 구체적 입점 협의일 명시"},
+        {"num": 11, "name": "총주차대수", "val": data.get("parking", "총 20대 (점포 1대 무료)"), "guide": "[법정 필수] 건축물대장상 총 주차대수 명시 (점포 무료/유료 조건 병기)"},
+        {"num": 12, "name": "현재 / 추천 업종", "val": f"• 현재: {data.get('current_use', '공실')}\n• 추천: {data.get('recommended_use', '일반음식점, 카페, 판매점 등')}", "guide": "[상가 실무] 업종 인허가 적합성 및 기존 행정처분 승계 여부 확인"},
+        {"num": 13, "name": "건축물 용도", "val": data.get("building_use", "제1종 근린생활시설"), "guide": "[법정 필수] 중개대상물 종류: 건축물대장상 법정 주용도 (제1·2종 근생 등)"},
     ])
 
     # 14. 용도지역 및 용도지구 (상가 인허가 필수)
@@ -216,7 +216,7 @@ def get_commercial_spec_table_data(data: dict) -> list[dict]:
         "num": 14,
         "name": "용도지역 · 용도지구",
         "val": z_val,
-        "guide": "국토계획법상 용도지역 및 지구/구역 (상가 업종 인허가 필수 확인사항)"
+        "guide": "[상가 인허가] 토지이용계획상 용도지역 및 지구/구역 (업종 인허가 필수 확인사항)"
     })
 
     # 15. 주구조 (건물 구조)
@@ -224,12 +224,12 @@ def get_commercial_spec_table_data(data: dict) -> list[dict]:
         "num": 15,
         "name": "주구조 (건물 구조)",
         "val": data.get("structure", "철근콘크리트구조"),
-        "guide": "건축물대장 표제부 상 법정 주구조 (철근콘크리트, 철골조 등)"
+        "guide": "[확인설명서] 건축물대장 표제부상 법정 주구조 (철근콘크리트, 철골조 등)"
     })
 
     items.extend([
-        {"num": 16, "name": "사용승인일 (준공일)", "val": data.get("approval_date", ""), "guide": "건축물대장 상 사용승인일 기재 필수"},
-        {"num": 17, "name": "주요 설비 및 시설", "val": data.get("facility_info", "전기용량, 가스, 승강기 유무"), "guide": "계약전력(kW), 도시가스, 덕트, 엘리베이터 등"},
+        {"num": 16, "name": "사용승인일 (준공일)", "val": data.get("approval_date", ""), "guide": "[법정 필수] 건축물대장상 준공인가일(사용승인일) 명시 필수"},
+        {"num": 17, "name": "주요 설비 및 시설", "val": data.get("facility_info", "전기 15kW, 도시가스, 승강기 완비"), "guide": "[상가 실무] 계약전력(kW), 도시가스, 상하수도, 덕트, 엘리베이터 등"},
     ])
 
     if data.get("include_office_info", True):
@@ -240,7 +240,7 @@ def get_commercial_spec_table_data(data: dict) -> list[dict]:
             f"• 소재지: {data.get('office_address', '부산광역시 사상구 강선로 9, 1층')}",
             f"• 직통전화: {data.get('office_phone', '010-9667-4201')}"
         ]
-        items.append({"num": 18, "name": "중개사무소 정보", "val": "\n".join(office_lines), "guide": "상호, 소재지, 연락처, 등록번호, 대표자 성명 5대 항목 필수"})
+        items.append({"num": 18, "name": "중개사무소 정보", "val": "\n".join(office_lines), "guide": "[법정 필수] 법정 5대 항목: 상호, 대표자 성명, 등록번호, 사무소 소재지, 연락처"})
 
         as_name = data.get("assistant_name", "").strip()
         as_phone = data.get("assistant_phone", "").strip()
@@ -250,7 +250,7 @@ def get_commercial_spec_table_data(data: dict) -> list[dict]:
                 f"• 소속공인중개사: {as_name}",
                 f"• 연락처: {as_phone_val}"
             ]
-            items.append({"num": 19, "name": "소속공인중개사", "val": "\n".join(as_lines), "guide": "소속공인중개사 성명 및 직통 연락처"})
+            items.append({"num": 19, "name": "소속공인중개사", "val": "\n".join(as_lines), "guide": "[법정 허용] 소속공인중개사 성명 및 연락처 (중개보조원은 법상 광고 불가)"})
 
     return items
 

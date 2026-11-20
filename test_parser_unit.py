@@ -333,5 +333,75 @@ class TestDocumentParser(unittest.TestCase):
         )
         self.assertEqual(img_default.size, (1240, 1754))
 
+    def test_three_way_official_documents_fusion(self):
+        """건축물대장 + 토지대장 + 토지이용계획원 3종 공적장부 융합 정밀 검증"""
+        from document_parser import parse_land_register
+
+        bldg_text = """
+        [집합건축물대장 (전유부분)]
+        대지위치: 부산광역시 사상구 괘법동 560-1
+        건축물명칭: 사상빌딩
+        동명칭및호명칭: 제101호
+        주용도: 제1종근린생활시설(소매점)
+        전유부분: 제1층 제101호 82.64㎡
+        공용부분: 계단실 및 복도 42.36㎡
+        사용승인일: 2018-06-15
+        """
+        land_reg_text = """
+        [토지대장]
+        소재지: 부산광역시 사상구 괘법동 560-1
+        지목: 대
+        면적: 500.0㎡
+        개별공시지가: 3,500,000원
+        """
+        land_use_text = """
+        [토지이용계획확인서]
+        소재지: 부산광역시 사상구 괘법동 560-1
+        지목: 대
+        면적: 500.0㎡
+        지역·지구 등 지정여부: [국토의 계획 및 이용에 관한 법률] 일반상업지역, 방화지구, 지구단위계획구역
+        """
+        # 1. 개별 파싱 및 융합 테스트
+        b_data = parse_building_register_exclusive(bldg_text)
+        lr_data = parse_land_register(land_reg_text)
+        lu_data = parse_land_use_plan(land_use_text)
+
+        merged = merge_building_and_land_documents(b_data, land_use_data=lu_data, land_reg_data=lr_data)
+
+        # 검증 1: 건축물대장 전용면적(82.64)이 토지면적(500.0)으로 덮어써지지 않고 100% 보존
+        self.assertEqual(merged.get("area_exclusive"), "82.64")
+        self.assertEqual(merged.get("area_supply"), "125.00")
+        self.assertEqual(merged.get("land_area"), "500.0")
+
+        # 검증 2: 건축물 주용도가 '토지 (지목: 대)'로 바뀌지 않고 '제1종근린생활시설'로 100% 보존
+        self.assertIn("근린생활시설", merged.get("building_use", ""))
+        self.assertNotIn("토지", merged.get("building_use", ""))
+
+        # 검증 3: 사용승인일(16번)이 건축물대장의 2018년 06월 15일로 100% 보존
+        self.assertEqual(merged.get("approval_date"), "2018년 06월 15일")
+
+        # 검증 4: 14번 용도지역 및 용도지구가 토지이용계획원에서 정확히 분리 추출 반영
+        self.assertEqual(merged.get("zone_region"), "일반상업지역")
+        self.assertIn("방화지구", merged.get("zone_district", ""))
+        self.assertIn("지구단위계획구역", merged.get("zone_district", ""))
+
+        # 검증 5: 공시지가가 토지대장에서 반영
+        self.assertEqual(merged.get("official_price"), "3,500,000원/㎡")
+
+        # 검증 6: 상가 비주거용이므로 방수가 아닌 화장실로 정제
+        self.assertEqual(merged.get("room_bath"), "해당사항 없음 (상가)")
+        self.assertIn("화장실", merged.get("restroom", ""))
+
+        # 2. 통합 복사 붙여넣기(스크립트) 융합 테스트
+        combined_all = bldg_text + "\n" + land_reg_text + "\n" + land_use_text
+        doc_type, parsed_all = parse_raw_script_document(combined_all)
+
+        self.assertIn("융합 분석", doc_type)
+        self.assertEqual(parsed_all.get("area_exclusive"), "82.64")
+        self.assertIn("근린생활시설", parsed_all.get("building_use", ""))
+        self.assertEqual(parsed_all.get("approval_date"), "2018년 06월 15일")
+        self.assertEqual(parsed_all.get("zone_region"), "일반상업지역")
+        self.assertEqual(parsed_all.get("official_price"), "3,500,000원/㎡")
+
 if __name__ == "__main__":
     unittest.main()
