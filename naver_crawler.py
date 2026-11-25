@@ -673,6 +673,10 @@ def get_naver_proxy_config() -> Tuple[Optional[str], str]:
     except Exception:
         pass
 
+    # Streamlit Cloud 등 클라우드 환경에서 Secrets가 누락되어도 참좋은 전용 국내 iwinv 프록시로 자동 폴백
+    if not proxy_url and is_running_on_cloud():
+        proxy_url = "http://49.247.132.147:8000"
+
     return (proxy_url if proxy_url else None), proxy_key
 
 
