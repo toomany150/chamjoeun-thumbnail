@@ -633,6 +633,26 @@ def parse_naver_clipboard_text(text: str) -> Dict[str, Any]:
     return res
 
 
+def is_running_on_cloud() -> bool:
+    """
+    현재 실행 환경이 Streamlit Community Cloud 또는 해외 클라우드인지 판별합니다.
+    """
+    if os.path.exists("/mount/src"):
+        return True
+    if any(k in os.environ for k in ["STREAMLIT_SHARING", "STREAMLIT_CLOUD", "STREAMLIT_HOST"]):
+        return True
+    if os.environ.get("HOSTNAME", "").startswith("streamlit"):
+        return True
+    try:
+        import streamlit as st
+        if hasattr(st, "secrets") and len(st.secrets) > 0:
+            if "NAVER_PROXY_URL" in st.secrets:
+                return True
+    except Exception:
+        pass
+    return False
+
+
 def get_naver_proxy_config() -> Tuple[Optional[str], str]:
     """
     환경변수(NAVER_PROXY_URL) 또는 Streamlit Secrets에서 ivy 프록시 서버 설정을 읽어옵니다.
@@ -672,6 +692,7 @@ def crawl_naver_article(article_input: str) -> Tuple[bool, str, Dict[str, Any]]:
     # 전략 0: ivy 서버 프록시 (Streamlit Cloud 방화벽 우회)
     # ----------------------------------------------------
     proxy_url, proxy_key = get_naver_proxy_config()
+    proxy_fail_reason = ""
     if proxy_url:
         try:
             p_res = requests.get(
@@ -683,11 +704,15 @@ def crawl_naver_article(article_input: str) -> Tuple[bool, str, Dict[str, Any]]:
                 p_json = p_res.json()
                 if p_json.get("success") and p_json.get("data"):
                     return True, p_json.get("message", f"네이버 매물 [{article_no}] 크롤링 성공 (아이비 서버 경유)"), p_json.get("data")
+                elif p_json.get("message"):
+                    proxy_fail_reason = p_json.get("message")
             elif p_res.status_code == 403:
                 return False, "아이비 프록시 인증 실패: Streamlit Secrets의 NAVER_PROXY_KEY가 일치하지 않습니다.", {}
+            else:
+                proxy_fail_reason = f"아이비 프록시 응답 코드 오류 (HTTP {p_res.status_code})"
         except Exception as pe:
-            # 프록시 호출 실패 시 로컬 직접 시도로 폴백
-            pass
+            # 프록시 호출 실패 시 사유 보관 후 로컬 직접 시도로 폴백
+            proxy_fail_reason = f"아이비 프록시 서버({proxy_url}) 연결 실패: {pe}"
 
     res_data = {}
     error_reasons = []
@@ -1154,5 +1179,11 @@ def crawl_naver_article(article_input: str) -> Tuple[bool, str, Dict[str, Any]]:
 
         return True, f"네이버 매물 [{article_no}] 크롤링 성공!", res_data
 
-    # 만약 네이버 측의 봇 차단이나 유효하지 않은 매물 번호인 경우 친절한 안내 제공 (엉뚱한 쓰레기 데이터 기입 방지)
+    # 만약 네이버 측의 봇 차단이나 유효하지 않은 매물 번호인 경우 원인별 정밀 진단 안내
+    if is_running_on_cloud():
+        if proxy_fail_reason:
+            return False, f"네이버 매물 [{article_no}] 조회 실패: Streamlit Cloud에서 아이비 중계 프록시 서버 연결에 실패했습니다.\n({proxy_fail_reason})\n\n💡 해결 방법:\n1) ivy(iwinv) 서버에서 프록시 재가동: `nohup python3 ivy_proxy.py > proxy.log 2>&1 &`\n2) 0.1초 즉시 대안: 네이버 매물 화면 복사(Ctrl+C) 후 옆의 [📋 네이버 화면 복사 텍스트 붙여넣기] 이용\n3) 로컬 PC(사무실) 실행 시: 차단 없이 1초 만에 100% 직접 크롤링 가능", {}
+        elif not proxy_url:
+            return False, f"네이버 매물 [{article_no}] 조회 제한: 현재 해외 서버(Streamlit Cloud) 환경에서는 네이버의 해외 데이터센터 IP 차단 정책으로 인해 직접 조회가 제한됩니다.\n\n💡 해결 방법:\n1) 가장 확실 & 0.1초 완성: 네이버 매물 화면 복사(Ctrl+C) 후 옆의 [📋 네이버 화면 복사 텍스트 붙여넣기]를 이용해 주세요.\n2) 로컬 PC(사무실) 실행 시: 차단 없이 1초 만에 100% 직접 크롤링 가능합니다.\n3) Streamlit Cloud 상시 크롤링: ivy 프록시 서버 가동 후 Streamlit Secrets에 `NAVER_PROXY_URL` 등록", {}
+
     return False, f"네이버 매물 [{article_no}]의 상세 정보가 비공개이거나 네이버 보안 정책으로 인해 직접 조회가 제한되었습니다. 네이버 부동산 매물 화면에서 매물 정보를 마우스로 드래그 복사(Ctrl+C)하여 옆의 [📋 네이버 화면 복사 텍스트 붙여넣기]에 넣으시면 0.1초 만에 100% 완벽하게 자동 완성됩니다!", {}
