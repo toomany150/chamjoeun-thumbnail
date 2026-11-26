@@ -7,3 +7,7 @@ mobile_qr.html
 Gemini_Generated_Image_*.png
 .vscode/
 .idea/
+
+*.log
+saved_records/*.json
+!saved_records/.gitkeep

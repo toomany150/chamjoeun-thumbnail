@@ -82,6 +82,12 @@ from naver_crawler import (
     format_thumb_price,
     extract_maintenance_fee_and_detail
 )
+from storage_manager import (
+    render_tab_storage,
+    restore_listing_to_session,
+    save_listing_record,
+    collect_current_session_data
+)
 
 from collections import OrderedDict
 
@@ -1653,7 +1659,10 @@ def queue_state_update(action_type: str, data: dict = None, preset: str = None, 
     }
     # 자동 탭 복원 설정 (rerun 후에도 작업 중이던 탭으로 즉시 자동 이동)
     if target_tab:
-        if "상가" in target_tab:
+        if "보관함" in target_tab:
+            st.session_state["_override_main_tab"] = "📁 매물보관함"
+            st.session_state["_restore_tab_target"] = {"main": "매물보관함", "sub": ""}
+        elif "상가" in target_tab:
             st.session_state["_override_main_tab"] = "📋 중개대상물표시"
             st.session_state["_override_ad_sub"] = "🏬 상가"
             st.session_state["_restore_tab_target"] = {"main": "중개대상물표시", "sub": "상가"}
@@ -1669,6 +1678,24 @@ def queue_state_update(action_type: str, data: dict = None, preset: str = None, 
             st.session_state["_override_main_tab"] = "📋 중개대상물표시"
             st.session_state["_override_ad_sub"] = "🏭 공장"
             st.session_state["_restore_tab_target"] = {"main": "중개대상물표시", "sub": "공장"}
+    elif action_type == "restore_listing" and data:
+        p_label = data.get("prop_type_label", "아파트")
+        if "상가" in p_label:
+            st.session_state["_override_main_tab"] = "📋 중개대상물표시"
+            st.session_state["_override_ad_sub"] = "🏬 상가"
+            st.session_state["_restore_tab_target"] = {"main": "중개대상물표시", "sub": "상가"}
+        elif "주택" in p_label:
+            st.session_state["_override_main_tab"] = "📋 중개대상물표시"
+            st.session_state["_override_ad_sub"] = "🏡 주택"
+            st.session_state["_restore_tab_target"] = {"main": "중개대상물표시", "sub": "주택"}
+        elif "공장" in p_label:
+            st.session_state["_override_main_tab"] = "📋 중개대상물표시"
+            st.session_state["_override_ad_sub"] = "🏭 공장"
+            st.session_state["_restore_tab_target"] = {"main": "중개대상물표시", "sub": "공장"}
+        else:
+            st.session_state["_override_main_tab"] = "📋 중개대상물표시"
+            st.session_state["_override_ad_sub"] = "🏢 아파트"
+            st.session_state["_restore_tab_target"] = {"main": "중개대상물표시", "sub": "아파트"}
     elif "comm" in action_type:
         st.session_state["_override_main_tab"] = "📋 중개대상물표시"
         st.session_state["_override_ad_sub"] = "🏬 상가"
@@ -1884,6 +1911,8 @@ if "_pending_state_action" in st.session_state and st.session_state["_pending_st
         apply_crawled_or_doc_data(pending_act["data"], clean_previous=pending_act.get("clean_previous", True))
     elif act_type == "apply_comm":
         apply_commercial_crawled_or_doc_data(pending_act["data"])
+    elif act_type == "restore_listing":
+        restore_listing_to_session(pending_act["data"], safe_set_session_state)
     elif act_type == "clear_apt":
         clear_property_specs()
     elif act_type == "preset_apt":
@@ -1920,9 +1949,16 @@ with col_h1:
     </div>
     """, unsafe_allow_html=True)
 with col_h2:
-    if st.button("🔒 로그아웃 (비밀번호 잠금)", use_container_width=True):
-        st.session_state.authenticated = False
-        st.rerun()
+    c_hb1, c_hb2 = st.columns([1.1, 1])
+    with c_hb1:
+        if st.button("📁 매물보관함", use_container_width=True, help="저장된 매물 목록을 조회하고 1초 만에 불러옵니다."):
+            st.session_state["_override_main_tab"] = "📁 매물보관함"
+            st.session_state["_restore_tab_target"] = {"main": "매물보관함", "sub": ""}
+            st.rerun()
+    with c_hb2:
+        if st.button("🔒 로그아웃", use_container_width=True):
+            st.session_state.authenticated = False
+            st.rerun()
 
 # ----------------------------------------------------
 # ⚡ 스마트 자동완성 콘솔 헬퍼 함수 (중개대상물 표시 탭 전용)
@@ -1939,10 +1975,11 @@ def render_smart_autocomplete_console(target_prop_type="apt"):
         </div>
         """, unsafe_allow_html=True)
 
-        top_tab_num, top_tab_clip, top_tab_script = st.tabs([
+        top_tab_num, top_tab_clip, top_tab_script, top_tab_save = st.tabs([
             "🔍 네이버 매물번호 / URL 크롤링",
             "📋 네이버 화면 복사 텍스트 붙여넣기 (가장 확실 & 추천)",
-            "📄 건축물대장 텍스트(스크립트) & PDF 업로드"
+            "📄 건축물대장 텍스트(스크립트) & PDF 업로드",
+            "💾 현재 매물 보관함에 즉시 저장"
         ])
 
         with top_tab_num:
@@ -2048,6 +2085,43 @@ def render_smart_autocomplete_console(target_prop_type="apt"):
                                     st.error("⚠️ 업로드된 PDF 파일들에서 텍스트를 추출하지 못했습니다. 정부24/세움터 보안(DRM) 문서인 경우 첫 번째 탭 [📋 대장 텍스트 통째로 붙여넣기]에 열람 화면 텍스트를 복사(Ctrl+C)하여 넣어주세요!")
                         except Exception as e:
                             st.error(f"PDF 분석 오류: {e}")
+
+        with top_tab_save:
+            from storage_manager import generate_listing_filename, PROP_TYPE_LABELS
+            c_qs1, c_qs2, c_qs3 = st.columns([1, 1.4, 1.4])
+            p_label = PROP_TYPE_LABELS.get(target_prop_type, target_prop_type)
+            with c_qs1:
+                st.markdown(f"<div style='margin-top:28px;'>🏢 <b>종류:</b> <span style='color:#ED8936; font-weight:700;'>{p_label}</span></div>", unsafe_allow_html=True)
+            with c_qs2:
+                q_def_no = str(st.session_state.get("item_no") or st.session_state.get(f"{target_prop_type}_item_no") or "001")
+                q_item_no = st.text_input("보관할 매물번호 (또는 관리번호)", value=q_def_no, key="quick_save_item_no", placeholder="예: 2664012103")
+            with c_qs3:
+                q_memo = st.text_input("간단 메모 (선택)", key="quick_save_memo", placeholder="예: 급매, 소유자 입주협의")
+            
+            p_fn = generate_listing_filename(q_item_no, target_prop_type)
+            st.markdown(f"""
+            <div style="background:#F7FAFC; border:1px solid #E2E8F0; padding:8px 12px; border-radius:6px; margin: 6px 0 12px 0;">
+                🏷️ <b>저장 파일명:</b> <code style="color:#2B6CB0; font-weight:700;">{p_fn}</code> 
+                <span style="font-size:12px; color:#718096;">(썸네일 + 창문부착용 포스터 + 중개대상물 정보가 함께 저장됩니다)</span>
+            </div>
+            """, unsafe_allow_html=True)
+            if st.button("💾 이 매물 지금 보관함에 즉시 저장하기", type="primary", use_container_width=True, key="btn_quick_save_submit"):
+                t_d, p_d, a_d, a_no = collect_current_session_data(target_prop_type, st.session_state)
+                f_no = q_item_no.strip() if q_item_no.strip() else a_no
+                s_ok, s_msg, s_fn = save_listing_record(
+                    item_no=f_no,
+                    prop_type=target_prop_type,
+                    thumbnail_data=t_d,
+                    poster_data=p_d,
+                    ad_spec_data=a_d,
+                    status="진행중",
+                    memo=q_memo.strip()
+                )
+                if s_ok:
+                    st.success(f"🎉 {s_msg}")
+                    st.rerun()
+                else:
+                    st.error(f"⚠️ {s_msg}")
 
 # ----------------------------------------------------
 # 🌟 요구사항 4번: 최상위 2대 메인 탭 (■ "썸네일" / ■ "중개대상물표시")
@@ -5480,8 +5554,8 @@ ad_sub_def = st.session_state.pop("_override_ad_sub", None)
 thumb_sub_def = st.session_state.pop("_override_thumb_sub", None)
 poster_sub_def = st.session_state.pop("_override_poster_sub", None)
 
-tab_main_thumb, tab_main_poster, tab_main_ad = safe_tabs(
-    ["🖼️ 썸네일", "🖨️ 창문부착용A4", "📋 중개대상물표시"],
+tab_main_thumb, tab_main_poster, tab_main_ad, tab_main_storage = safe_tabs(
+    ["🖼️ 썸네일", "🖨️ 창문부착용A4", "📋 중개대상물표시", "📁 매물보관함"],
     default=main_def
 )
 
@@ -5526,6 +5600,9 @@ with tab_main_ad:
         render_tab_comm_ad()
     with ad_sub_factory:
         render_tab_factory_ad()
+
+with tab_main_storage:
+    render_tab_storage(safe_set_session_state, queue_state_update)
 
 def render_tab_restoration_script():
     """st.rerun() 후에도 사용자가 작업 중이던 메인 탭 및 서브 탭을 안전하고 신속하게 자동 복원합니다."""
