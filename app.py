@@ -7,14 +7,21 @@ import base64
 from PIL import Image
 import subprocess
 import importlib
+import sys
+import os
+
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+if BASE_DIR not in sys.path:
+    sys.path.insert(0, BASE_DIR)
+
 import thumbnail_generator
 import property_ad_spec
 import commercial_ad_spec
 import document_parser
 import naver_crawler
 import design_manager
+import storage_manager
 # 매 클릭/렌더링마다 모듈 및 폰트 캐시(@lru_cache)가 초기화되어 속도가 느려지는 현상을 방지하기 위해 importlib.reload 제거
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 ASSETS_DIR = getattr(thumbnail_generator, "ASSETS_DIR", os.path.join(BASE_DIR, "assets"))
 
 
@@ -82,13 +89,25 @@ from naver_crawler import (
     format_thumb_price,
     extract_maintenance_fee_and_detail
 )
-from storage_manager import (
-    render_tab_storage,
-    restore_listing_to_session,
-    save_listing_record,
-    collect_current_session_data,
-    render_quick_save_bar
-)
+try:
+    from storage_manager import (
+        render_tab_storage,
+        restore_listing_to_session,
+        save_listing_record,
+        collect_current_session_data,
+        render_quick_save_bar
+    )
+except (ImportError, AttributeError):
+    import importlib
+    import storage_manager
+    importlib.reload(storage_manager)
+    from storage_manager import (
+        render_tab_storage,
+        restore_listing_to_session,
+        save_listing_record,
+        collect_current_session_data,
+        render_quick_save_bar
+    )
 
 from collections import OrderedDict
 
