@@ -776,17 +776,17 @@ def render_quick_save_bar(prop_type: str, key_prefix: str, custom_title: str = N
         auto_no = str(st.session_state.get("factory_item_no") or st.session_state.get("poster_factory_item_no") or "F01")
 
     # 헤더 및 안내
-    title_text = custom_title or f"💾 [{type_label}] 작업 내용 보관함에 저장하기"
+    title_text = custom_title or f"💾 [{type_label}] 3종 세트(썸네일+창문포스터+중개대상물표시) 한 번에 보관하기"
     st.markdown(f"""
     <div style="background: linear-gradient(135deg, #FFF7ED 0%, #FFEDD5 100%); border: 1.5px solid #F97316; border-radius: 8px; padding: 12px 16px; margin: 18px 0 10px 0;">
         <div style="display:flex; justify-content:space-between; align-items:center;">
             <div>
                 <b style="font-size: 15px; color: #9A3412;">{title_text}</b><br/>
                 <span style="font-size: 13px; color: #7C2D12;">
-                    현재 작업하신 <b>{type_label}</b>의 <b>썸네일 + 창문부착용 포스터 + 중개대상물 16대 점검표</b>가 함께 일괄 보관됩니다.
+                    💡 어느 화면에서 누르셔도 현재 작업하신 <b>{type_label}</b>의 <b>①썸네일 + ②창문부착용 포스터 + ③중개대상물 16대 점검표</b> 3가지가 파일 하나로 <b>한 번에 묶여서 일괄 저장</b>됩니다! (각 탭마다 따로 누르실 필요 없습니다)
                 </span>
             </div>
-            <span style="background:#EA580C; color:#fff; font-size:12px; font-weight:700; padding:3px 10px; border-radius:12px;">{type_label}</span>
+            <span style="background:#EA580C; color:#fff; font-size:12px; font-weight:700; padding:3px 10px; border-radius:12px;">3종 원클릭 일괄보관</span>
         </div>
     </div>
     """, unsafe_allow_html=True)
@@ -801,7 +801,7 @@ def render_quick_save_bar(prop_type: str, key_prefix: str, custom_title: str = N
 
     with c_qb3:
         st.markdown(f"<div style='font-size:12px; color:#6B7280; margin-top:2px;'>저장 파일명: <code style='color:#C2410C; font-weight:700;'>{preview_name}</code></div>", unsafe_allow_html=True)
-        if st.button("💾 이 매물 지금 보관함에 저장하기", type="primary", use_container_width=True, key=f"{key_prefix}_btn_do_qsave"):
+        if st.button(f"💾 [{type_label}] 3종 세트 한 번에 저장하기", type="primary", use_container_width=True, key=f"{key_prefix}_btn_do_qsave"):
             t_d, p_d, a_d, a_no = collect_current_session_data(prop_type, st.session_state)
             f_no = cur_no.strip() if cur_no.strip() else a_no
             s_ok, s_msg, s_fn = save_listing_record(
@@ -815,7 +815,7 @@ def render_quick_save_bar(prop_type: str, key_prefix: str, custom_title: str = N
                 custom_date_str=today_str
             )
             if s_ok:
-                st.success(f"🎉 [{s_fn}] 매물이 보관함에 안전하게 저장되었습니다! 상단 '📁 매물보관함'에서 언제든 다시 불러오거나 관리하실 수 있습니다.")
+                st.success(f"🎉 [{s_fn}] 3종 세트(썸네일+창문포스터+중개표시)가 한 번에 안전하게 보관되었습니다! 다른 탭에서 중복 저장하실 필요가 없습니다. (상단 '📁 매물보관함'에서 언제든 1초 복원 가능)")
                 st.rerun()
             else:
                 st.error(f"⚠️ {s_msg}")
