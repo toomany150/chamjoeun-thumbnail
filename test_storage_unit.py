@@ -97,5 +97,28 @@ class TestStorageManager(unittest.TestCase):
         self.assertGreaterEqual(cnt, 1)
         self.assertIsNotNone(sm.load_listing_record(fn))
 
+    def test_build_3in1_bundle_zip(self):
+        fake_session = {
+            "item_no": "2664012103",
+            "main_title": "사상 중흥S-클래스",
+            "thumb_trade_type": "매매",
+            "thumb_price_text": "6억 7천",
+            "_bundle_thumb_bytes_apt": (b"FAKE_THUMB_PNG", "1_thumb.png"),
+            "_bundle_poster_bytes_apt": (b"FAKE_POSTER_PNG", "2_poster.png"),
+            "_bundle_html_bytes_apt": (b"<html>FAKE_TABLE</html>", "3_table.html"),
+        }
+        zip_bytes, zip_fn, file_list = sm.build_3in1_bundle_zip("apt", fake_session, "2664012103")
+        self.assertIn("아파트_2664012103_결과물3종", zip_fn)
+        self.assertEqual(len(file_list), 3)
+
+        # verify zip content
+        import io, zipfile
+        zf = zipfile.ZipFile(io.BytesIO(zip_bytes))
+        namelist = zf.namelist()
+        self.assertEqual(len(namelist), 3)
+        self.assertTrue(any("1_썸네일" in n for n in namelist))
+        self.assertTrue(any("2_창문부착용A4" in n for n in namelist))
+        self.assertTrue(any("3_완성된표" in n for n in namelist))
+
 if __name__ == "__main__":
     unittest.main()

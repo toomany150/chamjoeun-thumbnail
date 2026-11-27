@@ -754,10 +754,146 @@ def render_tab_storage(safe_set_fn, queue_update_fn):
 
 
 
+def build_3in1_bundle_zip(prop_type: str, session_state: Any, item_no: str = None) -> Tuple[bytes, str, List[str]]:
+    """
+    1) 썸네일 PNG (1080x1080)
+    2) 창문부착용 A4 포스터 PNG
+    3) 완성된 표(.html) 통합 파일 (첫번째 첨부파일)
+    3가지 완성 결과물 파일을 단일 ZIP 파일로 압축 생성합니다.
+    - 반환: (zip_bytes, zip_filename, file_list)
+    """
+    type_label = PROP_TYPE_LABELS.get(prop_type, prop_type)
+    today_str = datetime.datetime.now().strftime("%Y%m%d")
+
+    # 매물 번호 결정
+    clean_no = sanitize_filename_part(item_no or session_state.get(f"{prop_type}_item_no") or session_state.get("item_no") or "001")
+    clean_type = sanitize_filename_part(type_label)
+
+    # 1. 썸네일 바이트 수집 (캐시 우선, 부재 시 온더플라이 렌더링)
+    thumb_bytes = None
+    if session_state.get(f"_bundle_thumb_bytes_{prop_type}"):
+        thumb_bytes = session_state[f"_bundle_thumb_bytes_{prop_type}"][0]
+    else:
+        try:
+            from thumbnail_generator import render_thumbnail, render_commercial_lease_thumbnail, render_commercial_sale_thumbnail
+            if prop_type == "comm":
+                is_sale = session_state.get("comm_thumb_mode", "임차") == "매매"
+                if is_sale:
+                    img = render_commercial_sale_thumbnail(
+                        top_left_badge=session_state.get("comm_sale_top_left", "추천 상가"),
+                        main_sub_title=session_state.get("comm_sale_main_sub", "특급 상권"),
+                        price_spec_badge=session_state.get("comm_sale_price_spec", "매매 10억 / 수익률 5%")
+                    )
+                else:
+                    img = render_commercial_lease_thumbnail(
+                        main_title=session_state.get("comm_lease_main_title", "상가 임대"),
+                        top_badge=session_state.get("comm_lease_top_badge", "권리금 무"),
+                        spec1=session_state.get("comm_lease_spec1", "1층 30평"),
+                        spec2=session_state.get("comm_lease_spec2", "보 3천 / 월 150")
+                    )
+            elif prop_type == "house":
+                img = render_thumbnail(
+                    item_no=session_state.get("house_item_no", f"No. {clean_no}"),
+                    main_title=session_state.get("house_main_title", "주택 매물"),
+                    sub_title=session_state.get("house_sub_title", ""),
+                    feature_text=session_state.get("house_feature_text", ""),
+                    trade_type=session_state.get("house_trade_type", "매매"),
+                    price_text=session_state.get("house_price_text", "")
+                )
+            elif prop_type == "factory":
+                img = render_thumbnail(
+                    item_no=session_state.get("factory_item_no", f"No. {clean_no}"),
+                    main_title=session_state.get("factory_main_title", "공장/창고 매물"),
+                    sub_title=session_state.get("factory_sub_title", ""),
+                    feature_text=session_state.get("factory_feature_text", ""),
+                    trade_type=session_state.get("factory_trade_type", "매매"),
+                    price_text=session_state.get("factory_price_text", "")
+                )
+            else:
+                img = render_thumbnail(
+                    item_no=session_state.get("item_no", f"No. {clean_no}"),
+                    main_title=session_state.get("main_title", "사상 중흥S-클래스"),
+                    sub_title=session_state.get("sub_title", ""),
+                    feature_text=session_state.get("feature_text", ""),
+                    trade_type=session_state.get("thumb_trade_type", "매매"),
+                    price_text=session_state.get("thumb_price_text", "")
+                )
+            b = io.BytesIO()
+            img.save(b, format="PNG", quality=95)
+            thumb_bytes = b.getvalue()
+        except Exception:
+            thumb_bytes = b""
+
+    # 2. 창문부착용 A4 포스터 바이트 수집 (캐시 우선, 부재 시 온더플라이 렌더링)
+    poster_bytes = None
+    if session_state.get(f"_bundle_poster_bytes_{prop_type}"):
+        poster_bytes = session_state[f"_bundle_poster_bytes_{prop_type}"][0]
+    else:
+        try:
+            from thumbnail_generator import render_a4_window_poster
+            p_title = session_state.get(f"poster_{prop_type}_main_title") or session_state.get("main_title", "추천 매물")
+            p_price = session_state.get(f"poster_{prop_type}_price") or session_state.get("thumb_price_text", "")
+            p_trade = session_state.get(f"poster_{prop_type}_trade_type") or session_state.get("thumb_trade_type", "매매")
+            p_sub = session_state.get(f"poster_{prop_type}_sub_title") or session_state.get("sub_title", "")
+            p_feat = session_state.get(f"poster_{prop_type}_feature") or session_state.get("feature_text", "")
+            img_p = render_a4_window_poster(
+                item_no=f"No. {clean_no}",
+                main_title=p_title,
+                sub_title=p_sub,
+                feature_text=p_feat,
+                trade_type=p_trade,
+                price_text=p_price,
+                is_commercial=(prop_type == "comm")
+            )
+            bp = io.BytesIO()
+            img_p.save(bp, format="PNG", quality=95)
+            poster_bytes = bp.getvalue()
+        except Exception:
+            poster_bytes = b""
+
+    # 3. 완성된 표(.html) 통합 파일 바이트 수집 (첫번째 첨부파일)
+    html_bytes = None
+    if session_state.get(f"_bundle_html_bytes_{prop_type}"):
+        html_bytes = session_state[f"_bundle_html_bytes_{prop_type}"][0]
+    else:
+        try:
+            from property_ad_spec import generate_blog_html_table, generate_standalone_blog_html_file, DEFAULT_SPEC
+            from commercial_ad_spec import generate_commercial_blog_html_table, DEFAULT_COMMERCIAL_SPEC_LEASE
+            if prop_type == "comm":
+                t_html = generate_commercial_blog_html_table(session_state.get("current_comm_spec_data", DEFAULT_COMMERCIAL_SPEC_LEASE))
+            else:
+                t_html = generate_blog_html_table(session_state.get("current_spec_data", DEFAULT_SPEC))
+            html_bytes = generate_standalone_blog_html_file(t_html, title=f"중개대상물표시_{clean_type}_{clean_no}")
+        except Exception:
+            html_bytes = b"<!DOCTYPE html><html><body></body></html>"
+
+    # ZIP 압축 생성
+    zip_buffer = io.BytesIO()
+    zip_filename = f"{clean_type}_{clean_no}_결과물3종_{today_str}.zip"
+    file_list = []
+
+    with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zf:
+        if thumb_bytes:
+            fn_thumb = f"1_썸네일_{clean_type}_{clean_no}.png"
+            zf.writestr(fn_thumb, thumb_bytes)
+            file_list.append(fn_thumb)
+        if poster_bytes:
+            fn_poster = f"2_창문부착용A4_{clean_type}_{clean_no}.png"
+            zf.writestr(fn_poster, poster_bytes)
+            file_list.append(fn_poster)
+        if html_bytes:
+            fn_html = f"3_완성된표_{clean_type}_{clean_no}.html"
+            zf.writestr(fn_html, html_bytes)
+            file_list.append(fn_html)
+
+    return zip_buffer.getvalue(), zip_filename, file_list
+
+
 def render_quick_save_bar(prop_type: str, key_prefix: str, custom_title: str = None):
     """
-    썸네일, 창문부착용 포스터, 중개대상물표시 작업 완료 영역에 배치되는 1초 보관 바
-    - 형식: 매물종류_매물번호_저장날짜.json (예: 아파트_2664012103_20261127.json)
+    썸네일, 창문부착용 포스터, 중개대상물표시 작업 완료 영역에 배치되는 올인원 액션 바:
+    1) [좌측] 💾 3종 세트 보관함 저장 (JSON) - 매물종류_매물번호_저장날짜.json
+    2) [우측] 📦 결과물 3종 세트 일괄 다운로드 (ZIP) - 썸네일PNG + A4포스터PNG + 완성된표.html
     """
     import streamlit as st
 
@@ -776,17 +912,17 @@ def render_quick_save_bar(prop_type: str, key_prefix: str, custom_title: str = N
         auto_no = str(st.session_state.get("factory_item_no") or st.session_state.get("poster_factory_item_no") or "F01")
 
     # 헤더 및 안내
-    title_text = custom_title or f"💾 [{type_label}] 3종 세트(썸네일+창문포스터+중개대상물표시) 한 번에 보관하기"
+    title_text = custom_title or f"💾 [{type_label}] 3종 세트 올인원 액션 바 (보관 & 일괄 다운로드)"
     st.markdown(f"""
     <div style="background: linear-gradient(135deg, #FFF7ED 0%, #FFEDD5 100%); border: 1.5px solid #F97316; border-radius: 8px; padding: 12px 16px; margin: 18px 0 10px 0;">
         <div style="display:flex; justify-content:space-between; align-items:center;">
             <div>
                 <b style="font-size: 15px; color: #9A3412;">{title_text}</b><br/>
                 <span style="font-size: 13px; color: #7C2D12;">
-                    💡 어느 화면에서 누르셔도 현재 작업하신 <b>{type_label}</b>의 <b>①썸네일 + ②창문부착용 포스터 + ③중개대상물 16대 점검표</b> 3가지가 파일 하나로 <b>한 번에 묶여서 일괄 저장</b>됩니다! (각 탭마다 따로 누르실 필요 없습니다)
+                    💡 현재 작업하신 <b>{type_label}</b>의 <b>①썸네일 + ②창문부착용 포스터 + ③완성된 표(.html)</b>가 한 번에 세트로 보관 및 일괄 다운로드됩니다!
                 </span>
             </div>
-            <span style="background:#EA580C; color:#fff; font-size:12px; font-weight:700; padding:3px 10px; border-radius:12px;">3종 원클릭 일괄보관</span>
+            <span style="background:#EA580C; color:#fff; font-size:12px; font-weight:700; padding:3px 10px; border-radius:12px;">3종 원클릭 올인원</span>
         </div>
     </div>
     """, unsafe_allow_html=True)
@@ -800,8 +936,12 @@ def render_quick_save_bar(prop_type: str, key_prefix: str, custom_title: str = N
     preview_name = generate_listing_filename(cur_no, prop_type, today_str)
 
     with c_qb3:
-        st.markdown(f"<div style='font-size:12px; color:#6B7280; margin-top:2px;'>저장 파일명: <code style='color:#C2410C; font-weight:700;'>{preview_name}</code></div>", unsafe_allow_html=True)
-        if st.button(f"💾 [{type_label}] 3종 세트 한 번에 저장하기", type="primary", use_container_width=True, key=f"{key_prefix}_btn_do_qsave"):
+        st.markdown(f"<div style='font-size:12px; color:#6B7280; margin-top:2px;'>보관 파일명: <code style='color:#C2410C; font-weight:700;'>{preview_name}</code></div>", unsafe_allow_html=True)
+
+    # 2대 핵심 액션 버튼 (좌: 보관함 저장, 우: 결과물 3종 ZIP 일괄 다운로드)
+    c_act1, c_act2 = st.columns(2)
+    with c_act1:
+        if st.button(f"💾 [{type_label}] 3종 세트 보관함에 저장하기", type="primary", use_container_width=True, key=f"{key_prefix}_btn_do_qsave"):
             t_d, p_d, a_d, a_no = collect_current_session_data(prop_type, st.session_state)
             f_no = cur_no.strip() if cur_no.strip() else a_no
             s_ok, s_msg, s_fn = save_listing_record(
@@ -815,7 +955,20 @@ def render_quick_save_bar(prop_type: str, key_prefix: str, custom_title: str = N
                 custom_date_str=today_str
             )
             if s_ok:
-                st.success(f"🎉 [{s_fn}] 3종 세트(썸네일+창문포스터+중개표시)가 한 번에 안전하게 보관되었습니다! 다른 탭에서 중복 저장하실 필요가 없습니다. (상단 '📁 매물보관함'에서 언제든 1초 복원 가능)")
+                st.success(f"🎉 [{s_fn}] 3종 세트가 보관함에 안전하게 저장되었습니다! (상단 '📁 매물보관함'에서 언제든 1초 복원 가능)")
                 st.rerun()
             else:
                 st.error(f"⚠️ {s_msg}")
+
+    with c_act2:
+        bundle_zip_bytes, bundle_zip_name, bundle_files = build_3in1_bundle_zip(prop_type, st.session_state, cur_no)
+        st.download_button(
+            label=f"📦 [{type_label}] 결과물 3종 일괄 다운로드 (ZIP)",
+            data=bundle_zip_bytes,
+            file_name=bundle_zip_name,
+            mime="application/zip",
+            use_container_width=True,
+            key=f"{key_prefix}_btn_dl_bundle_zip"
+        )
+
+    st.markdown("<div style='font-size:12px; color:#4B5563; margin-top:4px;'>📌 <b>일괄 다운로드 ZIP 포함 파일:</b> ① 썸네일 PNG + ② 창문부착용 A4 포스터 PNG + ③ 완성된 표(.html) 통합 파일</div>", unsafe_allow_html=True)

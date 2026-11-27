@@ -2353,6 +2353,8 @@ def render_tab_apt_thumb():
         clean_price = re.sub(r'[^\w\s-]', '', (st.session_state.thumb_price_text or "")).strip().replace(" ", "")
         download_filename = f"부동산썸네일_{clean_title}_{st.session_state.thumb_trade_type}_{clean_price}.png"
 
+        st.session_state["_bundle_thumb_bytes_apt"] = (img_bytes, download_filename)
+
         st.markdown("<hr style='margin: 15px 0 12px 0;'/>", unsafe_allow_html=True)
         st.markdown("### 📥 썸네일 파일 저장")
 
@@ -2542,6 +2544,8 @@ def render_tab_house_thumb():
         clean_h_price = re.sub(r'[^\w\s-]', '', (st.session_state.house_price_text or "")).strip().replace(" ", "")
         h_down_name = f"주택썸네일_{clean_h_title}_{st.session_state.house_trade_type}_{clean_h_price}.png"
 
+        st.session_state["_bundle_thumb_bytes_house"] = (h_thumb_bytes, h_down_name)
+
         st.markdown("<hr style='margin: 15px 0 12px 0;'/>", unsafe_allow_html=True)
         st.markdown("### 📥 출력 및 저장 옵션")
 
@@ -2727,6 +2731,8 @@ def render_tab_comm_thumb():
         mode_tag = "상가임차" if not is_sale_mode else "상가매매"
         comm_clean_title = re.sub(r'[^\w\s-]', '', (st.session_state.comm_lease_main_title if not is_sale_mode else st.session_state.comm_sale_main_sub)).strip().replace(" ", "_")
         comm_filename = f"{mode_tag}_{comm_clean_title}.png"
+
+        st.session_state["_bundle_thumb_bytes_comm"] = (img_bytes, comm_filename)
 
         st.markdown("<hr style='margin: 15px 0 12px 0;'/>", unsafe_allow_html=True)
         st.markdown("### 📥 출력 및 저장 옵션")
@@ -2917,6 +2923,8 @@ def render_tab_factory_thumb():
         clean_f_title = re.sub(r'[^\w\s-]', '', (st.session_state.factory_main_title or "공장")).strip().replace(" ", "_")
         clean_f_price = re.sub(r'[^\w\s-]', '', (st.session_state.factory_price_text or "")).strip().replace(" ", "")
         f_down_name = f"공장썸네일_{clean_f_title}_{st.session_state.factory_trade_type}_{clean_f_price}.png"
+
+        st.session_state["_bundle_thumb_bytes_factory"] = (f_thumb_bytes, f_down_name)
 
         st.markdown("<hr style='margin: 15px 0 12px 0;'/>", unsafe_allow_html=True)
         st.markdown("### 📥 출력 및 저장 옵션")
@@ -3129,6 +3137,8 @@ def render_tab_apt_poster():
         a4_poster_img.save(a4_io, format="PNG", quality=95)
         a4_bytes = a4_io.getvalue()
 
+        st.session_state["_bundle_poster_bytes_apt"] = (a4_bytes, a4_filename)
+
         st.markdown("### 🖨️ 포스터 출력 및 파일 저장")
         render_download_save_controller(
             file_bytes=a4_bytes,
@@ -3284,6 +3294,8 @@ def render_tab_house_poster():
         h_a4_io = io.BytesIO()
         house_a4_img.save(h_a4_io, format="PNG", quality=95)
         house_a4_bytes = h_a4_io.getvalue()
+
+        st.session_state["_bundle_poster_bytes_house"] = (house_a4_bytes, house_a4_name)
 
         st.markdown("### 🖨️ 포스터 출력 및 파일 저장")
         render_download_save_controller(
@@ -3603,6 +3615,8 @@ def render_tab_comm_poster():
         comm_a4_poster_img.save(c_a4_io, format="PNG", quality=95)
         comm_a4_bytes = c_a4_io.getvalue()
 
+        st.session_state["_bundle_poster_bytes_comm"] = (comm_a4_bytes, comm_a4_name)
+
         st.markdown("### 🖨️ 포스터 출력 및 파일 저장")
         render_download_save_controller(
             file_bytes=comm_a4_bytes,
@@ -3838,6 +3852,8 @@ def render_tab_factory_poster():
         f_a4_io = io.BytesIO()
         factory_a4_img.save(f_a4_io, format="PNG", quality=95)
         factory_a4_bytes = f_a4_io.getvalue()
+
+        st.session_state["_bundle_poster_bytes_factory"] = (factory_a4_bytes, factory_a4_name)
 
         st.markdown("### 🖨️ 포스터 출력 및 파일 저장")
         render_download_save_controller(
@@ -4494,43 +4510,20 @@ def render_tab_apt_ad():
             text_color="#FFFFFF"
         )
 
-        # 2. 부가 서식 (네이버광고 대조 체크리스트 및 블로그 서식은 접어두어 간소화)
-        with st.expander("📋 [참고용] 네이버광고 점검표 & 블로그 서식(텍스트/HTML)", expanded=False):
-            tab_ad_chk, tab_ad_blog = st.tabs([
-                "📋 네이버광고 점검표 (대조용)",
-                "📝 블로그용 본문 서식 (텍스트 / HTML 표)"
-            ])
+        st.markdown("<br/>", unsafe_allow_html=True)
 
-            with tab_ad_chk:
-                st.caption("네이버 부동산 매물 등록창을 띄워두고 위에서부터 순서대로 보며 입력하세요.")
-                items_list = get_ordered_spec_table_data(current_spec_data)
-                
-                rows_html = []
-                for it in items_list:
-                    num_str = f"{it['num']:02d}"
-                    val_formatted = it['val'].replace('\n', '<br/>')
-                    row_markup = f'<div style="border-bottom:1px solid #E9ECEF; padding:11px 6px;"><div style="display:flex; justify-content:space-between; margin-bottom:4px;"><span style="font-size:14px; font-weight:700; color:#333D4B;"><span style="color:#F48A26;">[{num_str}]</span> {it["name"]}</span><span style="font-size:12px; color:#8B95A1;">{it["guide"]}</span></div><div style="font-size:15px; color:#191F28; font-weight:600; line-height:1.6; background:#F8F9FB; padding:8px 12px; border-radius:6px; margin-top:4px;">{val_formatted}</div></div>'
-                    rows_html.append(row_markup)
+        # 2. 블로그 스마트에디터 표 서식 & 완성된 표(.html) 통합 파일 다운로드
+        st.markdown("### 📝 네이버 블로그 스마트에디터 표 서식")
+        st.caption("블로그 글쓰기 창에 바로 붙여넣는 세련된 다크골드 표입니다. [완성된 표 서식 복사] 또는 [완성된 표(.html) 통합 파일 다운로드]를 이용하세요.")
 
-                full_table_html = f'<div style="background:#FFFFFF; border:1.5px solid #CBD5E0; border-radius:12px; padding:14px 18px; box-shadow:0 2px 8px rgba(0,0,0,0.04); max-height:560px; overflow-y:auto;">{"".join(rows_html)}</div>'
-                st.markdown(full_table_html, unsafe_allow_html=True)
+        blog_html = generate_blog_html_table(current_spec_data)
+        st.markdown(blog_html, unsafe_allow_html=True)
+        render_blog_html_action_bar(blog_html, f"블로그표_{clean_loc}_{clean_trade}.html", "apt_blog_html")
 
-                st.markdown("<div style='height:8px;'></div>", unsafe_allow_html=True)
-                ad_guide_txt = generate_naver_ad_guide_text(current_spec_data)
-                st.text_area("📋 [네이버 광고 대조용] 전체 텍스트 복사", value=ad_guide_txt, height=120)
-
-            with tab_ad_blog:
-                st.caption("네이버 블로그 스마트에디터에 바로 붙여넣는 세련된 표 및 텍스트입니다.")
-                
-                blog_html = generate_blog_html_table(current_spec_data)
-                st.markdown(blog_html, unsafe_allow_html=True)
-                render_blog_html_action_bar(blog_html, f"블로그표_{clean_loc}_{clean_trade}.html", "apt_blog_html")
-
-                clip_text = generate_clipboard_text(current_spec_data)
-                st.text_area("📋 블로그 본문용 일반 텍스트 (Ctrl+C 복사)", value=clip_text, height=180)
-
-                with st.expander("💻 스마트에디터용 HTML 소스코드 보기"):
-                    st.code(blog_html, language="html")
+        # 번들용 HTML 캐시 저장
+        apt_html_bytes = generate_standalone_blog_html_file(blog_html, title=f"블로그표_{clean_loc}_{clean_trade}")
+        st.session_state["_bundle_html_bytes_apt"] = (apt_html_bytes, f"3_블로그표_{clean_loc}_{clean_trade}.html")
+        st.session_state["_bundle_card_bytes_apt"] = (card_bytes, card_filename)
 
         render_quick_save_bar(prop_type="apt", key_prefix="apt_ad_bottom")
 
@@ -4663,25 +4656,19 @@ def render_tab_house_ad():
             text_color="#FFFFFF"
         )
 
-        # 2. 부가 서식 (1~3번 텍스트 및 HTML 표는 참고용으로 간편 접기)
-        with st.expander("📋 [참고용] 블로그 HTML 표 / 네이버 등록 체크리스트 / 텍스트 복사", expanded=False):
-            tab_hov1, tab_hov2, tab_hov3 = st.tabs([
-                "📋 블로그 스마트에디터 HTML 표",
-                "📄 네이버광고 등록 체크리스트",
-                "💬 텍스트 복사 (카톡/본문)"
-            ])
+        st.markdown("<br/>", unsafe_allow_html=True)
 
-            with tab_hov1:
-                st.markdown(house_html, unsafe_allow_html=True)
-                render_blog_html_action_bar(house_html, f"블로그표_주택_{st.session_state.house_ad_trade_type}.html", "house_blog_html")
+        # 2. 블로그 스마트에디터 표 서식 & 완성된 표(.html) 통합 파일 다운로드
+        st.markdown("### 📝 네이버 블로그 스마트에디터 표 서식")
+        st.caption("블로그 글쓰기 창에 바로 붙여넣는 세련된 다크골드 표입니다. [완성된 표 서식 복사] 또는 [완성된 표(.html) 통합 파일 다운로드]를 이용하세요.")
 
-            with tab_hov2:
-                st.text_area("네이버 광고 등록용", value=house_guide, height=300, key="txt_h_guide")
-                st.markdown(render_copy_button(house_guide, "📄 [원클릭 복사] 네이버 등록 가이드 복사", "btn_copy_h_guide"), unsafe_allow_html=True)
+        st.markdown(house_html, unsafe_allow_html=True)
+        render_blog_html_action_bar(house_html, f"블로그표_주택_{st.session_state.house_ad_trade_type}.html", "house_blog_html")
 
-            with tab_hov3:
-                st.text_area("텍스트 양식", value=house_txt, height=300, key="txt_h_clip")
-                st.markdown(render_copy_button(house_txt, "💬 [원클릭 복사] 일반 텍스트 복사", "btn_copy_h_txt"), unsafe_allow_html=True)
+        # 번들용 HTML 캐시 저장
+        house_html_bytes = generate_standalone_blog_html_file(house_html, title=f"블로그표_주택_{st.session_state.house_ad_trade_type}")
+        st.session_state["_bundle_html_bytes_house"] = (house_html_bytes, f"3_블로그표_주택_{st.session_state.house_ad_trade_type}.html")
+        st.session_state["_bundle_card_bytes_house"] = (h_card_bytes, h_card_name)
 
         render_quick_save_bar(prop_type="house", key_prefix="house_ad_bottom")
 
@@ -5280,30 +5267,20 @@ def render_tab_comm_ad():
             text_color="#FFFFFF"
         )
 
-        # 2. 부가 서식 (상가 체크리스트 및 텍스트/HTML 복사 접기)
-        with st.expander("📋 [참고용] 상가 네이버광고 점검표 & 블로그 표 서식", expanded=False):
-            comm_items_list = get_commercial_spec_table_data(current_comm_spec_data)
-            c_rows_html = []
-            for it in comm_items_list:
-                num_str = f"{it['num']:02d}"
-                val_formatted = it['val'].replace('\n', '<br/>')
-                row_markup = f'<div style="border-bottom:1px solid #E9ECEF; padding:11px 6px;"><div style="display:flex; justify-content:space-between; margin-bottom:4px;"><span style="font-size:14px; font-weight:700; color:#333D4B;"><span style="color:#DAA844;">[{num_str}]</span> {it["name"]}</span><span style="font-size:12px; color:#8B95A1;">{it["guide"]}</span></div><div style="font-size:15px; color:#191F28; font-weight:600; line-height:1.6; background:#F8F9FB; padding:8px 12px; border-radius:6px; margin-top:4px;">{val_formatted}</div></div>'
-                c_rows_html.append(row_markup)
+        st.markdown("<br/>", unsafe_allow_html=True)
 
-            full_comm_table_html = f'<div style="background:#FFFFFF; border:1.5px solid #CBD5E0; border-radius:12px; padding:14px 18px; box-shadow:0 2px 8px rgba(0,0,0,0.04); max-height:680px; overflow-y:auto;">{"".join(c_rows_html)}</div>'
-            st.markdown(full_comm_table_html, unsafe_allow_html=True)
+        # 2. 블로그 스마트에디터 표 서식 & 완성된 표(.html) 통합 파일 다운로드
+        st.markdown("### 📝 네이버 블로그 스마트에디터 다크골드 표 서식")
+        st.caption("블로그 글쓰기 창에 바로 붙여넣는 세련된 다크골드 표입니다. [완성된 표 서식 복사] 또는 [완성된 표(.html) 통합 파일 다운로드]를 이용하세요.")
 
-            st.markdown("<br/>", unsafe_allow_html=True)
-            comm_guide_txt = generate_commercial_naver_ad_guide_text(current_comm_spec_data)
-            st.text_area("📋 [네이버 부동산 광고 대조용] 상가 전체 텍스트 복사", value=comm_guide_txt, height=130)
+        comm_blog_html = generate_commercial_blog_html_table(current_comm_spec_data)
+        st.markdown(comm_blog_html, unsafe_allow_html=True)
+        render_blog_html_action_bar(comm_blog_html, f"블로그표_상가_{clean_comm_loc}.html", "comm_blog_html")
 
-            comm_clip_txt = generate_commercial_clipboard_text(current_comm_spec_data)
-            st.text_area("💬 [카카오톡 / 블로그 본문용] 상가 일반 텍스트 복사", value=comm_clip_txt, height=110)
-
-            comm_blog_html = generate_commercial_blog_html_table(current_comm_spec_data)
-            st.markdown("#### 📝 [네이버 블로그용] 스마트에디터 다크골드 표 서식")
-            st.markdown(comm_blog_html, unsafe_allow_html=True)
-            render_blog_html_action_bar(comm_blog_html, f"블로그표_상가_{clean_comm_loc}.html", "comm_blog_html")
+        # 번들용 HTML 캐시 저장
+        comm_html_bytes = generate_standalone_blog_html_file(comm_blog_html, title=f"블로그표_상가_{clean_comm_loc}")
+        st.session_state["_bundle_html_bytes_comm"] = (comm_html_bytes, f"3_블로그표_상가_{clean_comm_loc}.html")
+        st.session_state["_bundle_card_bytes_comm"] = (comm_card_bytes, comm_card_filename)
 
         render_quick_save_bar(prop_type="comm", key_prefix="comm_ad_bottom")
 
@@ -5436,25 +5413,19 @@ def render_tab_factory_ad():
             text_color="#FFFFFF"
         )
 
-        # 2. 부가 서식 (1~3번 텍스트 및 HTML 표는 참고용으로 간편 접기)
-        with st.expander("📋 [참고용] 블로그 HTML 표 / 네이버 등록 체크리스트 / 텍스트 복사", expanded=False):
-            tab_fov1, tab_fov2, tab_fov3 = st.tabs([
-                "📋 블로그 스마트에디터 HTML 표",
-                "📄 네이버광고 등록 체크리스트",
-                "💬 텍스트 복사 (카톡/본문)"
-            ])
+        st.markdown("<br/>", unsafe_allow_html=True)
 
-            with tab_fov1:
-                st.markdown(factory_html, unsafe_allow_html=True)
-                render_blog_html_action_bar(factory_html, f"블로그표_공장_{st.session_state.factory_ad_trade_type}.html", "factory_blog_html")
+        # 2. 블로그 스마트에디터 표 서식 & 완성된 표(.html) 통합 파일 다운로드
+        st.markdown("### 📝 네이버 블로그 스마트에디터 표 서식")
+        st.caption("블로그 글쓰기 창에 바로 붙여넣는 세련된 다크골드 표입니다. [완성된 표 서식 복사] 또는 [완성된 표(.html) 통합 파일 다운로드]를 이용하세요.")
 
-            with tab_fov2:
-                st.text_area("네이버 광고 등록용", value=factory_guide, height=300, key="txt_f_guide")
-                st.markdown(render_copy_button(factory_guide, "📄 [원클릭 복사] 네이버 등록 가이드 복사", "btn_copy_f_guide"), unsafe_allow_html=True)
+        st.markdown(factory_html, unsafe_allow_html=True)
+        render_blog_html_action_bar(factory_html, f"블로그표_공장_{st.session_state.factory_ad_trade_type}.html", "factory_blog_html")
 
-            with tab_fov3:
-                st.text_area("텍스트 양식", value=factory_txt, height=300, key="txt_f_clip")
-                st.markdown(render_copy_button(factory_txt, "💬 [원클릭 복사] 일반 텍스트 복사", "btn_copy_f_txt"), unsafe_allow_html=True)
+        # 번들용 HTML 캐시 저장
+        factory_html_bytes = generate_standalone_blog_html_file(factory_html, title=f"블로그표_공장_{st.session_state.factory_ad_trade_type}")
+        st.session_state["_bundle_html_bytes_factory"] = (factory_html_bytes, f"3_블로그표_공장_{st.session_state.factory_ad_trade_type}.html")
+        st.session_state["_bundle_card_bytes_factory"] = (f_card_bytes, f_card_name)
 
         render_quick_save_bar(prop_type="factory", key_prefix="factory_ad_bottom")
 
