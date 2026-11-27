@@ -61,8 +61,8 @@ def sanitize_filename_part(text: str) -> str:
 
 def generate_listing_filename(item_no: str, prop_type: str, date_str: str = None) -> str:
     """
-    [작성일자_매물번호_매물종류.json] 규칙에 따른 표준 파일명을 생성합니다.
-    예: 20261126_2664012103_아파트.json
+    [매물종류_매물번호_저장날짜.json] 규칙에 따른 표준 파일명을 생성합니다.
+    예: 아파트_2664012103_20261127.json
     """
     if not date_str:
         date_str = datetime.datetime.now().strftime("%Y%m%d")
@@ -76,7 +76,7 @@ def generate_listing_filename(item_no: str, prop_type: str, date_str: str = None
     type_label = PROP_TYPE_LABELS.get(prop_type, prop_type)
     clean_type = sanitize_filename_part(type_label)
 
-    return f"{date_str}_{clean_no}_{clean_type}.json"
+    return f"{clean_type}_{clean_no}_{date_str}.json"
 
 
 def save_listing_record(
@@ -751,3 +751,71 @@ def render_tab_storage(safe_set_fn, queue_update_fn):
                         st.rerun()
                     else:
                         st.error(f"⚠️ {r_msg}")
+
+
+
+def render_quick_save_bar(prop_type: str, key_prefix: str, custom_title: str = None):
+    """
+    썸네일, 창문부착용 포스터, 중개대상물표시 작업 완료 영역에 배치되는 1초 보관 바
+    - 형식: 매물종류_매물번호_저장날짜.json (예: 아파트_2664012103_20261127.json)
+    """
+    import streamlit as st
+
+    type_label = PROP_TYPE_LABELS.get(prop_type, prop_type)
+    today_str = datetime.datetime.now().strftime("%Y%m%d")
+
+    # 자동 매물번호 감지
+    auto_no = "001"
+    if prop_type == "apt":
+        auto_no = str(st.session_state.get("item_no") or st.session_state.get("poster_apt_item_no") or "2664012103")
+    elif prop_type == "comm":
+        auto_no = str(st.session_state.get("comm_item_no") or st.session_state.get("poster_comm_item_no") or "HD01")
+    elif prop_type == "house":
+        auto_no = str(st.session_state.get("house_item_no") or st.session_state.get("poster_house_item_no") or "H01")
+    elif prop_type == "factory":
+        auto_no = str(st.session_state.get("factory_item_no") or st.session_state.get("poster_factory_item_no") or "F01")
+
+    # 헤더 및 안내
+    title_text = custom_title or f"💾 [{type_label}] 작업 내용 보관함에 저장하기"
+    st.markdown(f"""
+    <div style="background: linear-gradient(135deg, #FFF7ED 0%, #FFEDD5 100%); border: 1.5px solid #F97316; border-radius: 8px; padding: 12px 16px; margin: 18px 0 10px 0;">
+        <div style="display:flex; justify-content:space-between; align-items:center;">
+            <div>
+                <b style="font-size: 15px; color: #9A3412;">{title_text}</b><br/>
+                <span style="font-size: 13px; color: #7C2D12;">
+                    현재 작업하신 <b>{type_label}</b>의 <b>썸네일 + 창문부착용 포스터 + 중개대상물 16대 점검표</b>가 함께 일괄 보관됩니다.
+                </span>
+            </div>
+            <span style="background:#EA580C; color:#fff; font-size:12px; font-weight:700; padding:3px 10px; border-radius:12px;">{type_label}</span>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+
+    c_qb1, c_qb2, c_qb3 = st.columns([1.1, 1.3, 1.4])
+    with c_qb1:
+        cur_no = st.text_input("매물번호 확인/수정", value=auto_no, key=f"{key_prefix}_qsave_no", placeholder="매물번호")
+    with c_qb2:
+        cur_memo = st.text_input("간단 메모 (선택)", key=f"{key_prefix}_qsave_memo", placeholder="예: 급매, 소유자 통화완료")
+
+    preview_name = generate_listing_filename(cur_no, prop_type, today_str)
+
+    with c_qb3:
+        st.markdown(f"<div style='font-size:12px; color:#6B7280; margin-top:2px;'>저장 파일명: <code style='color:#C2410C; font-weight:700;'>{preview_name}</code></div>", unsafe_allow_html=True)
+        if st.button("💾 이 매물 지금 보관함에 저장하기", type="primary", use_container_width=True, key=f"{key_prefix}_btn_do_qsave"):
+            t_d, p_d, a_d, a_no = collect_current_session_data(prop_type, st.session_state)
+            f_no = cur_no.strip() if cur_no.strip() else a_no
+            s_ok, s_msg, s_fn = save_listing_record(
+                item_no=f_no,
+                prop_type=prop_type,
+                thumbnail_data=t_d,
+                poster_data=p_d,
+                ad_spec_data=a_d,
+                status="진행중",
+                memo=cur_memo.strip(),
+                custom_date_str=today_str
+            )
+            if s_ok:
+                st.success(f"🎉 [{s_fn}] 매물이 보관함에 안전하게 저장되었습니다! 상단 '📁 매물보관함'에서 언제든 다시 불러오거나 관리하실 수 있습니다.")
+                st.rerun()
+            else:
+                st.error(f"⚠️ {s_msg}")

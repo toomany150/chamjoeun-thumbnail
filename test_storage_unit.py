@@ -36,7 +36,7 @@ class TestStorageManager(unittest.TestCase):
             custom_date_str=date_str
         )
         self.assertTrue(ok)
-        self.assertEqual(filename, "20261126_2664012103_아파트.json")
+        self.assertEqual(filename, "아파트_2664012103_20261126.json")
         self.test_files.append(filename)
 
         # Check loaded
@@ -62,7 +62,7 @@ class TestStorageManager(unittest.TestCase):
             custom_date_str="20261126"
         )
         self.assertTrue(ok)
-        self.assertEqual(fn, "20261126_HD76_상가.json")
+        self.assertEqual(fn, "상가_HD76_20261126.json")
         self.test_files.append(fn)
 
         # Update status

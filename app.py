@@ -86,7 +86,8 @@ from storage_manager import (
     render_tab_storage,
     restore_listing_to_session,
     save_listing_record,
-    collect_current_session_data
+    collect_current_session_data,
+    render_quick_save_bar
 )
 
 from collections import OrderedDict
@@ -2345,6 +2346,8 @@ def render_tab_apt_thumb():
             text_color="#FFFFFF"
         )
 
+        render_quick_save_bar(prop_type="apt", key_prefix="apt_thumb_bottom")
+
         st.info("💡 아파트 썸네일을 만드셨다면, 상단의 **'🖨️ 창문부착용A4'** 또는 **'📋 중개대상물표시'** 탭을 클릭하여 포스터 출력과 네이버 광고 서식을 바로 확인하세요!")
 
 
@@ -2530,6 +2533,8 @@ def render_tab_house_thumb():
             key_prefix="house_thumb_down"
         )
 
+        render_quick_save_bar(prop_type="house", key_prefix="house_thumb_bottom")
+
 
 # ====================================================
 # [ 탭 1-3 ] 상가 썸네일 생성기 (임차 & 매매 2대 모드)
@@ -2713,6 +2718,8 @@ def render_tab_comm_thumb():
             label_download=f"📥 1080x1080 {mode_tag} 썸네일 저장",
             key_prefix="comm_thumb_down"
         )
+
+        render_quick_save_bar(prop_type="comm", key_prefix="comm_thumb_bottom")
 
         st.info("💡 상가 썸네일과 포스터를 만드셨다면, 상단의 **'🏪 ④ 상가 중개대상물 표시'** 탭을 클릭하여 상가 전용 네이버 광고 체크리스트 및 블로그 서식을 확인하세요!")
 
@@ -2901,6 +2908,8 @@ def render_tab_factory_thumb():
             label_download="📥 1080x1080 공장 썸네일 저장",
             key_prefix="factory_thumb_down"
         )
+
+        render_quick_save_bar(prop_type="factory", key_prefix="factory_thumb_bottom")
 
 
 # ====================================================
@@ -3155,6 +3164,8 @@ def render_tab_apt_poster():
                 use_container_width=True
             )
 
+            render_quick_save_bar(prop_type="apt", key_prefix="apt_poster_bottom")
+
 
 def render_tab_house_poster():
     st.markdown("""
@@ -3301,6 +3312,8 @@ def render_tab_house_poster():
                 on_click=sync_poster_to_thumbnail_house,
                 use_container_width=True
             )
+
+            render_quick_save_bar(prop_type="house", key_prefix="house_poster_bottom")
 
 
 def render_tab_comm_poster():
@@ -3705,6 +3718,8 @@ def render_tab_comm_poster():
                     use_container_width=True
                 )
 
+            render_quick_save_bar(prop_type="comm", key_prefix="comm_poster_bottom")
+
 
 def render_tab_factory_poster():
     st.markdown("""
@@ -3851,6 +3866,8 @@ def render_tab_factory_poster():
                 on_click=sync_poster_to_thumbnail_factory,
                 use_container_width=True
             )
+
+            render_quick_save_bar(prop_type="factory", key_prefix="factory_poster_bottom")
 
 
 # ====================================================
@@ -4496,6 +4513,8 @@ def render_tab_apt_ad():
                 with st.expander("💻 스마트에디터용 HTML 소스코드 보기"):
                     st.code(blog_html, language="html")
 
+        render_quick_save_bar(prop_type="apt", key_prefix="apt_ad_bottom")
+
 
 # ====================================================
 # [ 탭 4 ] 상가 중개대상물 표시 생성기 (임차 & 매매 전용)
@@ -4644,6 +4663,8 @@ def render_tab_house_ad():
             with tab_hov3:
                 st.text_area("텍스트 양식", value=house_txt, height=300, key="txt_h_clip")
                 st.markdown(render_copy_button(house_txt, "💬 [원클릭 복사] 일반 텍스트 복사", "btn_copy_h_txt"), unsafe_allow_html=True)
+
+        render_quick_save_bar(prop_type="house", key_prefix="house_ad_bottom")
 
 
 # ====================================================
@@ -5265,6 +5286,8 @@ def render_tab_comm_ad():
             st.markdown(comm_blog_html, unsafe_allow_html=True)
             render_blog_html_action_bar(comm_blog_html, f"블로그표_상가_{clean_comm_loc}.html", "comm_blog_html")
 
+        render_quick_save_bar(prop_type="comm", key_prefix="comm_ad_bottom")
+
 
 # ====================================================
 # [ 탭 2-4 ] 공장 / 창고 네이버 광고 & 중개대상물 표시 생성기
@@ -5413,6 +5436,8 @@ def render_tab_factory_ad():
             with tab_fov3:
                 st.text_area("텍스트 양식", value=factory_txt, height=300, key="txt_f_clip")
                 st.markdown(render_copy_button(factory_txt, "💬 [원클릭 복사] 일반 텍스트 복사", "btn_copy_f_txt"), unsafe_allow_html=True)
+
+        render_quick_save_bar(prop_type="factory", key_prefix="factory_ad_bottom")
 
 
 # ====================================================
